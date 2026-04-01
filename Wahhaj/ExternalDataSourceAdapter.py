@@ -1,6 +1,6 @@
 # wahhaj/ExternalDataSourceAdapter.py
 # ─────────────────────────────────────────────────────────────
-# Person C — Layer: Data Extraction
+# Data Extraction
 # Responsibility: fetch environmental raster data from external APIs
 #
 # CONTRACT (must not change method signatures):
