@@ -17,9 +17,9 @@
 # ─────────────────────────────────────────────────────────────
 
 import pytest
-from wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
-from wahhaj.FeatureExtractor import FeatureExtractor, Dataset
-from wahhaj.models import Raster
+from Wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
+from Wahhaj.FeatureExtractor import FeatureExtractor, Dataset
+from Wahhaj.models import Raster
 from datetime import datetime
 
 
