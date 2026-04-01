@@ -1,4 +1,4 @@
-# wahhaj/ExternalDataSourceAdapter.py
+# Wahhaj/ExternalDataSourceAdapter.py
 # ─────────────────────────────────────────────────────────────
 # Data Extraction
 # Responsibility: fetch environmental raster data from external APIs
@@ -20,7 +20,7 @@
 #       only — method signatures must stay the same.
 # ─────────────────────────────────────────────────────────────
 
-from models import Raster, AOI
+from Wahhaj.models import Raster, AOI
 from datetime import datetime
 from typing import Optional
 import numpy as np
