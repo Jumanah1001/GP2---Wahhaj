@@ -15,54 +15,32 @@
 #
 # NOTE: Dataset is defined here and exported from this file.
 #       AnalysisRun (Person D) imports Dataset from FeatureExtractor.
-#       Person A must add to __init__.py:
-#           from .FeatureExtractor import FeatureExtractor, Dataset
 #
 # NOTE: normalizeData() must be called before passing layers to AHPModel.
 #       AHPModel assumes all values are in range [0.0, 1.0].
-#
-# NOTE [FROM PROJECT DOCUMENT]: The system uses QGIS and GeoPandas to
-#       calculate slope and elevation (Chapter 4, Software Requirements).
-#       Current _make_slope_raster() is a MOCK for Phase 1 only.
-#       In production, replace with GeoPandas/richdem computation from DSM/DTM.
-#
-# NOTE [FROM PROJECT DOCUMENT]: UAV images go through OpenCV preprocessing
-#       (resizing, filtering, edge detection) before feature extraction.
-#       This preprocessing should happen on dataset.images before
-#       extractFeatures() is called — either in UploadService or here.
-#       Coordinate with Person B (UploadService) on where OpenCV runs.
-#
-# NOTE [FROM PROJECT DOCUMENT]: The system targets Saudi Arabia climate
-#       conditions. The fallback AOI (46.0, 24.0, 47.0, 25.0) covers
-#       central Riyadh — appropriate default for development.
 # ─────────────────────────────────────────────────────────────
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+
+import numpy as np
+
 from Wahhaj.models import Raster, AOI
 from Wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
-from datetime import datetime
-import numpy as np
 
 
 @dataclass
 class Dataset:
     """
-    The main data object that flows through the pipeline.
-
-    Created by UploadService, read by FeatureExtractor and AnalysisRun.
-    Do NOT add processing logic here — Dataset is data only.
+    Main pipeline data object.
 
     Attributes:
-        name       : human-readable label for this analysis run
+        name       : label for this analysis run
         aoi        : Area of Interest bounding box (lon_min, lat_min, lon_max, lat_max)
-                     If None, defaults to Riyadh area for development
-        images     : list of UAVImage objects uploaded by the user
-        start_date : start of the time range for environmental data fetching
-        end_date   : end of the time range for environmental data fetching
-                     NOTE: project document specifies TimeRange as part of
-                     Dataset — Person A should confirm the TimeRange type
-                     in models.py and update these fields accordingly.
+        images     : uploaded UAVImage objects
+        start_date : start time for environmental data fetching
+        end_date   : end time for environmental data fetching
     """
     name: str
     aoi: Optional[AOI] = None
@@ -76,108 +54,222 @@ class FeatureExtractor:
     Fetches all environmental layers needed for solar site suitability scoring.
 
     Layers produced: ghi, lst, sunshine, elevation, slope
-    These match the 5 criteria used in AHPModel with weights:
-        ghi=0.35, sunshine=0.25, slope=0.20, elevation=0.12, lst=0.08
 
-    Usage (method chaining supported):
-        extractor = FeatureExtractor()
-        extractor.extractFeatures(dataset).normalizeData()
-        layers = extractor.layers  # ready for AHPModel
+    Output convention for Phase 1 / integration:
+    - All layers are resampled to the same 5x5 grid.
+    - This satisfies the project requirement that all layers must share
+      the same shape/resolution before validation, normalization, and AHP.
     """
 
+    TARGET_SHAPE: Tuple[int, int] = (5, 5)
+    DEFAULT_AOI: AOI = (46.0, 24.0, 47.0, 25.0)  # central Riyadh for development
+
     def __init__(self):
-        # NOTE: layers keys must match AHPModel.WEIGHTS keys exactly
-        # AHPModel expects: "ghi", "sunshine", "slope", "elevation", "lst"
         self.layers: Dict[str, Raster] = {}
         self._adapter = ExternalDataSourceAdapter()
-        # NOTE: _adapter is private — AnalysisRun must not call it directly
 
-    # ── Public methods (the CONTRACT) ────────────────────────
+    # ── Public methods (must keep these signatures) ──────────
 
     def extractFeatures(self, dataset: Dataset) -> "FeatureExtractor":
         """
-        Fetch all feature layers for the given dataset.
+        Fetch all feature layers for the given dataset and align them to a common 5x5 grid.
 
-        Calls ExternalDataSourceAdapter for remote data (GHI, LST, etc.)
-        and computes slope locally from elevation.
+        Required output keys:
+            "ghi", "lst", "sunshine", "elevation", "slope"
 
-        NOTE: UAV images in dataset.images should already be preprocessed
-        with OpenCV before this method is called (see project document,
-        Software Requirements: OpenCV for resizing, filtering, edge detection).
-
-        Returns self to allow method chaining with normalizeData().
+        Returns:
+            self
         """
-        # Use dataset time range if provided, otherwise use current time
-        # NOTE: project document specifies TimeRange — update when Person A
-        # finalizes the TimeRange type in models.py
         t = dataset.start_date or datetime.now()
+        aoi = self._validate_or_default_aoi(dataset.aoi)
 
-        # NOTE: fallback AOI covers central Riyadh — for development only
-        # In production, dataset.aoi will always be set by UploadService
-        aoi = dataset.aoi or (46.0, 24.0, 47.0, 25.0)
+        # Fetch raw rasters from adapter
+        raw_ghi = self._adapter.fetchGHI(aoi, t)
+        raw_lst = self._adapter.fetchLST(aoi, t)
+        raw_sunshine = self._adapter.fetchSunshineHours(aoi, t)
+        raw_elevation = self._adapter.FetchElevation(aoi, t)
 
-        # ── Fetch from external adapter ───────────────────────
-        # NOTE: method names must match adapter CONTRACT exactly
-        self.layers["ghi"]       = self._adapter.fetchGHI(aoi, t)
-        self.layers["lst"]       = self._adapter.fetchLST(aoi, t)
-        self.layers["sunshine"]  = self._adapter.fetchSunshineHours(aoi, t)
-        self.layers["elevation"] = self._adapter.FetchElevation(aoi, t)
+        # Align everything to the shared project grid (5x5)
+        self.layers["ghi"] = self._resample_to_target_grid(raw_ghi, "ghi")
+        self.layers["lst"] = self._resample_to_target_grid(raw_lst, "lst")
+        self.layers["sunshine"] = self._resample_to_target_grid(raw_sunshine, "sunshine")
+        self.layers["elevation"] = self._resample_to_target_grid(raw_elevation, "elevation")
 
-        # ── Compute locally ───────────────────────────────────
-        # NOTE: slope is derived from DSM/DTM captured by the UAV drone.
-        # Project document says QGIS and GeoPandas calculate slope/elevation.
-        # MOCK for Phase 1 — replace with GeoPandas gradient computation
-        # using dataset.images DSM data in production.
-        self.layers["slope"] = self._make_slope_raster()
+        # Compute slope from elevation if possible, otherwise fallback mock
+        self.layers["slope"] = self._make_slope_raster(self.layers["elevation"])
 
-        return self  # enables: extractor.extractFeatures(d).normalizeData()
+        return self
 
     def normalizeData(self) -> "FeatureExtractor":
         """
-        Normalize all layer values to range [0.0, 1.0].
-
-        IMPORTANT: Must be called before passing layers to AHPModel.
-        AHPModel multiplies each layer by its weight and sums — if layers
-        are in different scales the result will be wrong.
-
-        Skips nodata cells (-9999.0) during min/max calculation.
-        Returns self to allow method chaining.
+        Normalize all layer values to [0.0, 1.0], ignoring nodata cells.
         """
         for name, raster in self.layers.items():
-            # Skip nodata cells — do not include -9999.0 in min/max
-            valid_mask = raster.data != -9999.0
+            valid_mask = raster.data != raster.nodata
 
-            if valid_mask.any():
-                mn = raster.data[valid_mask].min()
-                mx = raster.data[valid_mask].max()
+            if not valid_mask.any():
+                continue
 
-                # Guard against division by zero (all values identical)
-                if mx > mn:
-                    raster.data[valid_mask] = (
-                        (raster.data[valid_mask] - mn) / (mx - mn)
-                    )
+            mn = raster.data[valid_mask].min()
+            mx = raster.data[valid_mask].max()
+
+            if mx > mn:
+                raster.data[valid_mask] = (
+                    (raster.data[valid_mask] - mn) / (mx - mn)
+                ).astype(np.float32)
+            else:
+                # If all valid values are the same, set them to 0.0
+                # so downstream AHP doesn't break on a constant layer.
+                raster.data[valid_mask] = 0.0
+
+            raster.metadata = {
+                **(raster.metadata or {}),
+                "normalized": True,
+                "layer": name,
+            }
 
         return self
 
     # ── Private helpers ───────────────────────────────────────
 
-    def _make_slope_raster(self) -> Raster:
+    def _validate_or_default_aoi(self, aoi: Optional[AOI]) -> AOI:
         """
-        MOCK slope raster for Phase 1 development.
-
-        Production replacement (Phase 2):
-            import geopandas as gpd
-            # Load DSM from UAV imagery, compute slope using:
-            # slope = np.degrees(np.arctan(np.gradient(elevation_array)))
-            # Or use richdem: rd.TerrainAttribute(dem, attrib='slope_degrees')
-
-        NOTE: Low slope values = flat terrain = better solar site suitability.
-        AHPModel inverts slope in scoring: score = 1.0 - normalized_slope
-        This means after normalizeData(), slope=0.0 → best, slope=1.0 → worst.
+        Validate AOI format: (lon_min, lat_min, lon_max, lat_max).
+        If AOI is missing, use the development default.
         """
-        data = np.random.uniform(0.0, 0.3, (50, 50)).astype(np.float32)
+        if aoi is None:
+            return self.DEFAULT_AOI
+
+        if len(aoi) != 4:
+            raise ValueError("AOI must be a 4-tuple: (lon_min, lat_min, lon_max, lat_max)")
+
+        lon_min, lat_min, lon_max, lat_max = aoi
+
+        if lon_min >= lon_max:
+            raise ValueError("AOI invalid: lon_min must be smaller than lon_max")
+
+        if lat_min >= lat_max:
+            raise ValueError("AOI invalid: lat_min must be smaller than lat_max")
+
+        return aoi
+
+    def _resample_to_target_grid(self, raster: Raster, layer_name: str) -> Raster:
+        """
+        Convert any incoming raster to the project-standard 5x5 grid.
+
+        This keeps all layers aligned before normalization/AHP.
+        """
+        target_rows, target_cols = self.TARGET_SHAPE
+        src = raster.data.astype(np.float32)
+
+        if src.ndim != 2:
+            raise ValueError(f"Raster for layer '{layer_name}' must be 2D")
+
+        if src.shape == self.TARGET_SHAPE:
+            out = src.copy()
+        else:
+            out = self._downsample_mean(src, self.TARGET_SHAPE, nodata=raster.nodata)
+
+        metadata = {
+            **(raster.metadata or {}),
+            "layer": layer_name,
+            "shape": self.TARGET_SHAPE,
+            "source_shape": tuple(src.shape),
+            "aoi_aligned": True,
+        }
+
         return Raster(
-            data=data,
-            nodata=-9999.0,
-            metadata={"layer": "slope"}
+            data=out,
+            nodata=raster.nodata,
+            metadata=metadata,
+        )
+
+    def _downsample_mean(
+        self,
+        data: np.ndarray,
+        target_shape: Tuple[int, int],
+        nodata: float = -9999.0,
+    ) -> np.ndarray:
+        """
+        Downsample raster to target shape using block mean.
+
+        For Phase 1 integration, this gives a stable shared grid for AHP.
+        It is simple and deterministic, which is good for testing and debugging.
+        """
+        target_rows, target_cols = target_shape
+        src_rows, src_cols = data.shape
+
+        row_edges = np.linspace(0, src_rows, target_rows + 1, dtype=int)
+        col_edges = np.linspace(0, src_cols, target_cols + 1, dtype=int)
+
+        result = np.full((target_rows, target_cols), nodata, dtype=np.float32)
+
+        for r in range(target_rows):
+            r0, r1 = row_edges[r], row_edges[r + 1]
+            for c in range(target_cols):
+                c0, c1 = col_edges[c], col_edges[c + 1]
+
+                block = data[r0:r1, c0:c1]
+                if block.size == 0:
+                    continue
+
+                valid = block[block != nodata]
+                if valid.size == 0:
+                    continue
+
+                result[r, c] = float(valid.mean())
+
+        return result
+
+    def _make_slope_raster(self, elevation_raster: Optional[Raster] = None) -> Raster:
+        """
+        Build slope raster from elevation when available.
+
+        Phase 1:
+        - If elevation exists, estimate slope from gradient.
+        - Otherwise fallback to a mock raster for development.
+
+        Note:
+        - Lower slope is better for solar suitability.
+        - AHPModel may invert slope later during scoring.
+        """
+        if elevation_raster is None:
+            data = np.random.uniform(0.0, 0.3, self.TARGET_SHAPE).astype(np.float32)
+            return Raster(
+                data=data,
+                nodata=-9999.0,
+                metadata={"layer": "slope", "mock": True}
+            )
+
+        elevation = elevation_raster.data.astype(np.float32)
+        nodata = elevation_raster.nodata
+
+        valid_mask = elevation != nodata
+        if not valid_mask.any():
+            data = np.random.uniform(0.0, 0.3, self.TARGET_SHAPE).astype(np.float32)
+            return Raster(
+                data=data,
+                nodata=nodata,
+                metadata={"layer": "slope", "mock": True, "reason": "empty_elevation"}
+            )
+
+        # Fill nodata temporarily using mean of valid cells to avoid gradient issues
+        filled = elevation.copy()
+        valid_mean = float(elevation[valid_mask].mean())
+        filled[~valid_mask] = valid_mean
+
+        grad_y, grad_x = np.gradient(filled)
+        slope = np.sqrt((grad_x ** 2) + (grad_y ** 2)).astype(np.float32)
+
+        # Restore nodata mask
+        slope[~valid_mask] = nodata
+
+        return Raster(
+            data=slope,
+            nodata=nodata,
+            metadata={
+                "layer": "slope",
+                "derived_from": "elevation",
+                "shape": tuple(slope.shape),
+            }
         )
