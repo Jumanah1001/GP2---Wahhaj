@@ -21,14 +21,11 @@
 # ─────────────────────────────────────────────────────────────
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
+from wahhaj.models import Raster, AOI
+from wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
 from datetime import datetime
-
 import numpy as np
-
-from wahhaj.models import Raster, SiteInfo, FileRef
-from wahhaj.SiteCandidate import SiteCandidate
-from wahhaj.SuitabilityHeatmap import SuitabilityHeatmap
 
 
 @dataclass
