@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from wahhaj.FeatureExtractor import FeatureExtractor, Dataset
+from Wahhaj.FeatureExtractor import FeatureExtractor, Dataset
 
 dataset = Dataset(
     name="manual-test",
