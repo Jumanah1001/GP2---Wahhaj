@@ -25,8 +25,8 @@ class SiteCandidate:
     score: float = 0.0
     centroid: "Point" = None
     attrs: Dict[str, Any] = field(default_factory=dict)
-
     rank: Optional[int] = None
+    createdAt: datetime = field(default_factory=datetime.utcnow)
 
     def __post_init__(self) -> None:
         """
