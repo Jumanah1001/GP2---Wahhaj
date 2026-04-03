@@ -25,7 +25,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import requests
 
-from wahhaj.models import Raster, AOI
+from Wahhaj.models import Raster, AOI
 
 
 class ExternalDataSourceAdapter:
