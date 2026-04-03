@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import uuid
+from wahhaj.models import SiteInfo
 
 
 @dataclass
@@ -14,11 +15,11 @@ class FileRef:
     name: str
 
 
-@dataclass
-class SiteInfo:
-    site_id: str
-    description: str
-    coordinates: tuple
+# @dataclass
+# class SiteInfo:
+#     site_id: str
+#     description: str
+#     coordinates: tuple
 
 
 @dataclass
