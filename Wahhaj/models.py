@@ -1,7 +1,17 @@
 from dataclasses import dataclass
 from typing import List
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple
+import numpy as np
 
+AOI = Tuple[float, float, float, float]
 
+@dataclass
+class Raster:
+    data: np.ndarray
+    nodata: float = -9999.0
+    metadata: Dict[str, Any] = None
+    
 @dataclass(frozen=True)
 class BoundingBox:
     min_lat: float
