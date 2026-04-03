@@ -26,8 +26,8 @@ from datetime import datetime
 
 import numpy as np
 
-from Wahhaj.models import Raster, AOI
-from Wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
+from wahhaj.models import Raster, AOI
+from wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
 
 
 @dataclass
