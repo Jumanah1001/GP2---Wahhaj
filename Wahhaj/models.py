@@ -1,67 +1,17 @@
-from dataclasses import dataclass, field
-from typing import Any, Dict, Tuple, List, Optional
+from dataclasses import dataclass
+from typing import List
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple
 import numpy as np
 
-# --------------------------------------------------
-# Types
-# --------------------------------------------------
-
 AOI = Tuple[float, float, float, float]
-
-# --------------------------------------------------
-# Core Data Structures
-# --------------------------------------------------
 
 @dataclass
 class Raster:
     data: np.ndarray
     nodata: float = -9999.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def shape(self):
-        return self.data.shape
-
-
-# --------------------------------------------------
-
-@dataclass
-class Point:
-    lon: float
-    lat: float
-
-
-# --------------------------------------------------
-
-@dataclass
-class SiteInfo:
-    lon: float
-    lat: float
-    suitability_score: float
-    rank: Optional[int] = None
-    attrs: Dict[str, Any] = field(default_factory=dict)
-
-
-# --------------------------------------------------
-
-@dataclass
-class FileRef:
-    path: str
-    size_bytes: int = 0
-    content_type: str = "application/octet-stream"
-
-
-# --------------------------------------------------
-
-@dataclass
-class TileSet:
-    tiles: List = field(default_factory=list)
-
-
-# --------------------------------------------------
-# Extra (احتفظنا فيها لأنها مفيدة لك)
-# --------------------------------------------------
-
+    metadata: Dict[str, Any] = None
+    
 @dataclass(frozen=True)
 class BoundingBox:
     min_lat: float
