@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import uuid
-from wahhaj.models import Raster, SiteInfo, FileRef, TileSet
+from wahhaj.models import SiteInfo
 
 @dataclass
 class TileSet:
