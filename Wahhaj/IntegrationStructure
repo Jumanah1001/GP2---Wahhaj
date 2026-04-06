@@ -1,0 +1,177 @@
+# =============================================================
+# WAHHAJ — AHP Integration Skeleton
+# Person 4 | Week 1: Integration Structure
+# =============================================================
+# ℹ️  Runs with Dummy Data now.
+#     Replace None values with real grids as teammates finish.
+# =============================================================
+
+import numpy as np
+
+# ── Grid shape (must match ALL layers) ──
+GRID_SHAPE = (5, 5)  # ⚠️ All layers must share this shape
+
+# ── AHP Weights (Consistency Ratio CR = 0.015 ✅) ──
+AHP_WEIGHTS = {
+    "solar_irradiance": 0.35,  # Most critical — direct energy output
+    "slope":            0.25,  # Installation feasibility
+    "sunshine_hours":   0.20,  # Daily availability
+    "temperature":      0.12,  # PV efficiency impact
+    "elevation":        0.08,  # Accessibility
+}
+
+
+# =============================================================
+# DUMMY DATA — remove when real grids are ready
+# =============================================================
+
+def _dummy_grid(seed: int = None) -> np.ndarray:
+    """Returns a random normalized (0→1) grid for testing."""
+    if seed:
+        np.random.seed(seed)
+    return np.random.rand(*GRID_SHAPE)
+
+
+# =============================================================
+# CORE FUNCTIONS
+# =============================================================
+
+def prepare_features_for_ahp(
+    temperature_grid:       np.ndarray = None,  # Person 1
+    solar_irradiance_grid:  np.ndarray = None,  # Person 2
+    sunshine_hours_grid:    np.ndarray = None,  # Person 2
+    elevation_grid:         np.ndarray = None,  # Person 3
+    slope_grid:             np.ndarray = None,  # Person 3
+) -> dict:
+    """
+    Assembles all feature layers into a single dictionary.
+    Uses Dummy Data for any layer not yet provided.
+
+    Parameters
+    ----------
+    temperature_grid       : normalized (0→1) array — Person 1
+    solar_irradiance_grid  : normalized (0→1) array — Person 2
+    sunshine_hours_grid    : normalized (0→1) array — Person 2
+    elevation_grid         : normalized (0→1) array — Person 3
+    slope_grid             : normalized (0→1) array — Person 3
+
+    Returns
+    -------
+    dict : feature name → numpy array (GRID_SHAPE)
+    """
+    features = {
+        "temperature":      temperature_grid      if temperature_grid      is not None else _dummy_grid(seed=1),
+        "solar_irradiance": solar_irradiance_grid if solar_irradiance_grid is not None else _dummy_grid(seed=2),
+        "sunshine_hours":   sunshine_hours_grid   if sunshine_hours_grid   is not None else _dummy_grid(seed=3),
+        "elevation":        elevation_grid        if elevation_grid        is not None else _dummy_grid(seed=4),
+        "slope":            slope_grid            if slope_grid            is not None else _dummy_grid(seed=5),
+    }
+
+    _validate_shapes(features)
+    return features
+
+
+def _validate_shapes(features: dict) -> None:
+    """Raises AssertionError if any layer has a mismatched shape."""
+    for name, grid in features.items():
+        assert grid.shape == GRID_SHAPE, (
+            f"❌ Shape mismatch in '{name}': "
+            f"expected {GRID_SHAPE}, got {grid.shape}"
+        )
+    print("✅ Shape validation passed — all layers match")
+
+
+def compute_ahp_score(features: dict) -> np.ndarray:
+    """
+    Computes per-cell AHP suitability score.
+
+    ⚠️  Expects Person 3's normalized (0→1) data.
+        Inverts temperature and slope (lower = better).
+
+    Returns
+    -------
+    np.ndarray : scores in range 0–100
+    """
+    score = np.zeros(GRID_SHAPE)
+
+    for criterion, weight in AHP_WEIGHTS.items():
+        layer = features[criterion].copy()
+
+        # Inverted criteria — lower raw value = higher suitability
+        if criterion in ("temperature", "slope"):
+            layer = 1.0 - layer
+
+        score += weight * layer
+
+    return np.round(score * 100, 2)
+
+
+def get_suitability_label(score: float) -> str:
+    """Maps a numeric score to a suitability category."""
+    if score >= 75:
+        return "Highly Suitable ⭐⭐⭐"
+    if score >= 55:
+        return "Suitable ⭐⭐"
+    if score >= 35:
+        return "Moderately Suitable ⭐"
+    return "Not Suitable ❌"
+
+
+# =============================================================
+# MAIN PIPELINE
+# =============================================================
+
+def run_pipeline(
+    temperature_grid:       np.ndarray = None,
+    solar_irradiance_grid:  np.ndarray = None,
+    sunshine_hours_grid:    np.ndarray = None,
+    elevation_grid:         np.ndarray = None,
+    slope_grid:             np.ndarray = None,
+) -> np.ndarray:
+    """
+    Full AHP pipeline — Week 1 runs on Dummy Data.
+    Week 2: pass real grids from teammates.
+
+    Usage (Week 2)
+    --------------
+    scores = run_pipeline(
+        temperature_grid      = temperature_grid,       # Person 1
+        solar_irradiance_grid = solar_irradiance_grid,  # Person 2
+        sunshine_hours_grid   = sunshine_hours_grid,    # Person 2
+        elevation_grid        = elevation_grid,          # Person 3
+        slope_grid            = slope_grid,              # Person 3
+    )
+    """
+    print("\n" + "=" * 50)
+    print("  WAHHAJ — AHP Pipeline")
+    print("=" * 50)
+
+    # Step 1 — Assemble features
+    print("\n[1/3] Preparing features...")
+    features = prepare_features_for_ahp(
+        temperature_grid, solar_irradiance_grid,
+        sunshine_hours_grid, elevation_grid, slope_grid
+    )
+
+    # Step 2 — Compute AHP scores
+    print("[2/3] Computing AHP scores...")
+    scores = compute_ahp_score(features)
+
+    # Step 3 — Print results
+    print("[3/3] Results:\n")
+    print(f"  Score Grid:\n{scores}\n")
+    print(f"  Best site:  {scores.max():.1f} → {get_suitability_label(scores.max())}")
+    print(f"  Worst site: {scores.min():.1f} → {get_suitability_label(scores.min())}")
+    print(f"  Average:    {scores.mean():.1f}")
+    print("\n" + "=" * 50)
+
+    return scores
+
+
+# =============================================================
+# RUN
+# =============================================================
+
+if __name__ == "__main__":
+    print("⚠️  Running with DUMMY DATA — replace None with real grids when ready")
+    scores = run_pipeline()
