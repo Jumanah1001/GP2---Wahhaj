@@ -1,127 +1,78 @@
+"""
+wahhaj/device.py
+================
+UML attributes:
+    +deviceId         : UUID
+    +model            : string
+    +microcontroller  : string
+    +storage          : string
+    +battery          : string
+    +altitudeSensor   : string
+    +droneFrame       : string
+"""
 
-
-from dataclasses import dataclass
-from uuid import UUID, uuid4
+import uuid
+from dataclasses import dataclass, field
 
 
 @dataclass
 class Device:
+    """
+    يمثّل طائرة مسيّرة واحدة بمواصفاتها الكاملة.
 
-    
-    deviceId: UUID
-    model: str
-    microcontroller: str
-    storage: str
-    battery: str
-    altitudeSensor: str
-    droneFrame: str
+    Attributes (UML)
+    ----------------
+    deviceId        : UUID فريد
+    model           : اسم الموديل (مثال: DJI Phantom 4 RTK)
+    microcontroller : المعالج (مثال: STM32F4)
+    storage         : سعة التخزين (مثال: 32GB)
+    battery         : نوع البطارية أو سعتها (مثال: LiPo 5870mAh)
+    altitudeSensor  : حساس الارتفاع (مثال: Barometer + GPS)
+    droneFrame      : هيكل الطائرة (مثال: X500 V2)
+    """
 
-    @staticmethod
+    model:           str = ""
+    microcontroller: str = ""
+    storage:         str = ""
+    battery:         str = ""
+    altitudeSensor:  str = ""
+    droneFrame:      str = ""
+    device_id:       str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    @property
+    def deviceId(self) -> str:
+        return self.device_id
+
+    @classmethod
     def create(
-        model: str,
+        cls,
+        model:           str = "",
         microcontroller: str = "",
-        storage: str = "",
-        battery: str = "",
-        altitudeSensor: str = "",
-        droneFrame: str = ""
+        storage:         str = "",
+        battery:         str = "",
+        altitudeSensor:  str = "",
+        droneFrame:      str = "",
     ) -> "Device":
-        """Create a new Device with auto-generated UUID."""
-        return Device(
-            deviceId=uuid4(),
-            model=model,
-            microcontroller=microcontroller,
-            storage=storage,
-            battery=battery,
-            altitudeSensor=altitudeSensor,
-            droneFrame=droneFrame
+        return cls(
+            model           = model,
+            microcontroller = microcontroller,
+            storage         = storage,
+            battery         = battery,
+            altitudeSensor  = altitudeSensor,
+            droneFrame      = droneFrame,
         )
 
+    def to_dict(self) -> dict:
+        return {
+            "deviceId":        self.device_id,
+            "model":           self.model,
+            "microcontroller": self.microcontroller,
+            "storage":         self.storage,
+            "battery":         self.battery,
+            "altitudeSensor":  self.altitudeSensor,
+            "droneFrame":      self.droneFrame,
+        }
 
-# ============================================
-# Tests
-# ============================================
-
-def test_device_creation():
-    """Test creating a device using create() method."""
-    drone = Device.create(
-        model="DJI Phantom 4 RTK",
-        microcontroller="ARM Cortex-M4",
-        storage="16GB Internal",
-        battery="LiPo 5870mAh",
-        altitudeSensor="Barometer + GPS",
-        droneFrame="Carbon Fiber Quadcopter"
-    )
-    
-    assert drone.model == "DJI Phantom 4 RTK"
-    assert drone.microcontroller == "ARM Cortex-M4"
-    assert drone.storage == "16GB Internal"
-    assert drone.battery == "LiPo 5870mAh"
-    assert isinstance(drone.deviceId, UUID)
-    print("Device creation test passed")
-
-
-def test_device_with_defaults():
-    """Test creating device with default empty values."""
-    drone = Device.create(model="DJI Mavic 3")
-    
-    assert drone.model == "DJI Mavic 3"
-    assert drone.microcontroller == ""
-    assert drone.storage == ""
-    assert drone.battery == ""
-    assert isinstance(drone.deviceId, UUID)
-    print("Device with defaults test passed")
-
-
-def test_device_direct_construction():
-    """Test creating device directly (not using create())."""
-    device_id = uuid4()
-    drone = Device(
-        deviceId=device_id,
-        model="Autel EVO II",
-        microcontroller="Snapdragon",
-        storage="8GB",
-        battery="7100mAh",
-        altitudeSensor="GPS+GLONASS",
-        droneFrame="Foldable"
-    )
-    
-    assert drone.deviceId == device_id
-    assert drone.model == "Autel EVO II"
-    assert drone.battery == "7100mAh"
-    print(" Direct construction test passed")
-
-
-def test_unique_device_ids():
-    """Test that each created device has unique ID."""
-    drone1 = Device.create(model="DJI Mini 3")
-    drone2 = Device.create(model="DJI Mini 3")
-    
-    assert drone1.deviceId != drone2.deviceId
-    print("Unique device IDs test passed")
-
-
-if __name__ == "__main__":
-    print("Running Device tests...\n")
-    
-    test_device_creation()
-    test_device_with_defaults()
-    test_device_direct_construction()
-    test_unique_device_ids()
-    
-    print("\n" + "="*50)
-    print("All tests passed! ")
-    print("="*50)
-    
-    # Example usage
-    print("\nExample usage:")
-    print("-" * 50)
-    
-    d = Device.create(
-        model="DJI Phantom 4 RTK",
-        microcontroller="ARM Cortex-M4",
-        storage="128GB",
-        battery="5870mAh",
-        altitudeSensor="Barometer",
-        droneFrame="Quadcopter"
-    )
-    print(d)
+    def __repr__(self) -> str:
+        return (f"Device(id={self.device_id[:8]}, model={self.model!r}, "
+                f"frame={self.droneFrame!r})")
