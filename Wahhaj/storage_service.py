@@ -1,40 +1,59 @@
+"""
+wahhaj/storage_service.py
+Contract: UploadService ↔ StorageService
+
+⚠️ تغييرات مهمة:
+  • get() يرفع FileNotFoundError إذا الملف غير موجود
+    (UploadService._file_exists يعتمد على هذا السلوك)
+  • FileRef يشمل الآن حقل name (من models.py v2)
+"""
 import os
 import shutil
-from dataclasses import dataclass
-
-
-# FileRef في الـ UML
-@dataclass(frozen=True)
-class FileRef:
-    path: str
-    size: int
+from wahhaj.models import FileRef
 
 
 class StorageService:
-
     def __init__(self, base_dir: str = "storage"):
-        """
-        base_dir: المجلد اللي تنخزن فيه الملفات
-        """
         self.base_dir = base_dir
         os.makedirs(self.base_dir, exist_ok=True)
 
-    # put(file): FileRef
-    def put(self, file_path: str) -> FileRef:
-        """
-        يخزن ملف في مجلد التخزين ويرجع FileRef
-        """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError("Source file does not exist")
-
-        filename = os.path.basename(file_path)
-        dest_path = os.path.join(self.base_dir, filename)
-
-        if os.path.exists(dest_path):
-            raise FileExistsError("File already exists in storage")
-
+    def save_file(self, file_data: bytes, file_path: str) -> bool:
+        """يحفظ bytes مباشرة — مطلوب من UploadService."""
         try:
-            shutil.copy(file_path, dest_path)
+            full_path = os.path.join(self.base_dir, file_path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "wb") as fp:
+                fp.write(file_data)
+            return True
+        except Exception:
+            return False
+
+    def put(self, file_path: str) -> FileRef:
+        """ينقل ملفاً موجوداً إلى التخزين ويرجع FileRef."""
+        dest = os.path.join(self.base_dir, os.path.basename(file_path))
+        shutil.copy2(file_path, dest)
+        size = os.path.getsize(dest)
+        return FileRef(path=dest, size_bytes=size, name=os.path.basename(dest))
+
+    def get(self, path: str) -> FileRef:
+        """
+        يسترجع FileRef للملف المطلوب.
+        يرفع FileNotFoundError إذا الملف غير موجود.
+        ⚠️ UploadService._file_exists يعتمد على هذا الـ raise.
+        """
+        full = os.path.join(self.base_dir, path)
+        if not os.path.exists(full):
+            raise FileNotFoundError(f"File not found in storage: {path}")
+        size = os.path.getsize(full)
+        return FileRef(path=full, size_bytes=size, name=os.path.basename(full))
+
+    def delete_file(self, path: str) -> bool:
+        try:
+            full = os.path.join(self.base_dir, path)
+            os.remove(full)
+            return True
+        except Exception:
+            return False            shutil.copy(file_path, dest_path)
         except PermissionError:
             raise PermissionError("No permission to write to storage directory")
         except OSError as e:
