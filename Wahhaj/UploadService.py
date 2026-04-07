@@ -32,6 +32,7 @@ from typing import Dict, Optional
 from JobStatus import JobState, JobStatus
 from UAVImage import UAVImage
 from Database import Database
+from storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class UploadService:
     ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/tiff", "image/x-raw"}
     MAX_FILE_SIZE      = 500 * 1024 * 1024   # 500 MB — SRS FR-2
 
-    def __init__(self, storage_service=None):
+    def __init__(self, storage_service: StorageService = None):
         self.storage_service          = storage_service
         self._job: Optional[JobStatus] = None
         self.last_database: Optional[Database] = None
