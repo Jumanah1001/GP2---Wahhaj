@@ -172,7 +172,7 @@ class UploadService:
     def _file_exists(self, file_path: str) -> bool:
         """يتحقق إذا الملف موجود مسبقاً في التخزين."""
         try:
-            self.storage_service.get(os.path.basename(file_path))
+            self.storage_service.get(file_path)
             return True
         except Exception:
             return False
