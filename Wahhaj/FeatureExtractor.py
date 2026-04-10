@@ -22,8 +22,8 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
-from Wahhaj.models import Raster, AOI
-from Wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
+from .models import Raster, AOI
+from .ExternalDataSourceAdapter import ExternalDataSourceAdapter
 from datetime import datetime
 import numpy as np
 
