@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from UAVImage import UAVImage
+from Wahhaj.UAVImage import UAVImage
 
 logger = logging.getLogger(__name__)
 
