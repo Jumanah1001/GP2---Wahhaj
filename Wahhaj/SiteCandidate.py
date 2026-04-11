@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +29,10 @@ class SiteCandidate:
     attrs: Dict[str, Any] = field(default_factory=dict)
     rank: Optional[int] = None
     createdAt: datetime = field(default_factory=datetime.utcnow)
+
+
+    
+
 
     def __post_init__(self) -> None:
         """
@@ -131,14 +137,14 @@ if __name__ == "__main__":
     ranked = SiteCandidate.rank_all([c1, c2, c3])
    
 
-for c in ranked:
-    print(c.score, c.rank)
+    for c in ranked:
+        print(c.score, c.rank)
 
-    assert ranked[0].score == 0.9
-    assert ranked[0].rank == 1
-    assert ranked[1].rank == 2
-    assert ranked[2].rank == 3
+        assert ranked[0].score == 0.9
+        assert ranked[0].rank == 1
+        assert ranked[1].rank == 2
+        assert ranked[2].rank == 3
 
-    assert max([c1, c2, c3]).score == 0.9
+        assert max([c1, c2, c3]).score == 0.9
 
  
