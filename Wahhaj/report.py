@@ -167,9 +167,9 @@ class Report:
             content.append(f"\nDisplaying top {len(top_sites)} of {len(ranks)} candidate sites:\n")
             
             for i, site in enumerate(top_sites, 1):
-                content.append(f"{i}. Site ID: {site.site_id}")
+                content.append(f'{i}. Site ID: {site.siteId}')  
                 content.append(f"   Suitability Score: {site.score:.4f}")
-                content.append(f"   Location: ({site.centroid.x:.4f}°E, {site.centroid.y:.4f}°N)")
+                content.append(f"   Location: ({site.centroid.lon:.4f}°E, {site.centroid.lat:.4f}°N)")
                 
                 # Include environmental attributes if available
                 if hasattr(site, 'attrs') and site.attrs:
