@@ -1,32 +1,16 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import uuid
-from wahhaj.models import SiteInfo
+from wahhaj.models import SiteInfo, FileRef, Raster
 
 @dataclass
 class TileSet:
     tiles: list = field(default_factory=list)
 
 
-@dataclass
-class FileRef:
-    path: str
-    name: str
 
 
-# @dataclass
-# class SiteInfo:
-#     site_id: str
-#     description: str
-#     coordinates: tuple
 
-
-@dataclass
-class Raster:
-    data: list = field(default_factory=list)
-    width: int = 0
-    height: int = 0
-    crs: Optional[str] = None
 
 
 class SuitabilityHeatmap:
