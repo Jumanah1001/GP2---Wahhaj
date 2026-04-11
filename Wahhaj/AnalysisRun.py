@@ -16,7 +16,7 @@ from wahhaj.SiteCandidate import SiteCandidate
 from wahhaj.SuitabilityHeatmap import SuitabilityHeatmap
 
 # Reuse shared types from the adapter module
-from external_data_source_adapter import Raster
+# from external_data_source_adapter import Raster
 
 logger = logging.getLogger(__name__)
 
@@ -179,11 +179,11 @@ class AnalysisRun:
 
             # Step 4: Materialise heatmap
             logger.info("[%s] Step 4 – Materialising SuitabilityHeatmap …", self.runId[:8])
-            self.heatmap = SuitabilityHeatmap(
-                scores=self.suitability,
-                resolution=dataset.aoi.resolution_m,
-            )
-            self.heatmap.generateHeatmap(self.suitability)
+            self.heatmap = SuitabilityHeatmap( 
+                resolution=100.0, 
+                color_scale='RdYlGn' 
+            ) 
+            self.heatmap.generate_heatmap(self.suitability)   # snake_case
 
             self._finish(success=True)
 
@@ -298,8 +298,16 @@ class AnalysisRun:
         """
         data  = suitability.data
         valid = data != suitability.nodata
-        x_origin, x_res, y_origin, y_res = suitability.transform
+        aoi_tuple = dataset.aoi.to_tuple() if hasattr(dataset.aoi, 'to_tuple') else dataset.aoi
+
+        lon_min, lat_min, lon_max, lat_max = aoi_tuple
+
         rows, cols = data.shape[:2]
+
+        x_res = (lon_max - lon_min) / cols
+        y_res = (lat_max - lat_min) / rows
+
+        x_origin, y_origin = lon_min, lat_min
 
         # Flatten and sort valid pixels
         flat_scores = data.copy()
