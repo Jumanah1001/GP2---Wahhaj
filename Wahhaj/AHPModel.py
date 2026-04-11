@@ -1,6 +1,8 @@
 from AhpAnpLib import inputs_AHPLib as input
 from AhpAnpLib import structs_AHPLib as str
 
+import numpy as np
+from wahhaj.models import Raster
 
 class AHPModel:
     def __init__(self):
@@ -33,6 +35,46 @@ class AHPModel:
         )
 
         self.model.addCluster2Model(criteria_cluster)
+
+        def computeSuitabilityScore(self, layers):
+            """
+            layers order:
+            [solar_radiance, sunshine_hours, slope, elevation, surface_temperature]
+            """
+            if len(layers) != 5:
+                raise ValueError("computeSuitabilityScore expects exactly 5 layers")
+
+            weights = [0.35, 0.25, 0.20, 0.12, 0.08]
+
+            first_data = np.array(layers[0].data, dtype=float)
+            result = np.zeros_like(first_data, dtype=float)
+
+            nodata = getattr(layers[0], "nodata", -9999.0)
+            valid_mask = np.ones(first_data.shape, dtype=bool)
+
+            for layer in layers:
+                layer_data = np.array(layer.data, dtype=float)
+
+                if layer_data.shape != result.shape:
+                    raise ValueError("All layers must have the same shape")
+
+                layer_nodata = getattr(layer, "nodata", nodata)
+                valid_mask &= (layer_data != layer_nodata)
+
+            for weight, layer in zip(weights, layers):
+                layer_data = np.array(layer.data, dtype=float)
+                result += weight * layer_data
+
+            result[~valid_mask] = nodata
+
+            metadata = getattr(layers[0], "metadata", None)
+
+            return Raster(
+                data=result,
+                nodata=nodata,
+                metadata=metadata
+            )
+
 
     def add_alternatives(self, area_names):
         alternatives_cluster = str.Cluster(self.alternatives_cluster_name, 2)
