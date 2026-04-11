@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from wahhaj.models import Raster, SiteInfo, FileRef
+from wahhaj.models import Raster, SiteInfo, FileRef, Point
 from wahhaj.SiteCandidate import SiteCandidate
 from wahhaj.SuitabilityHeatmap import SuitabilityHeatmap
 
@@ -60,14 +60,7 @@ class EdgeNodeSpec:
         )
 
 
-@dataclass
-class Point:
-    """Geographic point (WGS-84 decimal degrees)."""
-    lon: float
-    lat: float
 
-    def __str__(self) -> str:
-        return f"({self.lat:.6f}°, {self.lon:.6f}°)"
 
 
 
@@ -179,10 +172,10 @@ class AnalysisRun:
 
             # Step 4: Materialise heatmap
             logger.info("[%s] Step 4 – Materialising SuitabilityHeatmap …", self.runId[:8])
-            self.heatmap = SuitabilityHeatmap( 
-                resolution=100.0, 
-                color_scale='RdYlGn' 
-            ) 
+            self.heatmap = SuitabilityHeatmap(
+                resolution=100.0,
+                color_scale='RdYlGn'
+            )
             self.heatmap.generate_heatmap(self.suitability)   # snake_case
 
             self._finish(success=True)
