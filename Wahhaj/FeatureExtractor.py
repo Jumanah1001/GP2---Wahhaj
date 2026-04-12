@@ -22,7 +22,7 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
-from .models import Raster, AOI
+from .models import Raster, AOI, BoundingBox, TimeRange
 from .ExternalDataSourceAdapter import ExternalDataSourceAdapter
 from datetime import datetime
 import numpy as np
@@ -62,39 +62,98 @@ class FeatureExtractor:
     TARGET_SHAPE: Tuple[int, int] = (5, 5)
     DEFAULT_AOI: AOI = (46.0, 24.0, 47.0, 25.0)  # central Riyadh for development
 
-    def __init__(self):
+    def __init__(self, adapter: ExternalDataSourceAdapter):
         self.layers: Dict[str, Raster] = {}
-        self._adapter = ExternalDataSourceAdapter()
+        self.adapter = adapter
+        self.slope = None
 
     # ── Public methods (must keep these signatures) ──────────
 
+    def calculateSlope(self, elevation_grid: np.ndarray, aoi: AOI) -> np.ndarray:
+        lon_min, lat_min, lon_max, lat_max = aoi
+
+        lat_spacing_deg = (lat_max - lat_min) / max(self.TARGET_SHAPE[0] - 1, 1)
+        lon_spacing_deg = (lon_max - lon_min) / max(self.TARGET_SHAPE[1] - 1, 1)
+
+        mean_lat = (lat_min + lat_max) / 2.0
+        meters_per_deg_lat = 111320.0
+        meters_per_deg_lon = 111320.0 * np.cos(np.radians(mean_lat))
+
+        dy = lat_spacing_deg * meters_per_deg_lat
+        dx = lon_spacing_deg * meters_per_deg_lon
+
+        dz_dy, dz_dx = np.gradient(elevation_grid, dy, dx)
+        slope_rad = np.arctan(np.sqrt(dz_dx**2 + dz_dy**2))
+        slope_deg = np.degrees(slope_rad)
+
+        return slope_deg.astype(np.float32)
+
+
+    def _make_slope_raster(
+        self,
+        elevation_raster: Optional[Raster] = None,
+        aoi: Optional[AOI] = None
+    ) -> Raster:
+        """
+        Build slope raster from elevation using the same logic as calculateSlope().
+        """
+        if elevation_raster is None:
+            raise ValueError("elevation_raster is required to compute slope")
+
+        if aoi is None:
+            raise ValueError("aoi is required to compute slope")
+
+        elevation = elevation_raster.data.astype(np.float32)
+        nodata = elevation_raster.nodata
+
+        valid_mask = elevation != nodata
+        if not valid_mask.any():
+            raise ValueError("Cannot compute slope: elevation raster has no valid cells")
+
+        filled = elevation.copy()
+        valid_mean = float(elevation[valid_mask].mean())
+        filled[~valid_mask] = valid_mean
+
+        slope = self.calculateSlope(filled, aoi).astype(np.float32)
+
+        slope[~valid_mask] = nodata
+
+        return Raster(
+            data=slope,
+            nodata=nodata,
+            metadata={
+                "layer": "slope",
+                "derived_from": "elevation",
+                "shape": tuple(slope.shape),
+            }
+        )
+
+
+    def resizeArray(self, arr: np.ndarray, target_rows: int, target_cols: int) -> np.ndarray:
+        src_rows, src_cols = arr.shape
+        row_idx = np.linspace(0, src_rows - 1, target_rows).astype(int)
+        col_idx = np.linspace(0, src_cols - 1, target_cols).astype(int)
+        return arr[np.ix_(row_idx, col_idx)]
+
+
+
     def extractFeatures(self, dataset: Dataset) -> "FeatureExtractor":
-        """
-        Fetch all feature layers for the given dataset and align them to a common 5x5 grid.
-
-        Required output keys:
-            "ghi", "lst", "sunshine", "elevation", "slope"
-
-        Returns:
-            self
-        """
         t = dataset.start_date or datetime.now()
         aoi = self._validate_or_default_aoi(dataset.aoi)
 
-        # Fetch raw rasters from adapter
-        raw_ghi = self._adapter.fetchGHI(aoi, t)
-        raw_lst = self._adapter.fetchLST(aoi, t)
-        raw_sunshine = self._adapter.fetchSunshineHours(aoi, t)
-        raw_elevation = self._adapter.FetchElevation(aoi, t)
+        raw_ghi = self.adapter.fetchGHI(aoi, t)
+        raw_lst = self.adapter.fetchLST(aoi, t)
+        raw_sunshine = self.adapter.fetchSunshineHours(aoi, t)
+        raw_elevation = self.adapter.FetchElevation(aoi, t)
 
-        # Align everything to the shared project grid (5x5)
         self.layers["ghi"] = self._resample_to_target_grid(raw_ghi, "ghi")
         self.layers["lst"] = self._resample_to_target_grid(raw_lst, "lst")
         self.layers["sunshine"] = self._resample_to_target_grid(raw_sunshine, "sunshine")
         self.layers["elevation"] = self._resample_to_target_grid(raw_elevation, "elevation")
 
-        # Compute slope from elevation if possible, otherwise fallback mock
-        self.layers["slope"] = self._make_slope_raster(self.layers["elevation"])
+        self.layers["slope"] = self._make_slope_raster(self.layers["elevation"], aoi)
+        
+        self.normalizeData()
 
         return self
 
@@ -219,55 +278,4 @@ class FeatureExtractor:
 
         return result
 
-    def _make_slope_raster(self, elevation_raster: Optional[Raster] = None) -> Raster:
-        """
-        Build slope raster from elevation when available.
-
-        Phase 1:
-        - If elevation exists, estimate slope from gradient.
-        - Otherwise fallback to a mock raster for development.
-
-        Note:
-        - Lower slope is better for solar suitability.
-        - AHPModel may invert slope later during scoring.
-        """
-        if elevation_raster is None:
-            data = np.random.uniform(0.0, 0.3, self.TARGET_SHAPE).astype(np.float32)
-            return Raster(
-                data=data,
-                nodata=-9999.0,
-                metadata={"layer": "slope", "mock": True}
-            )
-
-        elevation = elevation_raster.data.astype(np.float32)
-        nodata = elevation_raster.nodata
-
-        valid_mask = elevation != nodata
-        if not valid_mask.any():
-            data = np.random.uniform(0.0, 0.3, self.TARGET_SHAPE).astype(np.float32)
-            return Raster(
-                data=data,
-                nodata=nodata,
-                metadata={"layer": "slope", "mock": True, "reason": "empty_elevation"}
-            )
-
-        # Fill nodata temporarily using mean of valid cells to avoid gradient issues
-        filled = elevation.copy()
-        valid_mean = float(elevation[valid_mask].mean())
-        filled[~valid_mask] = valid_mean
-
-        grad_y, grad_x = np.gradient(filled)
-        slope = np.sqrt((grad_x ** 2) + (grad_y ** 2)).astype(np.float32)
-
-        # Restore nodata mask
-        slope[~valid_mask] = nodata
-
-        return Raster(
-            data=slope,
-            nodata=nodata,
-            metadata={
-                "layer": "slope",
-                "derived_from": "elevation",
-                "shape": tuple(slope.shape),
-            }
-        )
+    
