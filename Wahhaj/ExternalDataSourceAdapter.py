@@ -22,8 +22,11 @@
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
-import numpy as np
+
+import ee
 import requests
+import numpy as np
+
 
 from .models import Raster, AOI
 
@@ -42,9 +45,39 @@ class ExternalDataSourceAdapter:
     GRID_COLS = 5
     OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-    def __init__(self, api_key: Optional[str] = None):
+
+
+    def __init__(self, api_key: Optional[str] = None, grid_rows: int = 5, grid_cols: int = 5):
         # NOTE: api_key is optional — adapter works without it in current mode
         self.api_key = api_key
+        self.grid_rows = grid_rows
+        self.grid_cols = grid_cols
+
+        # IMPORTANT:
+        # fetchLST uses Google Earth Engine (ee). If Earth Engine is not
+        # authenticated and initialized, fetchLST will fail at runtime.
+        try:
+            ee.Initialize(project='wahhaj-data-fetching')
+        except Exception:
+            ee.Authenticate()
+            ee.Initialize(project='wahhaj-data-fetching')
+    
+    def _build_grid_points(self, aoi):
+        min_lat, min_lon, max_lat, max_lon = aoi
+
+        lats = np.linspace(min_lat, max_lat, self.grid_rows)
+        lons = np.linspace(min_lon, max_lon, self.grid_cols)
+
+        points = []
+        for lat in lats:
+            for lon in lons:
+                points.append((float(lat), float(lon)))
+        return points
+
+    def _reshape_to_grid(self, values):
+        return np.array(values, dtype=np.float32).reshape((self.grid_rows, self.grid_cols))
+
+
 
     # ── Public methods (the CONTRACT) ────────────────────────
 
@@ -68,13 +101,26 @@ class ExternalDataSourceAdapter:
             unit="MJ/m²/day (mean over window)",
         )
 
+
+   
+
     def fetchLST(self, aoi: AOI, time: datetime) -> Raster:
         """
-        Fetch Land Surface Temperature raster.
+        Fetch Land Surface Temperature raster from Earth Engine / MODIS.
 
-        Still mock for now.
+        Same logic as the notebook:
+        - build 5x5 points over AOI
+        - sample MODIS LST_Day_1km
+        - convert to Celsius
         """
-        return self._make_synthetic_raster(aoi, layer="lst")
+        values = self._fetch_modis_lst_grid(aoi, time)
+
+        return self._build_raster_from_grid(
+            values=values,
+            layer="lst",
+            source="earth-engine",
+            unit="°C",
+        )
 
     def fetchSunshineHours(self, aoi: AOI, time: datetime) -> Raster:
         """
@@ -103,12 +149,19 @@ class ExternalDataSourceAdapter:
 
     def FetchElevation(self, aoi: AOI, time: datetime) -> Raster:
         """
-        Fetch elevation raster (meters above sea level).
+        Fetch elevation raster using Open-Meteo elevation API as point-grid fallback.
 
-        Still mock for now.
+        Same practical fallback logic used in the notebook.
         NOTE: Capital F — matches exactly what FeatureExtractor calls.
         """
-        return self._make_synthetic_raster(aoi, layer="elevation")
+        values = self._fetch_open_meteo_elevation_grid(aoi)
+
+        return self._build_raster_from_grid(
+            values=values,
+            layer="elevation",
+            source="open-meteo-elevation",
+            unit="m",
+        )
 
     # ── Real API helpers ─────────────────────────────────────
 
@@ -261,3 +314,64 @@ class ExternalDataSourceAdapter:
             nodata=-9999.0,
             metadata={"layer": layer, "source": "mock"},
         )
+
+    def _fetch_modis_lst_grid(self, aoi: AOI, time: datetime) -> np.ndarray:
+        """
+        Same notebook logic:
+        - previous 30-day window ending at `time`
+        - MODIS/061/MOD11A2
+        - LST_Day_1km -> Celsius
+        """
+        centroids = self._build_5x5_centroids(aoi)
+        grid = np.full((self.GRID_ROWS, self.GRID_COLS), -9999.0, dtype=np.float32)
+        start_date, end_date = self._resolve_time_window(time)
+        for row, col, center_lat, center_lon in centroids:
+            point = ee.Geometry.Point([center_lon, center_lat])
+            value = (
+                ee.ImageCollection("MODIS/061/MOD11A2")
+                .filterDate(start_date, end_date)
+                .select("LST_Day_1km")
+                .mean()
+                .multiply(0.02)
+                .subtract(273.15)
+                .reduceRegion(
+                    reducer=ee.Reducer.mean(),
+                    geometry=point,
+                    scale=1000
+                )
+                .get("LST_Day_1km")
+            )
+            temp = value.getInfo()
+            if temp is None:
+                temp = -9999.0
+            grid[row, col] = float(temp)
+        return grid
+
+
+    def _fetch_open_meteo_elevation_grid(self, aoi: AOI) -> np.ndarray:
+        """
+        Same notebook fallback logic:
+        - build point grid
+        - call Open-Meteo elevation endpoint
+        - reshape to 5x5
+        """
+        centroids = self._build_5x5_centroids(aoi)
+
+        latitudes = ",".join(str(center_lat) for _, _, center_lat, _ in centroids)
+        longitudes = ",".join(str(center_lon) for _, _, _, center_lon in centroids)
+
+        url = "https://api.open-meteo.com/v1/elevation"
+        params = {
+            "latitude": latitudes,
+            "longitude": longitudes
+        }
+
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        payload = response.json()
+
+        elevations = payload.get("elevation")
+        if elevations is None:
+            raise ValueError("No elevation data returned")
+
+        return np.array(elevations, dtype=np.float32).reshape((self.GRID_ROWS, self.GRID_COLS))
