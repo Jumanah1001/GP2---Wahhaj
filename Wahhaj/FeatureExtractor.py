@@ -18,14 +18,22 @@
 #
 # NOTE: normalizeData() must be called before passing layers to AHPModel.
 #       AHPModel assumes all values are in range [0.0, 1.0].
+#
+# Person 3 additions (Data Validation + Normalization):
+#   validate_shapes()       — ensures all layers share TARGET_SHAPE
+#   handle_missing_values() — fills nodata/-9999/NaN cells with layer mean
+#   normalizeData()         — now calls both helpers before min-max scaling
 # ─────────────────────────────────────────────────────────────
 
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from .models import Raster, AOI, BoundingBox, TimeRange
 from .ExternalDataSourceAdapter import ExternalDataSourceAdapter
 from datetime import datetime
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -88,7 +96,6 @@ class FeatureExtractor:
 
         return slope_deg.astype(np.float32)
 
-
     def _make_slope_raster(
         self,
         elevation_raster: Optional[Raster] = None,
@@ -115,7 +122,6 @@ class FeatureExtractor:
         filled[~valid_mask] = valid_mean
 
         slope = self.calculateSlope(filled, aoi).astype(np.float32)
-
         slope[~valid_mask] = nodata
 
         return Raster(
@@ -128,62 +134,181 @@ class FeatureExtractor:
             }
         )
 
-
     def resizeArray(self, arr: np.ndarray, target_rows: int, target_cols: int) -> np.ndarray:
         src_rows, src_cols = arr.shape
         row_idx = np.linspace(0, src_rows - 1, target_rows).astype(int)
         col_idx = np.linspace(0, src_cols - 1, target_cols).astype(int)
         return arr[np.ix_(row_idx, col_idx)]
 
-
-
     def extractFeatures(self, dataset: Dataset) -> "FeatureExtractor":
         t = dataset.start_date or datetime.now()
         aoi = self._validate_or_default_aoi(dataset.aoi)
 
-        raw_ghi = self.adapter.fetchGHI(aoi, t)
-        raw_lst = self.adapter.fetchLST(aoi, t)
-        raw_sunshine = self.adapter.fetchSunshineHours(aoi, t)
+        raw_ghi       = self.adapter.fetchGHI(aoi, t)
+        raw_lst       = self.adapter.fetchLST(aoi, t)
+        raw_sunshine  = self.adapter.fetchSunshineHours(aoi, t)
         raw_elevation = self.adapter.FetchElevation(aoi, t)
 
-        self.layers["ghi"] = self._resample_to_target_grid(raw_ghi, "ghi")
-        self.layers["lst"] = self._resample_to_target_grid(raw_lst, "lst")
-        self.layers["sunshine"] = self._resample_to_target_grid(raw_sunshine, "sunshine")
+        self.layers["ghi"]       = self._resample_to_target_grid(raw_ghi, "ghi")
+        self.layers["lst"]       = self._resample_to_target_grid(raw_lst, "lst")
+        self.layers["sunshine"]  = self._resample_to_target_grid(raw_sunshine, "sunshine")
         self.layers["elevation"] = self._resample_to_target_grid(raw_elevation, "elevation")
+        self.layers["slope"]     = self._make_slope_raster(self.layers["elevation"], aoi)
 
-        self.layers["slope"] = self._make_slope_raster(self.layers["elevation"], aoi)
-        
-        self.normalizeData()
+        # NOTE: normalizeData() is NOT called here.
+        # AnalysisRun.execute() calls it after extractFeatures() returns.
+        # Calling it here AND there would double-normalize the data.
 
         return self
 
-    def normalizeData(self) -> "FeatureExtractor":
+    def validate_shapes(self) -> None:
         """
-        Normalize all layer values to [0.0, 1.0], ignoring nodata cells.
+        Ensure every layer in self.layers is 2D and matches TARGET_SHAPE.
+
+        Raises
+        ------
+        ValueError
+            If any layer has the wrong number of dimensions or a shape
+            that does not match TARGET_SHAPE (5, 5).
+
+        Called automatically by normalizeData() before scaling.
+        """
+        if not self.layers:
+            return  # nothing loaded yet — not an error
+
+        expected_shape = self.TARGET_SHAPE
+        mismatches = []
+
+        for name, raster in self.layers.items():
+            if raster.data.ndim != 2:
+                mismatches.append(
+                    f"  '{name}': not 2D (ndim={raster.data.ndim})"
+                )
+            elif raster.data.shape != expected_shape:
+                mismatches.append(
+                    f"  '{name}': shape={raster.data.shape}, "
+                    f"expected={expected_shape}"
+                )
+
+        if mismatches:
+            raise ValueError(
+                "validate_shapes() failed — layer shape mismatch:\n"
+                + "\n".join(mismatches)
+            )
+
+        logger.debug(
+            "validate_shapes: all %d layers have shape %s ✓",
+            len(self.layers), expected_shape,
+        )
+
+    def handle_missing_values(self) -> None:
+        """
+        Fill missing / nodata cells in every layer with that layer's valid mean.
+
+        A cell is considered missing if it equals raster.nodata (-9999.0)
+        OR if it is a NaN (which can arrive from API responses).
+
+        Strategy
+        --------
+        - Compute the mean of all valid (non-nodata, non-NaN) cells.
+        - Replace every missing cell with that mean.
+        - If a layer has NO valid cells at all, fill with 0.0 and log a
+          warning so the team knows the layer is unusable.
+
+        Called automatically by normalizeData() before min-max scaling.
         """
         for name, raster in self.layers.items():
+            data = raster.data.astype(np.float32)
+
+            nodata_mask  = (data == raster.nodata)
+            nan_mask     = np.isnan(data)
+            missing_mask = nodata_mask | nan_mask
+
+            if not missing_mask.any():
+                # Layer is already clean — nothing to do
+                continue
+
+            n_missing = int(missing_mask.sum())
+            valid_mask = ~missing_mask
+
+            if valid_mask.any():
+                fill_value = float(data[valid_mask].mean())
+                logger.debug(
+                    "handle_missing_values: layer '%s' — filling %d missing "
+                    "cell(s) with valid mean %.4f",
+                    name, n_missing, fill_value,
+                )
+            else:
+                # Entire layer is nodata — safe fallback is 0.0
+                fill_value = 0.0
+                logger.warning(
+                    "handle_missing_values: layer '%s' has NO valid cells. "
+                    "Filling all cells with 0.0. This layer will not "
+                    "contribute meaningful scores to AHP.",
+                    name,
+                )
+
+            data[missing_mask] = fill_value
+            raster.data = data
+
+    def normalizeData(self) -> "FeatureExtractor":
+        """
+        Validate shapes, fill missing values, then normalize all layers
+        to the range [0.0, 1.0].
+
+        Steps
+        -----
+        1. validate_shapes()       — all layers must be (5, 5).
+        2. handle_missing_values() — replace nodata / NaN with layer mean.
+        3. Min-max normalization   — scale valid cells to [0.0, 1.0].
+           • If all valid values are identical, they are set to 0.0
+             so AHP does not break on a constant layer.
+
+        Returns
+        -------
+        FeatureExtractor — self, for method chaining.
+        """
+        # ── Step 1: shape validation ──────────────────────────
+        self.validate_shapes()
+
+        # ── Step 2: fill missing values ───────────────────────
+        self.handle_missing_values()
+
+        # ── Step 3: per-layer min-max normalization ───────────
+        for name, raster in self.layers.items():
+            # After handle_missing_values, nodata cells have been filled,
+            # so valid_mask now covers the whole array.
+            # We keep the nodata check here as a safety net.
             valid_mask = raster.data != raster.nodata
 
             if not valid_mask.any():
+                # Completely empty layer — skip (already warned above)
                 continue
 
-            mn = raster.data[valid_mask].min()
-            mx = raster.data[valid_mask].max()
+            mn = float(raster.data[valid_mask].min())
+            mx = float(raster.data[valid_mask].max())
 
             if mx > mn:
                 raster.data[valid_mask] = (
                     (raster.data[valid_mask] - mn) / (mx - mn)
                 ).astype(np.float32)
             else:
-                # If all valid values are the same, set them to 0.0
-                # so downstream AHP doesn't break on a constant layer.
+                # All valid values are the same — set to 0.0
+                # so AHP weighted sum stays defined.
                 raster.data[valid_mask] = 0.0
 
             raster.metadata = {
                 **(raster.metadata or {}),
                 "normalized": True,
                 "layer": name,
+                "norm_min": mn,
+                "norm_max": mx,
             }
+
+            logger.debug(
+                "normalizeData: layer '%s' normalized [%.4f, %.4f] → [0, 1]",
+                name, mn, mx,
+            )
 
         return self
 
@@ -277,5 +402,3 @@ class FeatureExtractor:
                 result[r, c] = float(valid.mean())
 
         return result
-
-    
