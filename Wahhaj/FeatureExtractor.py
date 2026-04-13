@@ -28,7 +28,7 @@
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
-from .models import Raster, AOI, BoundingBox, TimeRange
+from .models import Raster, AOI, BoundingBox
 from .ExternalDataSourceAdapter import ExternalDataSourceAdapter
 from datetime import datetime
 import numpy as np
@@ -159,6 +159,7 @@ class FeatureExtractor:
         # AnalysisRun.execute() calls it after extractFeatures() returns.
         # Calling it here AND there would double-normalize the data.
 
+        self.layers['obstacle'] = self._get_obstacle_layer(dataset)
         return self
 
     def validate_shapes(self) -> None:
@@ -402,3 +403,55 @@ class FeatureExtractor:
                 result[r, c] = float(valid.mean())
 
         return result
+
+   
+    def _get_obstacle_layer(self, dataset) -> Raster:
+        """يشغّل AIModel على صور الـ dataset → obstacle_density layer مكانية 5x5"""
+        import numpy as np
+        from Wahhaj.AIModel import AIModel
+
+        MODEL_PATH = '/content/drive/.shortcut-targets-by-id/1MCQnQV2t7qYPumlL38j4zcPL_yq3Ua56/WahhajTest/wahhaj_yolov8s_seg_baseline_v4/weights/best.pt'
+
+        rows, cols = self.TARGET_SHAPE  # (5, 5)
+
+        if not dataset.images:
+            raise ValueError("_get_obstacle_layer: dataset.images فارغة — لا يمكن حساب طبقة العوائق بدون صور")
+
+        ai_model = AIModel(modelPath=MODEL_PATH)
+        grid = np.zeros((rows, cols), dtype=np.float32)
+        count = np.zeros((rows, cols), dtype=np.int32)
+
+        sorted_images = sorted(dataset.images, key=lambda img: img.timestamp)
+        n_imgs = len(sorted_images)
+        n_cells = rows * cols
+
+        for idx, img in enumerate(sorted_images):
+            r = ai_model.classifyArea(img.filePath)
+            obstacles = int(np.sum(r.data >= 0))
+            density = round(obstacles / r.data.size, 3)
+
+            cell_idx = min(int(idx * n_cells / n_imgs), n_cells - 1)
+            cell_r, cell_c = divmod(cell_idx, cols)
+
+            grid[cell_r, cell_c] += density
+            count[cell_r, cell_c] += 1
+
+        # الخلايا التي فيها صور: نحسب المتوسط
+        filled = count > 0
+        grid[filled] = grid[filled] / count[filled]
+
+        # الخلايا الفارغة: نملأها بالمتوسط العام
+        if filled.any():
+            global_mean = float(grid[filled].mean())
+            grid[~filled] = global_mean
+
+        return Raster(
+            data=grid,
+            nodata=-9999.0,
+            metadata={
+                'layer': 'obstacle',
+                'source': 'AIModel',
+                'n_images': n_imgs,
+                'spatial': True,
+            }
+        )
