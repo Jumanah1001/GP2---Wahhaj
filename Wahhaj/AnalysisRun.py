@@ -11,9 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from wahhaj.models import Raster, SiteInfo, FileRef, Point
-from wahhaj.SiteCandidate import SiteCandidate
-from wahhaj.SuitabilityHeatmap import SuitabilityHeatmap
+from Wahhaj.models import Raster, SiteInfo, FileRef, Point
+from Wahhaj.SiteCandidate import SiteCandidate
+from Wahhaj.SuitabilityHeatmap import SuitabilityHeatmap
 
 # Reuse shared types from the adapter module
 # from external_data_source_adapter import Raster
@@ -160,7 +160,8 @@ class AnalysisRun:
             logger.info("[%s] Step 1 – Feature extraction …", self.runId[:8])
             self._extractor.extractFeatures(dataset)
             self._extractor.normalizeData()
-            layers = list(self._extractor.layers.values())
+            order = ['ghi','sunshine','slope','elevation','lst','obstacle']
+            layers = [self._extractor.layers[k] for k in order]
 
             # Step 2: Compute suitability via AHP
             logger.info("[%s] Step 2 – AHP suitability scoring …", self.runId[:8])
