@@ -233,3 +233,39 @@ def show_logo(image_path="assets/wahhaj_logo.png", width=520):
 
 def login_user(username: str, password: str) -> bool:
     return bool(username and password)
+
+def save_selected_location(location_name, latitude, longitude):
+    st.session_state["selected_location"] = {
+        "location_name": location_name,
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+    return st.session_state["selected_location"]
+
+def render_top_home_button(target_page: str = "pages/2_Home.py"):
+    left, center, right = st.columns([10.2, 0.8, 1.0])
+    with right:
+        if st.button("🏠", use_container_width=True, key=f"home_btn_{target_page}"):
+            st.switch_page(target_page)
+
+def render_footer():
+    st.markdown(
+        """
+        <div style="
+            font-family: 'Capriola', sans-serif;
+            font-size: 13px;
+            color: #666666;
+            text-align: center;
+            margin-top: 20px;
+            line-height: 1.6;
+        ">
+            Danah Alhamdi - Walah Alshwair - Ruba Aletri - Jumanah Alharbi
+            <br>
+            © 2025 By PNU's CS Students
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    
+    
