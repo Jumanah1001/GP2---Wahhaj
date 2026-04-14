@@ -187,12 +187,12 @@ with center:
             }
             st.session_state["location_saved"] = False
             st.rerun()
-
+#--------------Note!: after confirm the code for the ,ap you have to turn on this 3 liens---------------
     with c3:
         if st.button("Next", use_container_width=True):
-            if not st.session_state["location_saved"]:
-                st.warning("Please save a valid location first.")
-            else:
+            #if not st.session_state["location_saved"]:
+            #   st.warning("Please save a valid location first.")
+            #else:
                 st.switch_page("pages/4_Upload_Image.py")
 
     selected_name = st.session_state["selected_location"]["location_name"] or "No location selected yet"
