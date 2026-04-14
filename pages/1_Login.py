@@ -173,12 +173,21 @@ with left:
         submitted = st.form_submit_button("Log in", use_container_width=True)
 
         if submitted:
-            if login_user(email, password):
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = email
+            # ── Case 1: empty fields ──────────────────────────────────────
+            if not email.strip() or not password:
+                st.error("Please enter your email and password.")
+
+            # ── Case 2: call real backend authentication ──────────────────
+            # login_user() handles:
+            #   • find_by_email() lookup in User._user_registry
+            #   • user.login(email, password) — raises ValueError on mismatch
+            #   • writing all session fields to st.session_state on success
+            elif login_user(email, password):
                 st.switch_page("pages/2_Home.py")
+
+            # ── Case 3: wrong email or wrong password ─────────────────────
             else:
-                st.error("Please enter email and password.")
+                st.error("Incorrect email or password. Please try again.")
 
 with right:
     st.markdown(
