@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import uuid
-from wahhaj.models import SiteInfo, FileRef, Raster
+try:
+    from .models import SiteInfo, FileRef, Raster
+except ImportError:
+    from Wahhaj.models import SiteInfo, FileRef, Raster
 
 @dataclass
 class TileSet:
@@ -80,7 +83,8 @@ class SuitabilityHeatmap:
     def _rasterize_to_tiles(self, scores: Raster) -> list:
         """Split a raster into map tiles according to self.resolution."""
         # Placeholder: real implementation would use e.g. gdal2tiles or mercantile
-        num_tiles = max(1, int(scores.width * scores.height / (self.resolution ** 2)))
+        rows, cols = scores.data.shape[:2]
+        num_tiles = max(1, int(rows * cols / max(1, int(self.resolution ** 2))))
         return [{"tile_index": i, "data": None} for i in range(num_tiles)]
 
     def _apply_color_scale(self, tiles: list) -> list:

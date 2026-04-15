@@ -138,7 +138,7 @@ class Report:
         content.append("="*80)
         content.append(f"\nReport ID: {self.report_id}")
         content.append(f"Generated: {self.date.strftime('%Y-%m-%d %H:%M:%S')}")
-        content.append(f"Analysis Run: {run.run_id}")
+        content.append(f"Analysis Run: {run.runId}")
         content.append(f"\n{'-'*80}\n")
         
         # Executive Summary
@@ -150,10 +150,10 @@ class Report:
         # Analysis Metadata
         content.append("ANALYSIS DETAILS")
         content.append("-"*80)
-        content.append(f"Started: {run.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
-        if run.finished_at:
-            content.append(f"Finished: {run.finished_at.strftime('%Y-%m-%d %H:%M:%S')}")
-        content.append(f"Duration: {run.duration_sec} seconds")
+        content.append(f"Started: {run.startedAt.strftime('%Y-%m-%d %H:%M:%S')}")
+        if run.finishedAt:
+            content.append(f"Finished: {run.finishedAt.strftime('%Y-%m-%d %H:%M:%S')}")
+        content.append(f"Duration: {run.durationSec} seconds")
         content.append(f"Status: {run.status}")
         content.append(f"\n{'-'*80}\n")
         

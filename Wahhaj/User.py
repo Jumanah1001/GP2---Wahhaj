@@ -90,7 +90,7 @@ class User:
         self.expiresAt: datetime = expires_at or datetime.now(timezone.utc) + timedelta(minutes=15)
 
         # internal
-        self._email:           str  = email.strip().lower()
+        self._email:           str  = email
         self._hashed_password: str  = hashed_password
         self.is_active:        bool = is_active
 
@@ -98,27 +98,12 @@ class User:
 
     def login(self, email: str, pw: str) -> Session:
         """
-        يتحقق من البريد الإلكتروني وكلمة المرور ويُنشئ Session جديدة.
-
-        يرفع ValueError إذا كان البريد أو كلمة المرور غير صحيحين.
-
-        ملاحظة: كلمة المرور مخزّنة كـ plain-text في المرحلة الأولى.
-        عند الانتقال إلى الإنتاج، استبدل السطر المقارن بـ:
-            import bcrypt
-            if not bcrypt.checkpw(pw.encode(), self._hashed_password.encode()):
-                raise ValueError("Invalid password")
+        يتحقق من البيانات ويُنشئ Session جديدة.
+        في المرحلة الأولى: mock validation.
         """
-        if email.strip().lower() != self._email:
+        if email != self._email:
             raise ValueError("Invalid email")
-
-        # Plain-text password check (المرحلة الأولى)
-        # TODO: استبدل بـ bcrypt.checkpw عند التحويل للإنتاج
-        if pw != self._hashed_password:
-            raise ValueError("Invalid password")
-
-        if not self.is_active:
-            raise ValueError("Account is inactive")
-
+        # TODO: bcrypt.checkpw(pw, self._hashed_password)
         session = Session(
             user_id    = self.userId,
             created_at = datetime.now(timezone.utc),
@@ -133,7 +118,7 @@ class User:
         يبدأ رفع قائمة ملفات.
         يرجع JobStatus — يُشغَّل الـ pipeline عبر UploadService.
         """
-        from Wahhaj.JobStatus import JobStatus, JobState
+        from wahhaj.JobStatus import JobStatus, JobState
         job = JobStatus()
         if not self.is_active:
             job.mark_error("User is inactive")
@@ -164,6 +149,7 @@ class User:
         """
         if self.role != UserRole.ADMIN:
             raise PermissionError("Only Admin can reset passwords")
+        # placeholder: يُستبدل بـ email link لاحقاً
         if userId in User._user_registry:
             User._user_registry[userId]._hashed_password = ""
 
@@ -178,52 +164,6 @@ class User:
         password: str      = "",
     ) -> "User":
         return cls(name=name, email=email, role=role, hashed_password=password)
-
-    # ── Lookup ────────────────────────────────────────────────
-
-    @classmethod
-    def find_by_email(cls, email: str) -> Optional["User"]:
-        """
-        يبحث في _user_registry عن مستخدم بالبريد الإلكتروني.
-        يرجع None إذا لم يُوجد.
-        يُستخدم من ui_helpers.login_user() قبل استدعاء .login().
-        """
-        normalized = email.strip().lower()
-        for user in cls._user_registry.values():
-            if user._email == normalized:
-                return user
-        return None
-
-    # ── Dev Seed ──────────────────────────────────────────────
-
-    @classmethod
-    def seed_default_users(cls) -> None:
-        """
-        يُنشئ مستخدمين افتراضيين في الـ registry إذا كان فارغاً.
-        يُستدعى تلقائياً من login_user() في ui_helpers.
-        استبدل هذه البيانات بقراءة من قاعدة بيانات حقيقية لاحقاً.
-
-        بيانات الدخول للتطوير:
-            admin@wahhaj.sa     / admin123
-            analyst@wahhaj.sa   / analyst123
-        """
-        if cls._user_registry:
-            return  # مُهيَّأ مسبقاً، لا تُعد التهيئة
-
-        admin = cls(
-            name="Admin",
-            email="admin@wahhaj.sa",
-            role=UserRole.ADMIN,
-            hashed_password="admin123",
-        )
-        analyst = cls(
-            name="Analyst",
-            email="analyst@wahhaj.sa",
-            role=UserRole.ANALYST,
-            hashed_password="analyst123",
-        )
-        cls._user_registry[admin.userId]    = admin
-        cls._user_registry[analyst.userId]  = analyst
 
     # ── Serialization ─────────────────────────────────────────
 

@@ -8,7 +8,10 @@ import pytest
 import numpy as np
 import os
 
-from models import Raster, Point, FileRef, BoundingBox, SiteInfo
+try:
+    from .models import Raster, Point, FileRef, BoundingBox, SiteInfo
+except ImportError:
+    from Wahhaj.models import Raster, Point, FileRef, BoundingBox, SiteInfo
 from storage_service import StorageService
 from User import User, UserRole, Session
 from device import Device
