@@ -1,93 +1,16 @@
-import sys
-import os
 import streamlit as st
 from pathlib import Path
 
-# ── Backend import ────────────────────────────────────────────────────────────
-# Wahhaj/ is a sibling directory of ui_helpers.py (both live at project root).
-# We add the project root to sys.path so "from Wahhaj.User import ..." works
-# regardless of how Streamlit is launched.
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
-from Wahhaj.User import User, UserRole  # noqa: E402  (import after path fix)
-
-
-# ── Session state ─────────────────────────────────────────────────────────────
 
 def init_state():
     defaults = {
-        "logged_in":        False,
-        "username":         "",       # display name (e.g. "Danah Alhamdi")
-        "user_email":       "",
-        "user_role":        "",       # "Admin" or "Analyst"
-        "user_id":          "",
-        "session_id":       "",
-        "session_expires":  "",       # ISO-8601 string
+        "logged_in": False,
+        "username": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
 
-
-# ── Authentication ────────────────────────────────────────────────────────────
-
-def login_user(email: str, password: str) -> bool:
-    """
-    Validates credentials against the User backend and populates
-    st.session_state on success.
-
-    Returns True on successful login, False on any failure.
-    Error details are NOT exposed to the caller — the UI should show a
-    generic "incorrect email or password" message to prevent enumeration.
-
-    Flow:
-        1. Ensure at least one user exists in the registry (dev seed).
-        2. Find the User object by email.
-        3. Call user.login(email, password) — raises ValueError on mismatch.
-        4. On success, write all session fields to st.session_state.
-    """
-    # Guard: empty fields
-    if not email or not email.strip():
-        return False
-    if not password:
-        return False
-
-    # Step 1 — seed dev users if registry is empty
-    User.seed_default_users()
-
-    # Step 2 — find user by email
-    user = User.find_by_email(email)
-    if user is None:
-        return False  # email not found
-
-    # Step 3 — delegate to the real login() method on User
-    try:
-        session = user.login(email, password)
-    except ValueError:
-        return False  # wrong password or inactive account
-
-    # Step 4 — write session data to Streamlit session state
-    st.session_state["logged_in"]       = True
-    st.session_state["username"]        = user.name
-    st.session_state["user_email"]      = user._email
-    st.session_state["user_role"]       = user.role.value
-    st.session_state["user_id"]         = user.userId
-    st.session_state["session_id"]      = session.session_id
-    st.session_state["session_expires"] = session.expires_at.isoformat()
-
-    return True
-
-
-def logout_user() -> None:
-    """Clears all session state keys set by login_user()."""
-    for key in ("logged_in", "username", "user_email", "user_role",
-                "user_id", "session_id", "session_expires"):
-        st.session_state[key] = "" if key != "logged_in" else False
-
-
-# ── Styles & Layout ───────────────────────────────────────────────────────────
 
 def apply_global_style():
     st.markdown(
@@ -308,37 +231,5 @@ def show_logo(image_path="assets/wahhaj_logo.png", width=520):
         st.image(str(path), width=width)
 
 
-def save_selected_location(location_name, latitude, longitude):
-    st.session_state["selected_location"] = {
-        "location_name": location_name,
-        "latitude":      latitude,
-        "longitude":     longitude,
-    }
-    return st.session_state["selected_location"]
-
-
-def render_top_home_button(target_page: str = "pages/2_Home.py"):
-    left, center, right = st.columns([10.2, 0.8, 1.0])
-    with right:
-        if st.button("🏠", use_container_width=True, key=f"home_btn_{target_page}"):
-            st.switch_page(target_page)
-
-
-def render_footer():
-    st.markdown(
-        """
-        <div style="
-            font-family: 'Capriola', sans-serif;
-            font-size: 13px;
-            color: #666666;
-            text-align: center;
-            margin-top: 20px;
-            line-height: 1.6;
-        ">
-            Danah Alhamdi - Walah Alshwaier - Ruba Aletri - Jumanah Alharbi
-            <br>
-            © 2026 By PNU's CS Students
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def login_user(username: str, password: str) -> bool:
+    return bool(username and password)
