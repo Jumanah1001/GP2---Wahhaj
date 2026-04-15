@@ -1,5 +1,12 @@
 import streamlit as st
-from ui_helpers import init_state, apply_global_style, render_bg, login_user
+from ui_helpers import (
+    init_state,
+    apply_global_style,
+    render_bg,
+    login_user,
+    show_logo,
+    render_footer,
+)
 
 st.set_page_config(page_title="Login", layout="wide")
 init_state()
@@ -8,65 +15,56 @@ render_bg()
 
 st.markdown("""
 <style>
-/* تخصيص صفحة اللوقن فقط */
 .login-page {
     position: relative;
     z-index: 2;
-    margin-top: 18px;
+    padding-top: 0px;
+}
+
+.logo-wrap {
+    text-align: center;
+    margin-top: -10px;
+    margin-bottom: 18px;
 }
 
 .login-title {
     font-family: 'Capriola', sans-serif;
-    font-size: clamp(58px, 5vw, 72px);
+    font-size: clamp(40px, 3.4vw, 54px);
     color: #5A5959;
     line-height: 1;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .login-subtitle {
     font-family: 'Capriola', sans-serif;
-    font-size: 15px;
+    font-size: 14px;
     color: #5E5B5B;
-    margin-bottom: 34px;
+    margin-bottom: 20px;
 }
 
 .field-label {
     font-family: 'Capriola', sans-serif;
-    font-size: clamp(22px, 1.9vw, 26px);
+    font-size: 18px;
     color: #333333;
     margin-bottom: 8px;
-    margin-top: 10px;
+    margin-top: 8px;
 }
 
-.top-home-btn {
-    width: 84px;
-    margin-left: auto;
-}
-
-.top-home-btn div.stButton > button {
-    min-height: 44px;
-    font-size: 20px;
-    border-radius: 12px;
-    box-shadow: none;
-}
-
-/* هذا هو الكارد الحقيقي */
 div[data-testid="stForm"] {
     background: rgba(255,255,255,0.68) !important;
     border: none !important;
-    border-radius: 24px !important;
-    padding: 46px 42px 34px 42px !important;
-    box-shadow: 0 10px 34px rgba(0,0,0,0.04) !important;
+    border-radius: 22px !important;
+    padding: 26px 28px 20px 28px !important;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.04) !important;
     backdrop-filter: blur(10px);
 }
 
-/* حقول الإدخال */
 div[data-testid="stTextInput"] input {
     background: #F0EEEE !important;
     color: #6f6f6f !important;
     border: none !important;
-    border-radius: 4px !important;
-    min-height: 44px !important;
+    border-radius: 6px !important;
+    min-height: 40px !important;
     font-family: 'Capriola', sans-serif !important;
     font-size: 13px !important;
     padding-left: 14px !important;
@@ -77,16 +75,15 @@ div[data-testid="stTextInput"] label {
     display: none !important;
 }
 
-/* زر الدخول */
 div[data-testid="stFormSubmitButton"] button {
     background: #0070FF !important;
     color: white !important;
     border: none !important;
-    border-radius: 4px !important;
-    min-height: 52px !important;
+    border-radius: 6px !important;
+    min-height: 44px !important;
     font-family: 'Capriola', sans-serif !important;
-    font-size: 18px !important;
-    box-shadow: 5px 6px 4px rgba(0,0,0,0.18) !important;
+    font-size: 16px !important;
+    box-shadow: 4px 5px 4px rgba(0,0,0,0.16) !important;
 }
 
 div[data-testid="stFormSubmitButton"] button:hover {
@@ -94,32 +91,31 @@ div[data-testid="stFormSubmitButton"] button:hover {
     color: white !important;
 }
 
-/* الشمس */
 .sun-wrap-fixed {
     position: relative;
-    width: 390px;
-    height: 390px;
-    margin: 120px auto 0 auto;
+    width: 270px;
+    height: 270px;
+    margin: 70px auto 0 auto;
 }
 
 .sun-glow {
     position: absolute;
-    width: 240px;
-    height: 240px;
-    left: 75px;
-    top: 75px;
+    width: 175px;
+    height: 175px;
+    left: 47px;
+    top: 47px;
     background: #FFA800;
-    filter: blur(72px);
+    filter: blur(56px);
     border-radius: 50%;
     opacity: 0.58;
 }
 
 .sun-core {
     position: absolute;
-    width: 250px;
-    height: 250px;
-    left: 70px;
-    top: 70px;
+    width: 185px;
+    height: 185px;
+    left: 42px;
+    top: 42px;
     border-radius: 50%;
     background: linear-gradient(38.87deg, #EE9D3E 37.22%, rgba(236, 161, 74, 0) 78.02%), #FFE600;
     box-shadow: inset 0 1px 16px rgba(255,255,255,0.77);
@@ -127,21 +123,21 @@ div[data-testid="stFormSubmitButton"] button:hover {
 
 .ray {
     position: absolute;
-    width: 22px;
-    height: 78px;
+    width: 16px;
+    height: 56px;
     border-radius: 16px;
     background: linear-gradient(180deg, #FFE66A 0%, #F0B64A 100%);
     box-shadow: inset 0 2px 8px rgba(255,255,255,0.35);
 }
 
-.ray.r1 { left: 184px; top: 0px; }
-.ray.r2 { right: 42px; top: 48px; transform: rotate(45deg); }
-.ray.r3 { right: 0px; top: 156px; transform: rotate(90deg); }
-.ray.r4 { right: 42px; bottom: 48px; transform: rotate(135deg); }
-.ray.r5 { left: 184px; bottom: 0px; }
-.ray.r6 { left: 42px; bottom: 48px; transform: rotate(-135deg); }
-.ray.r7 { left: 0px; top: 156px; transform: rotate(90deg); }
-.ray.r8 { left: 42px; top: 48px; transform: rotate(-45deg); }
+.ray.r1 { left: 127px; top: 0px; }
+.ray.r2 { right: 28px; top: 35px; transform: rotate(45deg); }
+.ray.r3 { right: 0px; top: 107px; transform: rotate(90deg); }
+.ray.r4 { right: 28px; bottom: 35px; transform: rotate(135deg); }
+.ray.r5 { left: 127px; bottom: 0px; }
+.ray.r6 { left: 28px; bottom: 35px; transform: rotate(-135deg); }
+.ray.r7 { left: 0px; top: 107px; transform: rotate(90deg); }
+.ray.r8 { left: 28px; top: 35px; transform: rotate(-45deg); }
 
 @media (max-width: 900px) {
     .sun-wrap-fixed { display: none; }
@@ -151,15 +147,14 @@ div[data-testid="stFormSubmitButton"] button:hover {
 
 st.markdown('<div class="login-page">', unsafe_allow_html=True)
 
-top_left, top_mid, top_right = st.columns([8, 2, 1])
-with top_right:
-    st.markdown('<div class="top-home-btn">', unsafe_allow_html=True)
-    if st.button("⌂", use_container_width=True):
-        st.switch_page("streamlit_app.py")
+# logo
+_, logo_col, _ = st.columns([2.6, 0.8, 2.6])
+with logo_col:
+    st.markdown('<div class="logo-wrap">', unsafe_allow_html=True)
+    show_logo(width=145)
     st.markdown('</div>', unsafe_allow_html=True)
 
-st.write("")
-left, right = st.columns([1.22, 0.88], gap="large")
+left, right = st.columns([1.12, 0.88], gap="large")
 
 with left:
     with st.form("login_form", clear_on_submit=False):
@@ -175,17 +170,24 @@ with left:
         password = st.text_input("Password", type="password", placeholder="Password", label_visibility="collapsed")
 
         st.write("")
-        st.write("")
-
         submitted = st.form_submit_button("Log in", use_container_width=True)
 
         if submitted:
-            if login_user(email, password):
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = email
-                st.switch_page("pages/3_Upload_Image.py")
+            # ── Case 1: empty fields ──────────────────────────────────────
+            if not email.strip() or not password:
+                st.error("Please enter your email and password.")
+
+            # ── Case 2: call real backend authentication ──────────────────
+            # login_user() handles:
+            #   • find_by_email() lookup in User._user_registry
+            #   • user.login(email, password) — raises ValueError on mismatch
+            #   • writing all session fields to st.session_state on success
+            elif login_user(email, password):
+                st.switch_page("pages/2_Home.py")
+
+            # ── Case 3: wrong email or wrong password ─────────────────────
             else:
-                st.error("Please enter email and password.")
+                st.error("Incorrect email or password. Please try again.")
 
 with right:
     st.markdown(
@@ -205,5 +207,7 @@ with right:
         """,
         unsafe_allow_html=True,
     )
+
+render_footer()
 
 st.markdown("</div>", unsafe_allow_html=True)
