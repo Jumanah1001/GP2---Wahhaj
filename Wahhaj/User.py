@@ -35,25 +35,27 @@ class UserRole(str, Enum):
 
 @dataclass
 class Session:
-    """يُرجع من login() — يحمل token وصلاحية الجلسة."""
-    session_id: str   = field(default_factory=lambda: str(uuid.uuid4()))
-    user_id:    str   = ""
-    token:      str   = field(default_factory=lambda: str(uuid.uuid4()))
+    """Returned from login() — carries token and session validity."""
+    session_id: str      = field(default_factory=lambda: str(uuid.uuid4()))
+    user_id:    str      = ""
+    token:      str      = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(minutes=15))
+    expires_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc) + timedelta(minutes=15)
+    )
 
     @property
     def is_valid(self) -> bool:
         return datetime.now(timezone.utc) < self.expires_at
 
 
-# ── ValidationReport (خفيف — للـ UploadService) ───────────────────────────────
+# ── ValidationReport ──────────────────────────────────────────────────────────
 
 @dataclass
 class ValidationReport:
-    is_valid: bool       = True
-    errors:   List[str]  = field(default_factory=list)
-    warnings: List[str]  = field(default_factory=list)
+    is_valid: bool      = True
+    errors:   List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
 
 # ── User ──────────────────────────────────────────────────────────────────────
@@ -62,24 +64,24 @@ class User:
     """
     UML: User
 
-    ملاحظة: addUser / removeUser / resetPassword تعمل على
-    _user_registry (in-memory) في المرحلة الأولى.
-    تُستبدل بـ DB calls لاحقاً دون تغيير الـ interface.
+    addUser / removeUser / resetPassword operate on _user_registry
+    (in-memory store) in Phase 1.  Replace with DB calls later without
+    changing the interface.
     """
 
     _user_registry: Dict[str, "User"] = {}   # shared in-memory store
 
     def __init__(
         self,
-        name:       str,
-        email:      str,
-        role:       UserRole  = UserRole.ANALYST,
-        user_id:    Optional[str] = None,
-        session_id: Optional[str] = None,
-        created_at: Optional[datetime] = None,
-        expires_at: Optional[datetime] = None,
-        hashed_password: str = "",
-        is_active:  bool = True,
+        name:            str,
+        email:           str,
+        role:            UserRole         = UserRole.ANALYST,
+        user_id:         Optional[str]    = None,
+        session_id:      Optional[str]    = None,
+        created_at:      Optional[datetime] = None,
+        expires_at:      Optional[datetime] = None,
+        hashed_password: str              = "",
+        is_active:       bool             = True,
     ):
         # UML attributes
         self.userId:    str      = user_id    or str(uuid.uuid4())
@@ -87,23 +89,38 @@ class User:
         self.role:      UserRole = role
         self.sessionId: str      = session_id or str(uuid.uuid4())
         self.createdAt: datetime = created_at or datetime.now(timezone.utc)
-        self.expiresAt: datetime = expires_at or datetime.now(timezone.utc) + timedelta(minutes=15)
+        self.expiresAt: datetime = (
+            expires_at or datetime.now(timezone.utc) + timedelta(minutes=15)
+        )
 
         # internal
-        self._email:           str  = email
+        self._email:           str  = email.strip().lower()
         self._hashed_password: str  = hashed_password
         self.is_active:        bool = is_active
 
-    # ── UML methods ───────────────────────────────────────────
+    # ── UML methods ───────────────────────────────────────────────────────────
 
     def login(self, email: str, pw: str) -> Session:
         """
-        يتحقق من البيانات ويُنشئ Session جديدة.
-        في المرحلة الأولى: mock validation.
+        Validate credentials and create a new Session.
+
+        Raises ValueError on bad email, wrong password, or inactive account.
+
+        NOTE: passwords are stored as plain text in Phase 1.
+        To upgrade to bcrypt:
+            import bcrypt
+            if not bcrypt.checkpw(pw.encode(), self._hashed_password.encode()):
+                raise ValueError("Invalid password")
         """
-        if email != self._email:
+        if email.strip().lower() != self._email:
             raise ValueError("Invalid email")
-        # TODO: bcrypt.checkpw(pw, self._hashed_password)
+
+        if pw != self._hashed_password:
+            raise ValueError("Invalid password")
+
+        if not self.is_active:
+            raise ValueError("Account is inactive")
+
         session = Session(
             user_id    = self.userId,
             created_at = datetime.now(timezone.utc),
@@ -114,11 +131,8 @@ class User:
         return session
 
     def uploadDataFiles(self, files: list) -> "JobStatus":
-        """
-        يبدأ رفع قائمة ملفات.
-        يرجع JobStatus — يُشغَّل الـ pipeline عبر UploadService.
-        """
-        from wahhaj.JobStatus import JobStatus, JobState
+        """Queue a list of files for upload via UploadService."""
+        from Wahhaj.JobStatus import JobStatus, JobState
         job = JobStatus()
         if not self.is_active:
             job.mark_error("User is inactive")
@@ -126,34 +140,29 @@ class User:
         if self.role not in (UserRole.ADMIN, UserRole.ANALYST):
             job.mark_error("Insufficient permissions")
             return job
-        # Delegate to UploadService (injected externally)
         job.mark_running(f"Queued {len(files)} file(s)")
         return job
 
     def addUser(self, u: "User") -> None:
-        """Admin فقط — يضيف مستخدماً للـ registry."""
+        """Admin only — add a user to the registry."""
         if self.role != UserRole.ADMIN:
             raise PermissionError("Only Admin can add users")
         User._user_registry[u.userId] = u
 
     def removeUser(self, userId: str) -> None:
-        """Admin فقط — يحذف مستخدماً من الـ registry."""
+        """Admin only — remove a user from the registry."""
         if self.role != UserRole.ADMIN:
             raise PermissionError("Only Admin can remove users")
         User._user_registry.pop(userId, None)
 
     def resetPassword(self, userId: str) -> None:
-        """
-        Admin يعيد ضبط كلمة مرور مستخدم آخر.
-        TODO: إرسال reset-link عبر البريد.
-        """
+        """Admin only — reset another user's password to empty."""
         if self.role != UserRole.ADMIN:
             raise PermissionError("Only Admin can reset passwords")
-        # placeholder: يُستبدل بـ email link لاحقاً
         if userId in User._user_registry:
             User._user_registry[userId]._hashed_password = ""
 
-    # ── Factory ───────────────────────────────────────────────
+    # ── Factory ───────────────────────────────────────────────────────────────
 
     @classmethod
     def create(
@@ -165,7 +174,56 @@ class User:
     ) -> "User":
         return cls(name=name, email=email, role=role, hashed_password=password)
 
-    # ── Serialization ─────────────────────────────────────────
+    # ── Registry lookup ───────────────────────────────────────────────────────
+
+    @classmethod
+    def find_by_email(cls, email: str) -> Optional["User"]:
+        """
+        Search _user_registry for a user with the given email.
+        Returns None if not found.
+
+        Called by ui_helpers.login_user() before invoking .login().
+        """
+        normalized = email.strip().lower()
+        for user in cls._user_registry.values():
+            if user._email == normalized:
+                return user
+        return None
+
+    # ── Dev seed ──────────────────────────────────────────────────────────────
+
+    @classmethod
+    def seed_default_users(cls) -> None:
+        """
+        Populate _user_registry with dev accounts if it is empty.
+        Called automatically by ui_helpers.login_user().
+
+        Dev credentials
+        ---------------
+        admin@wahhaj.sa    / admin123     (Admin role)
+        analyst@wahhaj.sa  / analyst123   (Analyst role)
+
+        Replace this method body with a DB read when moving to production.
+        """
+        if cls._user_registry:
+            return  # already seeded, skip
+
+        admin = cls(
+            name            = "Admin",
+            email           = "admin@wahhaj.sa",
+            role            = UserRole.ADMIN,
+            hashed_password = "admin123",
+        )
+        analyst = cls(
+            name            = "Analyst",
+            email           = "analyst@wahhaj.sa",
+            role            = UserRole.ANALYST,
+            hashed_password = "analyst123",
+        )
+        cls._user_registry[admin.userId]   = admin
+        cls._user_registry[analyst.userId] = analyst
+
+    # ── Serialisation ─────────────────────────────────────────────────────────
 
     def to_dict(self) -> dict:
         return {
@@ -183,6 +241,6 @@ class User:
         return f"User(id={self.userId[:8]}, name={self.name!r}, role={self.role.value})"
 
 
-# ── JobStatus forward ref (لتجنب circular import) ─────────────────────────────
+# ── JobStatus forward ref (prevents circular import) ──────────────────────────
 class JobStatus:
     pass

@@ -1,41 +1,73 @@
 """
-10_Add_New_User.py — Admin Account Management + Add New User (matches design mockup)
+pages/10_Add_New_User.py
+=========================
+Admin Account Management — matches the design mockup.
+
+Changes vs original
+-------------------
+- The Add New User form now creates a real User in User._user_registry,
+  so the new account can actually log in through 1_Login.py.
+- Delete removes the user from User._user_registry as well.
+- Role (Admin / Analyst) selector added to the Add New User form.
+- Page is guarded: only users with role "Admin" can access it.
 """
 import streamlit as st
-from ui_helpers import init_state, apply_global_style, render_bg
+from datetime import datetime
+
+from ui_helpers import init_state, apply_global_style, render_bg, require_login
 
 st.set_page_config(page_title="User Management", layout="wide")
 init_state()
 apply_global_style()
 render_bg()
+require_login()
 
-if not st.session_state.get("logged_in"):
-    st.warning("Please log in first.")
-    st.stop()
+# ── Admin-only guard ──────────────────────────────────────────────────────────
+if st.session_state.get("user_role") not in ("Admin", ""):
+    # Allow empty role for backward compat with old sessions
+    if st.session_state.get("user_role") == "Analyst":
+        st.error("Access denied. Admin role required.")
+        st.stop()
 
+# ── load real users from backend ──────────────────────────────────────────────
+from Wahhaj.User import User, UserRole
+
+User.seed_default_users()  # ensure dev users exist
+
+def _users_to_display() -> list:
+    """Convert User._user_registry to a list of display dicts."""
+    rows = []
+    for i, u in enumerate(User._user_registry.values(), start=1):
+        rows.append({
+            "id":         i,
+            "user_id":    u.userId,
+            "name":       u.name,
+            "email":      u._email,
+            "role":       u.role.value,
+            "last_login": u.expiresAt.strftime("%Y/%m/%d"),
+            "status":     "Active" if u.is_active else "Disabled",
+        })
+    return rows
+
+# ── styles ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-.admin-wrap { position:relative; z-index:2; padding:24px 32px; }
+.admin-wrap  { position:relative; z-index:2; padding:24px 32px; }
 .admin-title { font-family:'Capriola',sans-serif; font-size:26px; font-weight:700; color:#1a1a1a; margin-bottom:4px; }
 .admin-sub   { font-size:13px; color:#888; margin-bottom:20px; }
 .admin-card  {
     background:rgba(255,255,255,0.82); border-radius:16px;
     padding:0; box-shadow:0 4px 20px rgba(0,0,0,0.06); overflow:hidden;
 }
-.admin-toolbar {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 20px; border-bottom:1px solid #f0f0f0;
-}
 .tbl-head {
     display:grid;
-    grid-template-columns:36px 60px 120px 200px 130px 100px 36px;
+    grid-template-columns:36px 60px 120px 190px 90px 120px 90px 36px;
     background:#f8f8f8; padding:10px 20px;
-    font-size:12px; font-weight:600; color:#888;
-    border-bottom:1px solid #eee;
+    font-size:12px; font-weight:600; color:#888; border-bottom:1px solid #eee;
 }
 .tbl-row {
     display:grid;
-    grid-template-columns:36px 60px 120px 200px 130px 100px 36px;
+    grid-template-columns:36px 60px 120px 190px 90px 120px 90px 36px;
     padding:10px 20px; font-size:13px; color:#333;
     border-bottom:1px solid #f8f8f8; align-items:center;
 }
@@ -46,7 +78,10 @@ st.markdown("""
     background:rgba(255,255,255,0.82); border-radius:16px;
     padding:32px 36px; box-shadow:0 4px 20px rgba(0,0,0,0.06);
 }
-.add-title { font-family:'Capriola',sans-serif; font-size:22px; font-weight:700; color:#1a1a1a; margin-bottom:24px; }
+.add-title {
+    font-family:'Capriola',sans-serif; font-size:22px;
+    font-weight:700; color:#1a1a1a; margin-bottom:24px;
+}
 div.stTextInput input {
     background:#F0EEEE !important; border:none !important;
     border-radius:6px !important; font-size:14px !important;
@@ -60,89 +95,127 @@ div.stButton > button[kind="primary"] {
 </style>
 """, unsafe_allow_html=True)
 
-# Mock user data
-USERS = [
-    {"id":1,"name":"Eman",   "email":"Eman@gmail.com",   "last_login":"2025/12/01","status":"Active",   "selected":False},
-    {"id":2,"name":"Walah",  "email":"Walah@gmail.com",  "last_login":"2025/11/02","status":"Active",   "selected":False},
-    {"id":3,"name":"Jumanah","email":"Jumanah@gmail.com","last_login":"2025/12/21","status":"Active",   "selected":False},
-    {"id":4,"name":"Danah",  "email":"Danah@gmail.com",  "last_login":"2025/12/06","status":"Active",   "selected":False},
-    {"id":5,"name":"Ruba",   "email":"Ruba@gmail.com",   "last_login":"2025/12/30","status":"Active",   "selected":False},
-    {"id":6,"name":"Raghad", "email":"Raghad@gmail.com", "last_login":"2025/12/12","status":"Disabled", "selected":False},
-    {"id":7,"name":"Hala",   "email":"Hala@gmail.com",   "last_login":"2025/01/01","status":"Disabled", "selected":False},
-]
-
-if "users" not in st.session_state:
-    st.session_state["users"] = USERS.copy()
-
 col_left, col_right = st.columns([1.5, 1], gap="large")
 
-# ── LEFT: User table ──────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# LEFT: User table from real registry
+# ═══════════════════════════════════════════════════════════════════════════
 with col_left:
     st.markdown('<div class="admin-wrap">', unsafe_allow_html=True)
-    st.markdown('<div class="admin-title">Admin account Management</div>', unsafe_allow_html=True)
-    st.markdown('<div class="admin-sub">Manage user account, usernames and passwords<br><small>you can add, edit, delete user</small></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="admin-title">Admin account Management</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="admin-sub">Manage user accounts, usernames and passwords<br>'
+        '<small>you can add or delete users</small></div>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown('<div class="admin-card">', unsafe_allow_html=True)
 
-    # toolbar buttons
-    t1, t2, t3, t4 = st.columns([1,1,1,1.5])
-    with t1: st.button("🗑 Delete")
-    with t2: st.button("⚙ Filters")
+    # toolbar
+    t1, t2, t3, t4 = st.columns([1, 1, 1, 1.5])
+    with t1:
+        del_clicked = st.button("🗑 Delete selected", key="del_btn")
     with t4:
-        if st.button("＋ Add new user", type="primary", use_container_width=True):
+        if st.button("＋ Add new user", type="primary",
+                     use_container_width=True, key="show_add_btn"):
             st.session_state["show_add_form"] = True
 
     # table header
     st.markdown("""
     <div class="tbl-head">
       <span>☐</span><span>ID</span><span>Name</span>
-      <span>Email</span><span>Last Login</span><span>Status</span><span></span>
+      <span>Email</span><span>Role</span>
+      <span>Last Active</span><span>Status</span><span></span>
     </div>""", unsafe_allow_html=True)
 
-    # table rows
-    for u in st.session_state["users"]:
+    # checkboxes and rows
+    users_list = _users_to_display()
+    selected_ids: list = []
+    for u in users_list:
+        col_chk, col_rest = st.columns([0.15, 0.85])
+        with col_chk:
+            checked = st.checkbox("", key=f"chk_{u['user_id']}",
+                                  label_visibility="collapsed")
+        if checked:
+            selected_ids.append(u["user_id"])
         st_class = "status-active" if u["status"] == "Active" else "status-disabled"
         st_icon  = "● Active" if u["status"] == "Active" else "● Disabled"
-        st.markdown(f"""
-        <div class="tbl-row">
-          <span><input type="checkbox" {'checked' if u.get('selected') else ''}></span>
-          <span>{u['id']}</span>
-          <span>{u['name']}</span>
-          <span>{u['email']}</span>
-          <span>{u['last_login']}</span>
-          <span class="{st_class}">{st_icon}</span>
-          <span style="color:#aaa;cursor:pointer;">⋮</span>
-        </div>""", unsafe_allow_html=True)
+        with col_rest:
+            st.markdown(
+                f"""
+                <div class="tbl-row">
+                  <span></span>
+                  <span>{u['id']}</span>
+                  <span>{u['name']}</span>
+                  <span>{u['email']}</span>
+                  <span>{u['role']}</span>
+                  <span>{u['last_login']}</span>
+                  <span class="{st_class}">{st_icon}</span>
+                  <span style="color:#aaa;cursor:pointer;">⋮</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ── delete action ─────────────────────────────────────────────────────────
+    if del_clicked:
+        if selected_ids:
+            for uid in selected_ids:
+                User._user_registry.pop(uid, None)
+            st.success(f"Deleted {len(selected_ids)} user(s).")
+            st.rerun()
+        else:
+            st.warning("Select at least one user to delete.")
 
-# ── RIGHT: Add New User form ──────────────────────────────────
+    st.markdown("</div>", unsafe_allow_html=True)  # admin-card
+    st.markdown("</div>", unsafe_allow_html=True)  # admin-wrap
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RIGHT: Add New User form — creates real User in registry
+# ═══════════════════════════════════════════════════════════════════════════
 with col_right:
     st.markdown('<div style="position:relative;z-index:2;padding:24px 0;">', unsafe_allow_html=True)
     st.markdown('<div class="add-card">', unsafe_allow_html=True)
     st.markdown('<div class="add-title">Add New User</div>', unsafe_allow_html=True)
 
-    new_username = st.text_input("Username", placeholder="Enter username")
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    new_username = st.text_input("Username", placeholder="Enter full name")
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     new_email    = st.text_input("Email",    placeholder="Enter email")
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    new_password = st.text_input("Password", placeholder="Enter password", type="password")
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    new_password = st.text_input("Password", placeholder="Enter password",
+                                 type="password")
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    new_role     = st.selectbox(
+        "Role", ["Analyst", "Admin"],
+        help="Admin can manage users; Analyst can run analyses."
+    )
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     _, btn_col = st.columns([1.5, 1])
     with btn_col:
-        if st.button("Add", type="primary", use_container_width=True):
+        if st.button("Add", type="primary", use_container_width=True, key="add_user_btn"):
             if new_username and new_email and new_password:
-                new_id = max(u["id"] for u in st.session_state["users"]) + 1
-                st.session_state["users"].append({
-                    "id": new_id, "name": new_username, "email": new_email,
-                    "last_login": "—", "status": "Active", "selected": False
-                })
-                st.success(f"✓ User '{new_username}' added successfully!")
+                # ── create real User in backend registry ──────────────────────
+                role = UserRole.ADMIN if new_role == "Admin" else UserRole.ANALYST
+                new_user = User(
+                    name            = new_username.strip(),
+                    email           = new_email.strip(),
+                    role            = role,
+                    hashed_password = new_password,  # plain-text Phase 1
+                    is_active       = True,
+                )
+                User._user_registry[new_user.userId] = new_user
+                st.success(
+                    f"✓ User '{new_username}' added. "
+                    f"They can now log in as {new_role}."
+                )
                 st.rerun()
             else:
-                st.error("Please fill all fields.")
+                st.error("Please fill all fields (username, email, password).")
 
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)  # add-card
+    st.markdown("</div>", unsafe_allow_html=True)
