@@ -73,6 +73,22 @@ def _geocode(query: str):
         pass
     return None
 
+def _reverse_geocode(lat: float, lon: float):
+    """Nominatim reverse geocoding — returns display_name or None."""
+    try:
+        r = _req.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": lat, "lon": lon, "format": "jsonv2"},
+            headers={"User-Agent": "WAHHAJ-App/1.0"},
+            timeout=8,
+        )
+        r.raise_for_status()
+        result = r.json()
+        return result.get("display_name")
+    except Exception:
+        pass
+    return None
+
 # ── page style ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -149,7 +165,7 @@ with left_col:
             st.session_state.update({
                 "loc_candidate_lat":  lat,
                 "loc_candidate_lon":  lon,
-                "loc_candidate_name": search_val.strip(),
+                "loc_candidate_name": display,
                 "loc_map_lat": lat,
                 "loc_map_lon": lon,
             })
@@ -343,10 +359,12 @@ with right_col:
             if (prev_lat is None or prev_lon is None
                     or abs(clk_lat - prev_lat) > 0.00001
                     or abs(clk_lon - prev_lon) > 0.00001):
+                reverse_name = _reverse_geocode(clk_lat, clk_lon)
                 st.session_state.update({
                     "loc_candidate_lat":  round(clk_lat, 6),
                     "loc_candidate_lon":  round(clk_lon, 6),
                     "loc_candidate_name": (
+                        reverse_name or
                         st.session_state.get("loc_search_input") or
                         f"{clk_lat:.4f}, {clk_lon:.4f}"
                     ),
