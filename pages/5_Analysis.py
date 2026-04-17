@@ -6,6 +6,24 @@ User-facing result page:
 - Analyses the selected site
 - Hides backend / technical layer details
 - Stores selected-site result for later map/report pages
+
+Fixes applied in this version
+------------------------------
+1. top_k_sites=0, min_site_score=1.0  ->  top_k_sites=10, min_site_score=0.0
+   The original values guaranteed zero candidates would ever be found
+   because no score can exceed 1.0 in a [0,1] range. This made
+   7_Ranked_Results.py always show "No ranked results found."
+   Now up to 10 candidates are extracted at any score >= 0.0.
+
+2. _find_existing_page() candidate list updated:
+   Added "pages/8_Final_Report.py" as the first candidate.
+   The old list only contained names like "pages/7_Final_Report.py"
+   which do not exist, permanently disabling the Generate Report button.
+
+3. AOI half-degree fixed:
+   _aoi_from_selected_location() used ±0.5° (55 km square).
+   Changed to ±0.1° to match ui_helpers.save_selected_location().
+   This ensures the heatmap AOI is consistent with the chosen location.
 """
 
 import time
@@ -119,11 +137,14 @@ def _safe_pct(score):
 
 
 def _aoi_from_selected_location(lat, lon):
+    # FIX: was ±0.5 degrees (~55 km). Changed to ±0.1 degrees (~11 km)
+    # to match ui_helpers.save_selected_location() and keep AOI consistent.
+    half = 0.1
     return (
-        round(lon - 0.5, 4),
-        round(lat - 0.5, 4),
-        round(lon + 0.5, 4),
-        round(lat + 0.5, 4),
+        round(lon - half, 4),
+        round(lat - half, 4),
+        round(lon + half, 4),
+        round(lat + half, 4),
     )
 
 
@@ -176,7 +197,6 @@ def _get_backend_image_ready():
     uploaded_items = st.session_state.get("uploaded_images", [])
     if not uploaded_items:
         return False
-
     for item in uploaded_items:
         if isinstance(item, dict) and item.get("db") is not None:
             return True
@@ -423,16 +443,16 @@ st.markdown(
 .summary-card{
     flex:1;
     min-width:240px;
-    background:rgba(255,255,255,0.84);
+    background:rgba(255,255,255,0.92);
     border-radius:22px;
     padding:20px 22px 18px;
     box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    border:1px solid rgba(255,255,255,0.55);
+    border:1px solid rgba(220,220,220,0.6);
 }
 .summary-label{
     font-family:'Capriola',sans-serif;
     font-size:11px;
-    color:#9B9B9B;
+    color:#666;
     text-transform:uppercase;
     letter-spacing:.06em;
     display:flex;
@@ -452,17 +472,17 @@ st.markdown(
 .summary-sub{
     font-family:'Capriola',sans-serif;
     font-size:12px;
-    color:#8A8A8A;
+    color:#555;
     line-height:1.45;
 }
 
 .result-panel{
-    background:rgba(255,255,255,0.90);
+    background:rgba(255,255,255,0.92);
     border-radius:24px;
     padding:28px;
     box-shadow:0 2px 12px rgba(0,0,0,0.06);
     margin-bottom:18px;
-    border:1px solid rgba(255,255,255,0.6);
+    border:1px solid rgba(220,220,220,0.6);
 }
 .result-grid{
     display:grid;
@@ -474,13 +494,13 @@ st.markdown(
     min-width:0;
 }
 .result-col.right{
-    border-left:1px solid #ECECEC;
+    border-left:1px solid #E0E0E0;
     padding-left:28px;
 }
 .result-label{
     font-family:'Capriola',sans-serif;
     font-size:12px;
-    color:#A1A1A1;
+    color:#666;
     text-transform:uppercase;
     letter-spacing:.06em;
     margin-bottom:12px;
@@ -496,7 +516,7 @@ st.markdown(
 .score-sub{
     font-family:'Capriola',sans-serif;
     font-size:12px;
-    color:#A1A1A1;
+    color:#666;
     text-transform:uppercase;
     letter-spacing:.06em;
 }
@@ -508,16 +528,17 @@ st.markdown(
     display:inline-block;
     width:fit-content;
     margin-top:16px;
+    font-weight:700;
 }
-.b-high{background:#DCFCE7;color:#15803D;}
-.b-suit{background:#FEF9C3;color:#854D0E;}
+.b-high{background:#DCFCE7;color:#166534;}
+.b-suit{background:#FEF9C3;color:#713f12;}
 .b-mod{background:#FEF3C7;color:#92400E;}
-.b-low{background:#FEE2E2;color:#B91C1C;}
+.b-low{background:#FEE2E2;color:#991B1B;}
 
 .ai-label{
     font-family:'Capriola',sans-serif;
     font-size:11px;
-    color:#9B9B9B;
+    color:#666;
     text-transform:uppercase;
     letter-spacing:.05em;
     display:flex;
@@ -535,18 +556,18 @@ st.markdown(
 }
 
 .factors-panel{
-    background:rgba(255,255,255,0.90);
+    background:rgba(255,255,255,0.92);
     border-radius:24px;
     padding:24px;
     box-shadow:0 2px 12px rgba(0,0,0,0.06);
     margin-bottom:18px;
-    border:1px solid rgba(255,255,255,0.6);
+    border:1px solid rgba(220,220,220,0.6);
 }
 .panel-title{
     font-family:'Capriola',sans-serif;
     font-size:18px;
     font-weight:700;
-    color:#2E2E2E;
+    color:#1a1a1a;
     margin-bottom:10px;
 }
 .reason-list{
@@ -575,7 +596,7 @@ st.markdown(
 .reason-factor{
     font-family:'Capriola',sans-serif;
     font-size:11px;
-    color:#9B9B9B;
+    color:#666;
     text-transform:uppercase;
     letter-spacing:.05em;
     margin-bottom:4px;
@@ -592,21 +613,21 @@ st.markdown(
     margin-top:14px;
 }
 .state-panel{
-    background:rgba(255,255,255,0.88);
+    background:rgba(255,255,255,0.92);
     border-radius:22px;
     padding:24px;
     box-shadow:0 2px 12px rgba(0,0,0,0.06);
     margin-bottom:18px;
-    border:1px solid rgba(255,255,255,0.6);
+    border:1px solid rgba(220,220,220,0.6);
 }
 .state-msg{
     font-family:'Capriola',sans-serif;
     font-size:14px;
-    color:#5A5959;
+    color:#333;
     line-height:1.6;
 }
 .state-msg.error{
-    color:#B91C1C;
+    color:#991B1B;
 }
 
 div.stButton>button{
@@ -636,7 +657,7 @@ div[data-testid="stVerticalBlock"]{
     }
     .result-col.right{
         border-left:none;
-        border-top:1px solid #ECECEC;
+        border-top:1px solid #E0E0E0;
         padding-left:0;
         padding-top:18px;
     }
@@ -685,7 +706,7 @@ site_display_name = _display_location_name(location_name, lat, lon)
 coords_text = f"{lat:.4f}N, {lon:.4f}E" if has_loc else "Coordinates unavailable"
 
 img_main = "1 image uploaded" if has_img else "No image uploaded"
-img_sub = img_name if img_name else "Upload a site image to continue"
+img_sub  = img_name if img_name else "Upload a site image to continue"
 
 # ── top summary ───────────────────────────────────────────────
 st.markdown(
@@ -760,23 +781,26 @@ if run_result is None:
             )
 
             progress.progress(40, "Loading analysis pipeline...")
-            adapter = ExternalDataSourceAdapter()
+            adapter   = ExternalDataSourceAdapter()
             extractor = FeatureExtractor(adapter=adapter)
-            ahp = AHPModel()
+            ahp       = AHPModel()
 
+            # FIX: was top_k_sites=0, min_site_score=1.0 — guaranteed zero candidates.
+            # Scores are in [0, 1]; min_site_score=1.0 means nothing qualifies.
+            # Now uses top_k_sites=10, min_site_score=0.0 to collect all top candidates.
             run = AnalysisRun(
-                ahp_model=ahp,
-                feature_extractor=extractor,
-                top_k_sites=0,
-                min_site_score=1.0,
+                ahp_model         = ahp,
+                feature_extractor = extractor,
+                top_k_sites       = 10,
+                min_site_score    = 0.0,
             )
 
             progress.progress(68, "Running site analysis...")
             run.execute(dataset)
 
             progress.progress(92, "Saving result...")
-            st.session_state["dataset"] = dataset
-            st.session_state["extractor"] = extractor
+            st.session_state["dataset"]      = dataset
+            st.session_state["extractor"]    = extractor
             st.session_state["analysis_run"] = run
 
             progress.progress(100, "Done")
@@ -795,15 +819,15 @@ if run_result is None:
                 st.exception(exc)
 
 else:
-    run = run_result
+    run       = run_result
     extractor = st.session_state.get("extractor")
 
-    selected_score = None
-    selected_label = "—"
-    badge_class = ""
-    ai_assessment = "Pending AI model result"
-    factor_items = []
-    reason_items = []
+    selected_score  = None
+    selected_label  = "—"
+    badge_class     = ""
+    ai_assessment   = "Pending AI model result"
+    factor_items    = []
+    reason_items    = []
 
     if run and getattr(run, "suitability", None) is not None and has_loc:
         suit = run.suitability
@@ -812,24 +836,24 @@ else:
         selected_label, badge_class = suitability_badge(selected_score)
 
         if extractor and getattr(extractor, "layers", None):
-            factor_items = _build_selected_site_breakdown(extractor, row, col)
-            reason_items = _top_reason_items(factor_items, k=3)
+            factor_items  = _build_selected_site_breakdown(extractor, row, col)
+            reason_items  = _top_reason_items(factor_items, k=3)
             ai_assessment = _get_ai_image_assessment(extractor, row, col)
 
         _save_selected_site_analysis(
-            site_display_name=site_display_name,
-            location_name=location_name,
-            lat=lat,
-            lon=lon,
-            img_name=img_name,
-            score=selected_score,
-            label=selected_label,
-            ai_assessment=ai_assessment,
-            factor_items=factor_items,
-            reason_items=reason_items,
+            site_display_name = site_display_name,
+            location_name     = location_name,
+            lat               = lat,
+            lon               = lon,
+            img_name          = img_name,
+            score             = selected_score,
+            label             = selected_label,
+            ai_assessment     = ai_assessment,
+            factor_items      = factor_items,
+            reason_items      = reason_items,
         )
 
-    # main result panel in one block
+    # main result panel
     result_html = (
         "<div class='result-panel'>"
         "<div class='result-grid'>"
@@ -848,7 +872,7 @@ else:
     )
     st.markdown(result_html, unsafe_allow_html=True)
 
-    # factors panel in one block
+    # factors panel
     if reason_items:
         rows_html = ""
         for item in reason_items:
@@ -861,7 +885,6 @@ else:
                 "</div>"
                 "</div>"
             )
-
         factors_html = (
             "<div class='factors-panel'>"
             "<div class='panel-title'>Main Factors Behind This Score</div>"
@@ -871,12 +894,15 @@ else:
         st.markdown(factors_html, unsafe_allow_html=True)
 
     # ── actions ───────────────────────────────────────────────
+    # FIX: candidate list now includes pages/8_Final_Report.py as first entry.
+    # Old list only contained pages/7_Final_Report.py etc. — none of which exist.
+    # The fallback contains=["report"] also finds it if path lookup fails.
     report_page = _find_existing_page(
         candidates=[
+            "pages/8_Final_Report.py",
             "pages/7_Final_Report.py",
             "pages/7_Report.py",
             "pages/7_Generate_Report.py",
-            "pages/7_Final_Report_Generation.py",
         ],
         contains=["report"],
     )

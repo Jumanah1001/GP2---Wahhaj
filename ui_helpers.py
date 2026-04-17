@@ -5,17 +5,19 @@ Shared Streamlit helpers for WAHHAJ.
 
 Exports
 -------
-init_state()              — initialise all session_state keys
-login_user()              — real auth via User backend
-logout_user()             — clear session
-save_selected_location()  — persist location + compute AOI + create Dataset
-get_aoi()                 — accessor for downstream pages
-get_dataset()             — accessor for downstream pages
-apply_global_style()      — global CSS
-render_bg()               — animated blob background
-show_logo()               — logo image
-render_top_home_button()  — home 🏠 button
-render_footer()           — credits footer
+init_state()                 — initialise all session_state keys
+login_user()                 — real auth via User backend
+logout_user()                — clear session
+save_selected_location()     — persist location + compute AOI + create Dataset
+get_aoi()                    — accessor for downstream pages
+get_dataset()                — accessor for downstream pages
+save_analysis_to_history()   — append a completed analysis to history list
+get_analysis_history()       — return the history list for the current user
+apply_global_style()         — global CSS
+render_bg()                  — animated blob background
+show_logo()                  — logo image
+render_top_home_button()     — home button
+render_footer()              — credits footer
 """
 
 import sys
@@ -23,8 +25,6 @@ import os
 import streamlit as st
 from pathlib import Path
 
-# ── sys.path fix ─────────────────────────────────────────────────────────────
-# Ensure the project root is importable regardless of how Streamlit is launched.
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
@@ -39,20 +39,15 @@ from Wahhaj.FeatureExtractor import Dataset     # noqa: E402
 # ═══════════════════════════════════════════════════════════════════════════
 
 def init_state() -> None:
-    """
-    Initialise every session_state key used across the app.
-    Only sets a key when it does not yet exist, so navigation never resets
-    live data.
-    """
     defaults: dict = {
         # ── Auth ──────────────────────────────────────────────────────────
         "logged_in":        False,
-        "username":         "",          # display name (e.g. "Danah Alhamdi")
+        "username":         "",
         "user_email":       "",
-        "user_role":        "",          # "Admin" or "Analyst"
+        "user_role":        "",
         "user_id":          "",
         "session_id":       "",
-        "session_expires":  "",          # ISO-8601
+        "session_expires":  "",
 
         # ── Location / AOI ────────────────────────────────────────────────
         "selected_location": {
@@ -61,8 +56,8 @@ def init_state() -> None:
             "longitude":     None,
         },
         "location_saved":   False,
-        "aoi":              None,        # (lon_min, lat_min, lon_max, lat_max)
-        "dataset":          None,        # FeatureExtractor.Dataset — pipeline carrier
+        "aoi":              None,
+        "dataset":          None,
 
         # ── Upload ────────────────────────────────────────────────────────
         "uploaded_image_name":      "",
@@ -70,13 +65,23 @@ def init_state() -> None:
         "uploaded_image_temp_path": "",
 
         # ── Pipeline ──────────────────────────────────────────────────────
-        "extractor":              None,  # FeatureExtractor instance after env fetch
+        "extractor":              None,
         "ahp_weights_confirmed":  False,
-        "analysis_run":           None,  # AnalysisRun instance after execution
-        "report_obj":             None,  # Report instance
+        "analysis_run":           None,
+        "report_obj":             None,
 
-        # ── Admin (in-memory user list) ────────────────────────────────────
-        "users": None,                   # populated lazily by admin page
+        # ── Analysis History ──────────────────────────────────────────────
+        # List of dicts — one entry per completed analysis run.
+        # Each entry: {
+        #   "run_id", "location_name", "lat", "lon",
+        #   "score_mean", "candidate_count", "top_score",
+        #   "recommendation", "analysed_at", "aoi",
+        #   "ranked": [{"rank", "lat", "lon", "score", "rec"}, …]
+        # }
+        "analysis_history": [],
+
+        # ── Admin ──────────────────────────────────────────────────────────
+        "users": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -84,32 +89,96 @@ def init_state() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Analysis History
+# ═══════════════════════════════════════════════════════════════════════════
+
+def save_analysis_to_history(run, ranked: list, location: dict) -> None:
+    """
+    Append a completed analysis run to the persistent history list in
+    session_state["analysis_history"].
+
+    Called from pages/8_Final_Report.py after analysis completes.
+
+    Parameters
+    ----------
+    run      : AnalysisRun instance (must have .runId, .suitability, .summary())
+    ranked   : List[SiteCandidate] already ranked (from SiteCandidate.rank_all)
+    location : dict with keys "location_name", "latitude", "longitude"
+    """
+    from datetime import datetime
+
+    if "analysis_history" not in st.session_state:
+        st.session_state["analysis_history"] = []
+
+    # Avoid duplicate entries for the same run
+    existing_ids = {e.get("run_id") for e in st.session_state["analysis_history"]}
+    if run.runId in existing_ids:
+        return
+
+    summary = run.summary()
+    suit    = summary.get("suitability", {})
+    score_mean = suit.get("mean", 0.0) or 0.0
+
+    top_score = ranked[0].score if ranked else 0.0
+    if top_score >= 0.8:
+        recommendation = "Highly Recommended"
+    elif top_score >= 0.6:
+        recommendation = "Recommended"
+    else:
+        recommendation = "Review Required"
+
+    ranked_list = []
+    for c in ranked[:10]:
+        s10  = round(c.score * 10, 2)
+        lat  = round(c.centroid.lat, 4) if c.centroid else None
+        lon  = round(c.centroid.lon, 4) if c.centroid else None
+        rec  = (
+            "Highly Recommended" if c.score >= 0.8 else
+            "Recommended"        if c.score >= 0.6 else
+            "Not Applicable"
+        )
+        ranked_list.append({
+            "rank":  c.rank,
+            "lat":   lat,
+            "lon":   lon,
+            "score": round(c.score, 4),
+            "s10":   s10,
+            "rec":   rec,
+        })
+
+    entry = {
+        "run_id":          run.runId,
+        "location_name":   location.get("location_name", "Unknown"),
+        "lat":             location.get("latitude"),
+        "lon":             location.get("longitude"),
+        "aoi":             st.session_state.get("aoi"),
+        "score_mean":      round(score_mean, 4),
+        "top_score":       round(top_score, 4),
+        "candidate_count": len(ranked),
+        "recommendation":  recommendation,
+        "analysed_at":     datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "ranked":          ranked_list,
+    }
+
+    st.session_state["analysis_history"].insert(0, entry)  # newest first
+
+
+def get_analysis_history() -> list:
+    """Return the analysis history list (newest first)."""
+    return st.session_state.get("analysis_history", [])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Authentication
 # ═══════════════════════════════════════════════════════════════════════════
 
 def login_user(email: str, password: str) -> bool:
-    """
-    Validate credentials against the User backend and populate
-    st.session_state on success.
-
-    Flow
-    ----
-    1. Seed dev users into User._user_registry if it is empty.
-    2. Find the User object by email (find_by_email classmethod).
-    3. Call user.login(email, password) — raises ValueError on mismatch.
-    4. Write all session fields on success.
-
-    Returns True on success, False on any failure.
-    Never leaks which field (email vs password) was wrong.
-    """
     if not email or not email.strip():
         return False
     if not password:
         return False
 
-    # Ensure at least the dev seed users exist
     User.seed_default_users()
-
     user = User.find_by_email(email)
     if user is None:
         return False
@@ -119,7 +188,6 @@ def login_user(email: str, password: str) -> bool:
     except ValueError:
         return False
 
-    # ── populate session ───────────────────────────────────────────────────
     st.session_state["logged_in"]       = True
     st.session_state["username"]        = user.name
     st.session_state["user_email"]      = user._email
@@ -127,12 +195,10 @@ def login_user(email: str, password: str) -> bool:
     st.session_state["user_id"]         = user.userId
     st.session_state["session_id"]      = session.session_id
     st.session_state["session_expires"] = session.expires_at.isoformat()
-
     return True
 
 
 def logout_user() -> None:
-    """Clear all auth + pipeline session keys."""
     for key in ("logged_in", "username", "user_email", "user_role",
                 "user_id", "session_id", "session_expires"):
         st.session_state[key] = False if key == "logged_in" else ""
@@ -144,14 +210,14 @@ def logout_user() -> None:
                 "uploaded_image_bytes", "uploaded_image_temp_path",
                 "extractor", "ahp_weights_confirmed", "analysis_run", "report_obj"):
         st.session_state[key] = False if key == "location_saved" else None
+    # Note: analysis_history is intentionally preserved across logout
+    # so history survives a re-login in the same session.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Location / AOI helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Half-size of the AOI bounding box around the chosen point (degrees).
-# 0.1° ≈ 11 km at Saudi latitudes — reasonable UAV survey footprint.
 _AOI_HALF_DEGREE: float = 0.1
 
 
@@ -161,23 +227,6 @@ def save_selected_location(
     longitude: float,
     aoi_half_deg: float = _AOI_HALF_DEGREE,
 ) -> dict:
-    """
-    Persist the chosen location and create the two backend objects the
-    pipeline depends on.
-
-    Side-effects
-    ------------
-    st.session_state["selected_location"]  — human-readable dict
-    st.session_state["location_saved"]     — True
-    st.session_state["aoi"]                — (lon_min, lat_min, lon_max, lat_max)
-        consumed by ExternalDataSourceAdapter.fetchGHI / fetchLST / …
-        and by AnalysisRun._extract_candidates
-    st.session_state["dataset"]            — FeatureExtractor.Dataset
-        the single data carrier; upload page appends UAVImages to it;
-        run-analysis page passes it to AnalysisRun.execute(dataset)
-
-    Returns the saved location dict (for UI confirmation).
-    """
     location_dict = {
         "location_name": location_name.strip(),
         "latitude":      latitude,
@@ -186,7 +235,6 @@ def save_selected_location(
     st.session_state["selected_location"] = location_dict
     st.session_state["location_saved"]    = True
 
-    # AOI = (lon_min, lat_min, lon_max, lat_max)
     aoi: AOI = (
         longitude - aoi_half_deg,
         latitude  - aoi_half_deg,
@@ -195,41 +243,20 @@ def save_selected_location(
     )
     st.session_state["aoi"] = aoi
 
-    # Dataset — recreated whenever location changes so AOI stays in sync
     dataset = Dataset(
         name   = location_name.strip(),
         aoi    = aoi,
         images = [],
     )
     st.session_state["dataset"] = dataset
-
     return location_dict
 
 
 def get_aoi() -> "AOI | None":
-    """
-    Return the current AOI tuple or None if no location has been saved.
-
-    Usage in pages 4_Environmental_Data.py, 6_Run_Analysis.py:
-        aoi = get_aoi()
-        if aoi is None:
-            st.warning("Please choose a location first.")
-            st.stop()
-    """
     return st.session_state.get("aoi")
 
 
 def get_dataset() -> "Dataset | None":
-    """
-    Return the current Dataset (pipeline data carrier) or None.
-
-    Usage:
-        dataset = get_dataset()
-        # upload page:
-        dataset.images.append(uav_image)
-        # run-analysis page:
-        run.execute(get_dataset())
-    """
     return st.session_state.get("dataset")
 
 
@@ -238,16 +265,11 @@ def get_dataset() -> "Dataset | None":
 # ═══════════════════════════════════════════════════════════════════════════
 
 def require_login(redirect: str = "pages/1_Login.py") -> None:
-    """
-    Guard helper — call at the top of any protected page.
-    Redirects to login if session is not authenticated.
-    """
     if not st.session_state.get("logged_in", False):
         st.switch_page(redirect)
 
 
 def render_top_home_button(target_page: str = "pages/2_Home.py") -> None:
-    """Render a small 🏠 button aligned to the top-right."""
     left, center, right = st.columns([10.2, 0.8, 1.0])
     with right:
         if st.button("🏠", use_container_width=True,
@@ -256,18 +278,17 @@ def render_top_home_button(target_page: str = "pages/2_Home.py") -> None:
 
 
 def render_footer() -> None:
-    """Credits footer."""
     st.markdown(
         """
         <div style="
             font-family: 'Capriola', sans-serif;
             font-size: 13px;
-            color: #666666;
+            color: #555;
             text-align: center;
             margin-top: 20px;
             line-height: 1.6;
         ">
-            Danah Alhamdi - Walah Alshwair - Ruba Aletri - Jumanah Alharbi
+            Danah Alhamdi - Walah Alshwaier - Ruba Aletri - Jumanah Alharbi
             <br>
             © 2025 By PNU's CS Students
         </div>
@@ -356,20 +377,41 @@ def apply_global_style() -> None:
             box-shadow:0 10px 34px rgba(0,0,0,0.04); min-height:560px;
         }
 
+        /* ── Input fields: dark text on light background ── */
         div[data-testid="stTextInput"] input {
-            background:#F0EEEE !important; color:#6f6f6f !important;
-            border:none !important; border-radius:4px !important;
-            min-height:42px !important; font-family:'Capriola',sans-serif !important;
-            font-size:13px !important; padding-left:14px !important; box-shadow:none !important;
+            background:#F0EEEE !important;
+            color:#1a1a1a !important;          /* was #6f6f6f — improved to near-black */
+            border:1px solid #d8d4d4 !important;
+            border-radius:4px !important;
+            min-height:42px !important;
+            font-family:'Capriola',sans-serif !important;
+            font-size:14px !important;
+            padding-left:14px !important;
+            box-shadow:none !important;
+        }
+        div[data-testid="stTextInput"] input::placeholder {
+            color:#999 !important;             /* placeholder stays lighter */
         }
         div[data-testid="stTextInput"] label { display:none !important; }
 
+        /* ── Normal buttons: blue ── */
         div.stButton > button {
             background:#0070FF; color:white; border:none; border-radius:4px;
             min-height:52px; font-family:'Capriola',sans-serif; font-size:18px;
             box-shadow:5px 6px 4px rgba(0,0,0,0.18);
         }
         div.stButton > button:hover { background:#005fe0; color:white; }
+
+        /* ── Disabled buttons: clearly grey, not blue ── */
+        div.stButton > button:disabled,
+        div.stButton > button[disabled] {
+            background:#d0d0d0 !important;
+            color:#888 !important;
+            border:1px solid #bbb !important;
+            box-shadow:none !important;
+            cursor:not-allowed !important;
+            opacity:1 !important;   /* override Streamlit's default 0.38 opacity */
+        }
 
         .sun-wrap-fixed { position:relative; width:390px; height:390px; margin:90px auto 0 auto; }
         .sun-glow {

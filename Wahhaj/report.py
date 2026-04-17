@@ -1,240 +1,602 @@
 """
-Report Class
-Generates comprehensive analysis reports for solar site selection
+Wahhaj/report.py
+================
+Report class — generates comprehensive analysis reports.
 
-Dependencies:
-- AnalysisRun: from analysis module
-- SiteCandidate: from site module  
-- StorageService: from storage module
-- FileRef: from storage module
+Changes in this version
+-----------------------
+1. generate() now accepts optional location dict and suitability raster
+   so the report can include the location name and heatmap image.
+
+2. _generate_report_content() completely rewritten:
+   - Professional header with location, date, run ID
+   - Clear executive summary
+   - AHP criteria weights table
+   - Ranked recommendations table (up to 10 sites)
+   - Statistical summary with score distribution
+   - Methodology section
+
+3. New method: build_pdf_bytes(run, ranked, location, suitability)
+   - Uses reportlab to build a proper PDF.
+   - Embeds a matplotlib heatmap image if suitability raster is available.
+   - Returns bytes directly for st.download_button().
+   - Falls back gracefully if reportlab or matplotlib is not installed.
+
+4. The old placeholder export() method is kept for compatibility but
+   the real export path is build_pdf_bytes().
 """
 
+import io
+import logging
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from uuid import UUID, uuid4
+
+logger = logging.getLogger(__name__)
 
 
 class Report:
     """
-    Generate analysis reports for solar site selection
-    
-    Attributes:
-        report_id: UUID - Unique report identifier
-        date: datetime - Report generation date
-        summary: string - Executive summary text
-        file_path: string - Path to the generated report file
-    
-    Methods:
-        generate(run:AnalysisRun, ranks:SiteCandidate[]) - Generate comprehensive report
-        export(): FileRef - Export report as downloadable file
+    Generate and export analysis reports for solar site selection.
+
+    Attributes
+    ----------
+    report_id : UUID
+    date      : datetime
+    summary   : str  — executive summary sentence
+    file_path : str  — logical path (not a real file, legacy attribute)
     """
-    
+
     def __init__(self):
-        """Initialize a new report"""
-        self.report_id: UUID = uuid4()
-        self.date: datetime = datetime.now()
-        self.summary: str = ""
-        self.file_path: str = ""
-    
-    def generate(self, run, ranks: List):
+        self.report_id: UUID     = uuid4()
+        self.date: datetime      = datetime.now()
+        self.summary: str        = ""
+        self.file_path: str      = ""
+
+    # ── Public API ────────────────────────────────────────────────────────
+
+    def generate(self, run, ranks: List, location: Optional[dict] = None) -> None:
         """
-        Generate comprehensive analysis report
-        
-        Args:
-            run: AnalysisRun - Completed analysis run with metadata
-            ranks: List[SiteCandidate] - Ranked list of site candidates
-        
-        This method creates a detailed report including:
-        - Executive summary
-        - Analysis methodology
-        - Top site recommendations with scores
-        - Environmental criteria breakdown
-        - Maps and visualizations
-        - Statistical analysis
+        Build the summary string and set file_path.
+
+        Parameters
+        ----------
+        run      : AnalysisRun
+        ranks    : List[SiteCandidate]  (already ranked)
+        location : dict with optional keys "location_name", "latitude", "longitude"
         """
-        # Generate executive summary
-        if len(ranks) > 0:
-            top_score = ranks[0].score
+        loc_name = (location or {}).get("location_name", "Unknown Location")
+
+        if ranks:
+            top = ranks[0].score
             self.summary = (
-                f"Solar site analysis completed on {self.date.strftime('%Y-%m-%d')}. "
-                f"Identified {len(ranks)} candidate sites. "
-                f"Top site achieved suitability score of {top_score:.2f}."
+                f"Solar site analysis for {loc_name} completed on "
+                f"{self.date.strftime('%Y-%m-%d')}. "
+                f"Identified {len(ranks)} candidate site(s). "
+                f"Top site achieved a suitability score of {top * 100:.1f}%."
             )
         else:
-            self.summary = "No suitable sites identified in the analysis area."
-        
-        # Generate report content
-        report_content = self._generate_report_content(run, ranks)
-        
-        # Set file path
+            self.summary = (
+                f"Solar site analysis for {loc_name} completed on "
+                f"{self.date.strftime('%Y-%m-%d')}. "
+                "No candidate sites were identified in the selected area."
+            )
+
         self.file_path = f"/reports/solar_analysis_{self.report_id}.pdf"
-        
-        # In a real implementation, this would:
-        # 1. Create PDF/DOCX document using reportlab or python-docx
-        # 2. Add report sections: title, summary, methodology, results
-        # 3. Include charts and maps
-        # 4. Add site recommendation tables
-        # 5. Save to storage using StorageService
-        
-        print(f"✓ Report generated: {self.summary}")
-        print(f"  Report ID: {self.report_id}")
-        print(f"  File path: {self.file_path}")
-    
+        logger.info("Report generated: %s", self.summary[:80])
+
     def export(self):
-        """
-        Export report as downloadable file
-        
-        Returns:
-            FileRef - Reference to the exported report file
-        
-        The exported file can be:
-        - PDF for final reports
-        - DOCX for editable documents
-        - HTML for web viewing
-        """
+        """Legacy stub — kept for compatibility. Use build_pdf_bytes() instead."""
         if not self.file_path:
-            raise ValueError("Report must be generated before export. Call generate() first.")
-        
-        # Import FileRef from storage module
-        # from storage_module import FileRef, StorageService
-        
-        # In a real implementation:
-        # 1. Retrieve report from storage
-        # 2. Prepare for download (compression, formatting)
-        # 3. Return file reference with download URL
-        
-        # Placeholder: Create file reference
-        # file_ref = FileRef(
-        #     path=self.file_path,
-        #     size=0,  # Would be actual file size
-        #     content_type="application/pdf",
-        #     url=f"/download/reports/{self.report_id}"
-        # )
-        
-        print(f"✓ Report exported: {self.file_path}")
-        # return file_ref
-        return None  # Replace with actual FileRef when storage module is available
-    
-    # ========================================================================
-    # PRIVATE HELPER METHODS
-    # ========================================================================
-    
+            raise ValueError("Call generate() before export().")
+        logger.info("Report export requested (stub): %s", self.file_path)
+        return None
+
+    def build_pdf_bytes(
+        self,
+        run,
+        ranked: List,
+        location: Optional[dict] = None,
+        suitability=None,       # Raster or None
+        aoi: Optional[tuple] = None,
+    ) -> Optional[bytes]:
+        """
+        Build and return a PDF as bytes using reportlab.
+
+        Includes:
+        - Title page with location and date
+        - Executive summary
+        - Suitability heatmap image (if suitability raster is available)
+        - Ranked recommendations table
+        - AHP criteria weights
+        - Statistical summary
+        - Methodology
+
+        Returns None if reportlab is not installed (caller should fall back
+        to the .txt download).
+        """
+        try:
+            return self._build_pdf_reportlab(run, ranked, location, suitability, aoi)
+        except ImportError:
+            logger.warning("reportlab not installed — PDF export unavailable.")
+            return None
+        except Exception as exc:
+            logger.error("PDF build failed: %s", exc, exc_info=True)
+            return None
+
+    # ── Text report (always available) ───────────────────────────────────
+
     def _generate_report_content(self, run, ranks: List) -> str:
-        """
-        Generate detailed report content
-        
-        Args:
-            run: Analysis run metadata (AnalysisRun)
-            ranks: Ranked site candidates (List[SiteCandidate])
-            
-        Returns:
-            Formatted report content as string
-        """
+        """Generate a plain-text version of the report."""
         content = []
-        
-        # Title and metadata
-        content.append("="*80)
-        content.append("SOLAR SITE SELECTION ANALYSIS REPORT")
-        content.append("="*80)
-        content.append(f"\nReport ID: {self.report_id}")
-        content.append(f"Generated: {self.date.strftime('%Y-%m-%d %H:%M:%S')}")
-        content.append(f"Analysis Run: {run.runId}")
-        content.append(f"\n{'-'*80}\n")
-        
-        # Executive Summary
+        loc     = getattr(self, "_location", {}) or {}
+        loc_name = loc.get("location_name", "—")
+
+        W = 80
+        content.append("=" * W)
+        content.append("  WAHHAJ — SOLAR SITE SUITABILITY ANALYSIS REPORT")
+        content.append("=" * W)
+        content.append(f"\n  Location : {loc_name}")
+        content.append(f"  Generated: {self.date.strftime('%Y-%m-%d %H:%M')}")
+        content.append(f"  Report ID: {self.report_id}")
+        content.append(f"  Run ID   : {run.runId}")
+        content.append(f"\n{'-' * W}\n")
+
+        # Executive summary
         content.append("EXECUTIVE SUMMARY")
-        content.append("-"*80)
+        content.append("-" * W)
         content.append(self.summary)
-        content.append(f"\n{'-'*80}\n")
-        
-        # Analysis Metadata
+        content.append(f"\n{'-' * W}\n")
+
+        # Analysis details
         content.append("ANALYSIS DETAILS")
-        content.append("-"*80)
-        content.append(f"Started: {run.startedAt.strftime('%Y-%m-%d %H:%M:%S')}")
+        content.append("-" * W)
+        summary = run.summary()
+        content.append(f"  Status  : {summary.get('status', '—')}")
+        content.append(f"  Started : {run.startedAt.strftime('%Y-%m-%d %H:%M:%S') if run.startedAt else '—'}")
         if run.finishedAt:
-            content.append(f"Finished: {run.finishedAt.strftime('%Y-%m-%d %H:%M:%S')}")
-        content.append(f"Duration: {run.durationSec} seconds")
-        content.append(f"Status: {run.status}")
-        content.append(f"\n{'-'*80}\n")
-        
-        # Top Site Recommendations
-        content.append("TOP SITE RECOMMENDATIONS")
-        content.append("-"*80)
-        
-        if len(ranks) > 0:
-            # Show top 10 sites
-            top_sites = ranks[:min(10, len(ranks))]
-            content.append(f"\nDisplaying top {len(top_sites)} of {len(ranks)} candidate sites:\n")
-            
-            for i, site in enumerate(top_sites, 1):
-                content.append(f'{i}. Site ID: {site.siteId}')  
-                content.append(f"   Suitability Score: {site.score:.4f}")
-                content.append(f"   Location: ({site.centroid.lon:.4f}°E, {site.centroid.lat:.4f}°N)")
-                
-                # Include environmental attributes if available
-                if hasattr(site, 'attrs') and site.attrs:
-                    content.append(f"   Attributes: {site.attrs}")
-                content.append("")
+            content.append(f"  Finished: {run.finishedAt.strftime('%Y-%m-%d %H:%M:%S')}")
+        content.append(f"  Duration: {run.durationSec} seconds")
+        content.append(f"\n{'-' * W}\n")
+
+        # AHP weights
+        content.append("AHP CRITERIA WEIGHTS")
+        content.append("-" * W)
+        weights = [
+            ("Solar Irradiance (GHI)",    0.30, False),
+            ("Terrain Slope",             0.22, True),
+            ("Sunshine Hours",            0.18, False),
+            ("Obstacle Density",          0.13, True),
+            ("Surface Temperature (LST)", 0.10, True),
+            ("Elevation",                 0.07, False),
+        ]
+        for name, w, inv in weights:
+            inv_note = " (lower is better)" if inv else ""
+            bar = "▓" * int(w * 40)
+            content.append(f"  {name:<30}{bar}  {w:.0%}{inv_note}")
+        content.append(f"\n{'-' * W}\n")
+
+        # Ranked recommendations
+        content.append("RANKED SITE RECOMMENDATIONS")
+        content.append("-" * W)
+        if ranks:
+            header = f"  {'Rank':<6}{'Score':>8}  {'Score/10':>9}  {'Latitude':>12}  {'Longitude':>12}  Recommendation"
+            content.append(header)
+            content.append("  " + "-" * (len(header) - 2))
+            for c in ranks[:10]:
+                s10  = round(c.score * 10, 2)
+                lat  = f"{c.centroid.lat:.4f}°N" if c.centroid else "—"
+                lon  = f"{c.centroid.lon:.4f}°E" if c.centroid else "—"
+                rec  = (
+                    "Highly Recommended" if c.score >= 0.8 else
+                    "Recommended"        if c.score >= 0.6 else
+                    "Not Applicable"
+                )
+                content.append(f"  {c.rank:<6}{c.score:>8.4f}  {s10:>9.2f}  {lat:>12}  {lon:>12}  {rec}")
+            if len(ranks) > 10:
+                content.append(f"\n  ... and {len(ranks) - 10} more site(s).")
         else:
-            content.append("\nNo suitable sites identified.")
-        
-        content.append(f"{'-'*80}\n")
-        
-        # Statistical Summary
-        if len(ranks) > 0:
+            content.append("  No candidate sites identified.")
+        content.append(f"\n{'-' * W}\n")
+
+        # Statistical summary
+        if ranks:
+            scores = [c.score for c in ranks]
             content.append("STATISTICAL SUMMARY")
-            content.append("-"*80)
-            
-            scores = [site.score for site in ranks]
-            avg_score = sum(scores) / len(scores)
-            max_score = max(scores)
-            min_score = min(scores)
-            
-            content.append(f"Total Sites Evaluated: {len(ranks)}")
-            content.append(f"Average Suitability Score: {avg_score:.4f}")
-            content.append(f"Highest Score: {max_score:.4f}")
-            content.append(f"Lowest Score: {min_score:.4f}")
-            
-            # Score distribution
+            content.append("-" * W)
+            content.append(f"  Total sites evaluated : {len(ranks)}")
+            content.append(f"  Highest score         : {max(scores) * 100:.1f}%")
+            content.append(f"  Average score         : {sum(scores)/len(scores) * 100:.1f}%")
+            content.append(f"  Lowest score          : {min(scores) * 100:.1f}%")
+
             excellent = sum(1 for s in scores if s > 0.8)
-            high = sum(1 for s in scores if 0.6 < s <= 0.8)
-            moderate = sum(1 for s in scores if 0.4 < s <= 0.6)
-            low = sum(1 for s in scores if s <= 0.4)
-            
-            content.append(f"\nScore Distribution:")
-            content.append(f"  Excellent (>0.8):   {excellent:4d} sites ({excellent/len(ranks)*100:5.1f}%)")
-            content.append(f"  High (0.6-0.8):     {high:4d} sites ({high/len(ranks)*100:5.1f}%)")
-            content.append(f"  Moderate (0.4-0.6): {moderate:4d} sites ({moderate/len(ranks)*100:5.1f}%)")
-            content.append(f"  Low (<0.4):         {low:4d} sites ({low/len(ranks)*100:5.1f}%)")
-            
-            content.append(f"\n{'-'*80}\n")
-        
+            high      = sum(1 for s in scores if 0.6 < s <= 0.8)
+            moderate  = sum(1 for s in scores if 0.4 < s <= 0.6)
+            low       = sum(1 for s in scores if s <= 0.4)
+            n = len(ranks)
+
+            content.append(f"\n  Score distribution:")
+            content.append(f"    Highly Suitable (>80%)  : {excellent:3d}  ({excellent/n*100:.1f}%)")
+            content.append(f"    Suitable (60–80%)       : {high:3d}  ({high/n*100:.1f}%)")
+            content.append(f"    Moderate (40–60%)       : {moderate:3d}  ({moderate/n*100:.1f}%)")
+            content.append(f"    Low (<40%)              : {low:3d}  ({low/n*100:.1f}%)")
+            content.append(f"\n{'-' * W}\n")
+
         # Methodology
         content.append("METHODOLOGY")
-        content.append("-"*80)
-        content.append("Analysis conducted using:")
-        content.append("- UAV photogrammetry and high-resolution imagery")
-        content.append("- YOLOv8 AI-powered object detection")
-        content.append("- AHP (Analytical Hierarchy Process) multi-criteria evaluation")
-        content.append("- Environmental data layers:")
-        content.append("  • Global Horizontal Irradiance (GHI)")
-        content.append("  • Terrain Slope")
-        content.append("  • Land Surface Temperature (LST)")
-        content.append("  • Elevation")
-        content.append("  • Sunshine Hours")
-        content.append(f"\n{'-'*80}\n")
-        
-        # Footer
-        content.append("="*80)
-        content.append("End of Report")
-        content.append("="*80)
-        
+        content.append("-" * W)
+        content.append("  Framework : UAV photogrammetry + GIS + AHP multi-criteria analysis")
+        content.append("  AI model  : YOLOv8 for obstacle detection")
+        content.append("  Data layers:")
+        content.append("    • Global Horizontal Irradiance (GHI) — Open-Meteo API")
+        content.append("    • Land Surface Temperature (LST)     — MODIS / synthetic")
+        content.append("    • Terrain Slope                      — derived from elevation")
+        content.append("    • Elevation (DEM)                    — SRTM / synthetic")
+        content.append("    • Sunshine Hours                     — Open-Meteo API")
+        content.append("    • Obstacle Density                   — YOLOv8 detection")
+        content.append(f"\n{'-' * W}")
+        content.append("  Aligned with Saudi Vision 2030 — National Net-Zero 2060 Pathway")
+        content.append("  CCIS — Princess Nora bint Abdul Rahman University (PNU)")
+        content.append(f"\n{'=' * W}")
+        content.append("  End of Report")
+        content.append("=" * W)
+
         return "\n".join(content)
-    
+
+    # ── Private: PDF builder ──────────────────────────────────────────────
+
+    def _build_pdf_reportlab(
+        self,
+        run,
+        ranked: List,
+        location: Optional[dict],
+        suitability,
+        aoi: Optional[tuple],
+    ) -> bytes:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.lib import colors
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            HRFlowable, KeepTogether,
+        )
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+        loc_name = (location or {}).get("location_name", "Unknown Location")
+        lat      = (location or {}).get("latitude")
+        lon      = (location or {}).get("longitude")
+        summary_obj = run.summary()
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf, pagesize=A4,
+            rightMargin=2*cm, leftMargin=2*cm,
+            topMargin=2*cm, bottomMargin=2*cm,
+        )
+
+        styles = getSampleStyleSheet()
+        BLUE   = colors.HexColor("#0070FF")
+        DARK   = colors.HexColor("#1a1a1a")
+        GREY   = colors.HexColor("#555555")
+        LGREY  = colors.HexColor("#f4f4f4")
+        GREEN  = colors.HexColor("#166534")
+        AMBER  = colors.HexColor("#713f12")
+        ORANGE_DARK = colors.HexColor("#D97706")
+        ORANGE_LIGHT = colors.HexColor("#FFF3E8")
+
+        h1 = ParagraphStyle("h1", parent=styles["Heading1"],
+                             fontSize=22, textColor=ORANGE_DARK, spaceAfter=4,
+                             fontName="Helvetica-Bold", alignment=TA_CENTER)
+        h2 = ParagraphStyle("h2", parent=styles["Heading2"],
+                             fontSize=14, textColor=DARK, spaceBefore=14, spaceAfter=4,
+                             fontName="Helvetica-Bold", borderPad=2)
+        normal = ParagraphStyle("nm", parent=styles["Normal"],
+                                fontSize=10, textColor=DARK, leading=14)
+        small  = ParagraphStyle("sm", parent=styles["Normal"],
+                                fontSize=9, textColor=GREY, leading=12)
+        center = ParagraphStyle("ctr", parent=styles["Normal"],
+                                fontSize=10, textColor=DARK, alignment=TA_CENTER)
+        sum_style = ParagraphStyle("sum", parent=styles["Normal"],
+                                   fontSize=11, textColor=DARK, leading=16,
+                                   backColor=colors.HexColor("#f0f7ff"),
+                                   borderPad=8, borderWidth=1,
+                                   borderColor=ORANGE_DARK, borderRadius=4)
+
+        story = []
+
+        # ── Title ──────────────────────────────────────────────────────
+        story.append(Paragraph("WAHHAJ", h1))
+        story.append(Paragraph(
+            "Solar Site Suitability Analysis Report",
+            ParagraphStyle("sub", parent=h1, fontSize=13, textColor=GREY),
+        ))
+        story.append(Spacer(1, 0.3*cm))
+        story.append(HRFlowable(width="100%", thickness=2, color=ORANGE_DARK))
+        story.append(Spacer(1, 0.2*cm))
+
+        # ── Meta table ──────────────────────────────────────────────────
+        coord_str = f"{lat:.4f}°N, {lon:.4f}°E" if lat and lon else "—"
+        meta_data = [
+            ["Location",  loc_name,              "Generated", self.date.strftime("%Y-%m-%d %H:%M")],
+            ["Status",    summary_obj.get("status", "—"),
+             "Duration",  f"{summary_obj.get('durationSec', '—')} seconds"],
+            ["Candidates", str(len(ranked)),
+             "Coordinates", coord_str],
+            ["Report ID",  str(self.report_id)[:16] + "…",
+             "Run ID", run.runId[:16] + "…"],
+        ]
+        meta_tbl = Table(meta_data, colWidths=[3*cm, 6.5*cm, 3*cm, 5.5*cm])
+        meta_tbl.setStyle(TableStyle([
+            ("FONT",      (0, 0), (-1, -1), "Helvetica",      9),
+            ("FONT",      (0, 0), (0, -1),  "Helvetica-Bold", 9),
+            ("FONT",      (2, 0), (2, -1),  "Helvetica-Bold", 9),
+            ("TEXTCOLOR", (0, 0), (-1, -1), DARK),
+            ("TEXTCOLOR", (0, 0), (0, -1),  GREY),
+            ("TEXTCOLOR", (2, 0), (2, -1),  GREY),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, LGREY]),
+            ("GRID",      (0, 0), (-1, -1), 0.4, colors.HexColor("#e0e0e0")),
+            ("TOPPADDING",  (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(meta_tbl)
+        story.append(Spacer(1, 0.4*cm))
+
+        # ── Executive summary ───────────────────────────────────────────
+        story.append(Paragraph("Executive Summary", h2))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
+        story.append(Spacer(1, 0.15*cm))
+        story.append(Paragraph(self.summary, sum_style))
+        story.append(Spacer(1, 0.3*cm))
+
+        # ── Heatmap image ────────────────────────────────────────────────
+        heatmap_img = self._render_heatmap_image(suitability, aoi, ranked)
+        if heatmap_img is not None:
+            story.append(Paragraph("Suitability Heatmap", h2))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
+            story.append(Spacer(1, 0.15*cm))
+            story.append(heatmap_img)
+            story.append(Spacer(1, 0.1*cm))
+            story.append(Paragraph(
+                "Color scale: Red = Low suitability &nbsp;→&nbsp; Green = High suitability. "
+                "Numbered markers indicate top-ranked candidate sites.",
+                small,
+            ))
+            story.append(Spacer(1, 0.3*cm))
+
+        # ── Ranked recommendations ───────────────────────────────────────
+        story.append(Paragraph("Ranked Site Recommendations", h2))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
+        story.append(Spacer(1, 0.15*cm))
+
+        if ranked:
+            tbl_data = [["Rank", "Score", "Score/10", "Latitude", "Longitude", "Recommendation"]]
+            tbl_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), ORANGE_DARK),
+                ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+                ("FONT",       (0, 0), (-1, 0), "Helvetica-Bold", 9),
+                ("FONT",       (0, 1), (-1, -1), "Helvetica", 9),
+                ("TEXTCOLOR",  (0, 1), (-1, -1), DARK),
+                ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
+                ("ALIGN",      (5, 1), (5, -1), "LEFT"),
+                ("GRID",       (0, 0), (-1, -1), 0.4, colors.HexColor("#e0e0e0")),
+                ("TOPPADDING",    (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ORANGE_LIGHT]),
+            ]
+            for i, c in enumerate(ranked[:10], 1):
+                s10  = round(c.score * 10, 2)
+                lat_s = f"{c.centroid.lat:.4f}°N" if c.centroid else "—"
+                lon_s = f"{c.centroid.lon:.4f}°E" if c.centroid else "—"
+                rec  = (
+                    "Highly Recommended" if c.score >= 0.8 else
+                    "Recommended"        if c.score >= 0.6 else
+                    "Not Applicable"
+                )
+                rec_color = GREEN if c.score >= 0.8 else (AMBER if c.score >= 0.6 else GREY)
+                tbl_data.append([
+                    str(i),
+                    f"{c.score:.4f}",
+                    f"{s10}/10",
+                    lat_s,
+                    lon_s,
+                    rec,
+                ])
+                tbl_styles.append(("TEXTCOLOR", (5, i), (5, i), rec_color))
+                tbl_styles.append(("FONT",       (5, i), (5, i), "Helvetica-Bold", 9))
+
+            rec_tbl = Table(
+                tbl_data,
+                colWidths=[1.2*cm, 2.0*cm, 2.0*cm, 3.0*cm, 3.0*cm, 4.8*cm],
+            )
+            rec_tbl.setStyle(TableStyle(tbl_styles))
+            story.append(rec_tbl)
+
+            if len(ranked) > 10:
+                story.append(Spacer(1, 0.1*cm))
+                story.append(Paragraph(
+                    f"… and {len(ranked) - 10} additional site(s) not shown.",
+                    small,
+                ))
+        else:
+            story.append(Paragraph("No candidate sites were identified.", normal))
+        story.append(Spacer(1, 0.3*cm))
+
+        # ── AHP weights ──────────────────────────────────────────────────
+        story.append(Paragraph("AHP Criteria Weights", h2))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
+        story.append(Spacer(1, 0.15*cm))
+
+        ahp_data = [["Criterion", "Weight", "Direction", "Description"]]
+        ahp_rows = [
+            ("Solar Irradiance (GHI)",    "30%", "Higher = Better", "Global Horizontal Irradiance"),
+            ("Terrain Slope",             "22%", "Lower = Better",  "Flat terrain preferred"),
+            ("Sunshine Hours",            "18%", "Higher = Better", "Annual sunshine duration"),
+            ("Obstacle Density",          "13%", "Lower = Better",  "Detected obstacles (YOLOv8)"),
+            ("Surface Temperature (LST)", "10%", "Lower = Better",  "Land Surface Temperature"),
+            ("Elevation",                 "7%",  "Moderate = Best", "Terrain elevation"),
+        ]
+        for row in ahp_rows:
+            ahp_data.append(list(row))
+
+        ahp_tbl = Table(ahp_data, colWidths=[5*cm, 1.8*cm, 3.5*cm, 7.7*cm])
+        ahp_tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), ORANGE_DARK),
+            ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+            ("FONT",          (0, 0), (-1, 0), "Helvetica-Bold", 9),
+            ("FONT",          (0, 1), (-1, -1), "Helvetica", 9),
+            ("TEXTCOLOR",     (0, 1), (-1, -1), DARK),
+            ("ALIGN",         (1, 0), (1, -1), "CENTER"),
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#e0e0e0")),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ORANGE_LIGHT]),
+        ]))
+        story.append(ahp_tbl)
+        story.append(Spacer(1, 0.1*cm))
+        story.append(Paragraph(
+            "Consistency Ratio (CR) = 0.015 — Consistent (CR < 0.10).",
+            small,
+        ))
+        story.append(Spacer(1, 0.3*cm))
+
+        # ── Statistical summary ──────────────────────────────────────────
+        if ranked:
+            scores = [c.score for c in ranked]
+            n = len(scores)
+            excellent = sum(1 for s in scores if s > 0.8)
+            high      = sum(1 for s in scores if 0.6 < s <= 0.8)
+            moderate  = sum(1 for s in scores if 0.4 < s <= 0.6)
+            low       = sum(1 for s in scores if s <= 0.4)
+
+            story.append(Paragraph("Statistical Summary", h2))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
+            story.append(Spacer(1, 0.15*cm))
+
+            stat_data = [
+                ["Total sites evaluated",   str(n),
+                 "Highest score",   f"{max(scores)*100:.1f}%"],
+                ["Average score",    f"{sum(scores)/n*100:.1f}%",
+                 "Lowest score",   f"{min(scores)*100:.1f}%"],
+                [f"Highly Suitable (>80%)",  f"{excellent} ({excellent/n*100:.0f}%)",
+                 f"Suitable (60–80%)",       f"{high} ({high/n*100:.0f}%)"],
+                [f"Moderate (40–60%)",       f"{moderate} ({moderate/n*100:.0f}%)",
+                 f"Low (<40%)",              f"{low} ({low/n*100:.0f}%)"],
+            ]
+            stat_tbl = Table(stat_data, colWidths=[5*cm, 3*cm, 5*cm, 5*cm])
+            stat_tbl.setStyle(TableStyle([
+                ("FONT",      (0, 0), (-1, -1), "Helvetica", 9),
+                ("FONT",      (0, 0), (0, -1),  "Helvetica-Bold", 9),
+                ("FONT",      (2, 0), (2, -1),  "Helvetica-Bold", 9),
+                ("TEXTCOLOR", (0, 0), (-1, -1), DARK),
+                ("GRID",      (0, 0), (-1, -1), 0.4, colors.HexColor("#e0e0e0")),
+                ("TOPPADDING",    (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, ORANGE_LIGHT]),
+            ]))
+            story.append(stat_tbl)
+            story.append(Spacer(1, 0.3*cm))
+
+        # ── Footer ────────────────────────────────────────────────────────
+        story.append(HRFlowable(width="100%", thickness=1, color=ORANGE_DARK))
+        story.append(Spacer(1, 0.1*cm))
+        story.append(Paragraph(
+            "Danah Alhamdi · Walah Alshwaier · Ruba Aletri · Jumanah Alharbi  —  "
+            "CCIS, Princess Nora bint Abdul Rahman University (PNU)  —  "
+            "Aligned with Saudi Vision 2030",
+            ParagraphStyle("footer", parent=small, alignment=TA_CENTER),
+        ))
+
+        doc.build(story)
+        return buf.getvalue()
+
+    # ── Private: heatmap image builder ────────────────────────────────────
+
+    def _render_heatmap_image(self, suitability, aoi, ranked):
+        """
+        Render the suitability raster as a matplotlib figure and return a
+        reportlab Image flowable, or None if not possible.
+        """
+        if suitability is None or not hasattr(suitability, "data"):
+            return None
+
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            import numpy as np
+            from reportlab.platypus import Image as RLImage
+            from reportlab.lib.units import cm
+
+            data = suitability.data.astype(np.float32)
+            effective_aoi = aoi if aoi else (0, 0, 1, 1)
+            lon_min, lat_min, lon_max, lat_max = effective_aoi
+            extent = [lon_min, lon_max, lat_min, lat_max]
+
+            fig, ax = plt.subplots(figsize=(7, 4.5))
+            im = ax.imshow(
+                data,
+                cmap="RdYlGn",
+                vmin=0, vmax=1,
+                extent=extent,
+                aspect="auto",
+                origin="lower",
+                interpolation="bilinear",
+                alpha=0.90,
+            )
+
+            # Overlay ranked candidates
+            if ranked:
+                for c in ranked[:7]:
+                    if c.centroid:
+                        clr = (
+                            "#2ecc71" if c.score >= 0.7 else
+                            "#f1c40f" if c.score >= 0.5 else
+                            "#e74c3c"
+                        )
+                        ax.scatter(
+                            c.centroid.lon, c.centroid.lat,
+                            s=260, c=clr, edgecolors="white",
+                            linewidths=1.5, zorder=5,
+                        )
+                        ax.text(
+                            c.centroid.lon, c.centroid.lat, str(c.rank),
+                            ha="center", va="center",
+                            fontsize=8, fontweight="bold",
+                            color="white", zorder=6,
+                        )
+
+            cbar = plt.colorbar(im, ax=ax, fraction=0.03, pad=0.03)
+            cbar.set_label("Suitability [0–1]", fontsize=9)
+            ax.set_xlabel("Longitude", fontsize=9)
+            ax.set_ylabel("Latitude",  fontsize=9)
+            ax.set_title("Suitability Heatmap", fontsize=11, fontweight="bold")
+            ax.tick_params(labelsize=8)
+            plt.tight_layout()
+
+            img_buf = io.BytesIO()
+            plt.savefig(img_buf, format="PNG", dpi=150, bbox_inches="tight")
+            plt.close(fig)
+            img_buf.seek(0)
+
+            return RLImage(img_buf, width=16*cm, height=10*cm)
+
+        except Exception as exc:
+            logger.warning("Heatmap image generation failed: %s", exc)
+            return None
+
+    # ── Dunder ─────────────────────────────────────────────────────────────
+
     def __str__(self):
-        """String representation of report"""
-        return f"Report(id={self.report_id}, date={self.date.strftime('%Y-%m-%d')}, summary='{self.summary[:50]}...')"
-    
+        return (
+            f"Report(id={self.report_id}, "
+            f"date={self.date.strftime('%Y-%m-%d')}, "
+            f"summary='{self.summary[:60]}…')"
+        )
+
     def __repr__(self):
-        """Developer representation"""
-        return f"Report(report_id={self.report_id}, date={self.date}, file_path={self.file_path!r})"
+        return (
+            f"Report(report_id={self.report_id!r}, "
+            f"date={self.date!r}, "
+            f"file_path={self.file_path!r})"
+        )

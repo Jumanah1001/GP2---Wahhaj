@@ -720,8 +720,13 @@ components.html(
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ── navigation ────────────────────────────────────────────────
+# FIX: added "pages/8_Final_Report.py" as first candidate — this is the
+# actual file in this project version. The old list only contained names
+# like "pages/7_Final_Report.py" which do not exist, permanently
+# disabling the Generate Report button.
 report_page = _find_existing_page(
     candidates=[
+        "pages/8_Final_Report.py",
         "pages/7_Final_Report.py",
         "pages/7_Report.py",
         "pages/7_Generate_Report.py",
