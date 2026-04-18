@@ -23,7 +23,7 @@ with btn_center:
 st.markdown(
     """
     <div class="credits">
-        Danah Alhamdi - Walah Alshwair - Ruba Aletri - Jumanah Alharbi
+        Danah Alhamdi - Walah Alshwaier - Ruba Aletri - Jumanah Alharbi
         <br><br>
         © 2025 By PNU's CS Students
     </div>

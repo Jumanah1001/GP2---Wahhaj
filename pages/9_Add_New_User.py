@@ -3,41 +3,28 @@ pages/9_Add_New_User.py
 ========================
 Admin Account Management.
 
-Root cause of the white-rectangle bug (fixed here)
----------------------------------------------------
-The previous code used:
-    st.markdown('<div class="add-card">')   # open tag
-    st.text_input(...)                       # widget
-    st.markdown('</div>')                   # close tag
+Implementation pattern
+----------------------
+Follows the same design language as the rest of the WAHHAJ project:
 
-Streamlit renders each st.markdown() call inside its own isolated
-<div data-testid="stMarkdownContainer"> element. The browser immediately
-auto-closes the <div class="add-card"> tag INSIDE that wrapper, so the
-card background only applies to that single empty element — producing a
-small white rectangle that appears above the actual form widgets, which
-live in separate Streamlit elements outside it entirely.
+  - Card CSS values match summary-card / result-panel from 5_Analysis.py:
+      background:rgba(255,255,255,0.92), border-radius:22px,
+      box-shadow:0 2px 12px rgba(0,0,0,0.06), border:1px solid rgba(220,220,220,0.6)
+  - Static content (user table) uses the pure HTML block pattern from 5_Analysis.py
+  - Interactive widget groups (Add New User form) use the CSS :has() approach:
+      A zero-size .form-card-marker is injected first in col_right.
+      [data-testid="column"]:has(.form-card-marker) targets the real Streamlit
+      column element and applies the card style to it.
+      This is the correct way — open/close <div> splits across st.markdown()
+      calls do not work because Streamlit renders each call in its own wrapper.
 
-Correct fix
------------
-Use CSS :has() selector on the Streamlit column container itself.
-
-The col_right Streamlit column IS the correct container — it genuinely
-wraps all the form widgets in the DOM. We inject a zero-height invisible
-marker <div class="form-card-marker"> as the first element in col_right,
-then use:
-
-    [data-testid="column"]:has(.form-card-marker) {
-        background: ...;  border-radius: ...;  box-shadow: ...;
-    }
-
-This styles the actual column element that contains the widgets — no
-extra white shapes, no broken open/close divs, one proper card.
-
-The card style matches .card-box used for Account and Status cards
-on the Home page: same background, border-radius, shadow, border.
+Why :has() works here:
+  Streamlit's [data-testid="column"] genuinely wraps all its children in the DOM.
+  The CSS :has() selector finds the column containing the marker and applies
+  the white card style to that real container element — not to a fake empty div.
 """
 import streamlit as st
-from datetime import datetime
+from html import escape
 
 from ui_helpers import init_state, apply_global_style, render_bg, require_login
 
@@ -79,8 +66,13 @@ def _users_to_display() -> list:
     return rows
 
 
+# ── Styles ────────────────────────────────────────────────────────────────────
+# Card values match the project's card system (5_Analysis.py reference):
+#   border-radius:22-24px, box-shadow:0 2px 12px rgba(0,0,0,0.06),
+#   border:1px solid rgba(220,220,220,0.6), background:rgba(255,255,255,0.92)
 st.markdown("""
 <style>
+
 /* ── page wrapper ── */
 .admin-wrap {
     position:relative; z-index:2; padding:24px 32px;
@@ -89,40 +81,43 @@ st.markdown("""
     font-family:'Capriola',sans-serif; font-size:26px;
     font-weight:700; color:#1a1a1a; margin-bottom:4px;
 }
-.admin-sub { font-size:13px; color:#444; margin-bottom:20px; }
+.admin-sub { font-size:13px; color:#5E5B5B; margin-bottom:20px; }
 
-/* ── User Management table card ── */
+/* ── User Management table card
+   Uses the same card values as result-panel from 5_Analysis.py ── */
 .admin-card {
-    background:rgba(255,255,255,0.92); border-radius:16px;
-    padding:0; box-shadow:0 4px 20px rgba(0,0,0,0.06);
-    overflow:hidden; border:1px solid #e4e4e4;
+    background:rgba(255,255,255,0.92);
+    border-radius:22px;
+    padding:0;
+    box-shadow:0 2px 12px rgba(0,0,0,0.06);
+    overflow:hidden;
+    border:1px solid rgba(220,220,220,0.6);
 }
 
-/* ── table header ── */
+/* ── Table header ── */
 .tbl-head {
     background:#f4f4f4; padding:10px 18px;
     font-size:11px; font-weight:700; color:#444;
-    border-bottom:1px solid #e0e0e0;
+    border-bottom:1px solid rgba(220,220,220,0.8);
     letter-spacing:0.04em; text-transform:uppercase;
     display:grid;
     grid-template-columns: 32px 44px 1fr 1.5fr 80px 100px 80px;
-    align-items:center;
-    gap:0;
+    align-items:center; gap:0;
+    font-family:'Capriola',sans-serif;
 }
 
-/* ── table data rows ── */
+/* ── Table data rows ── */
 .tbl-data-row {
-    padding:10px 0;
-    border-bottom:1px solid #f0f0f0;
+    padding:9px 0; border-bottom:1px solid rgba(240,240,240,0.9);
     font-size:13px; color:#222;
 }
 .tbl-data-row:hover { background:rgba(0,112,255,0.03); }
 
-/* ── status badges ── */
+/* ── Status indicators ── */
 .status-active   { color:#166534; font-weight:700; font-size:12px; }
 .status-disabled { color:#991b1b; font-weight:700; font-size:12px; }
 
-/* ── form field labels ── */
+/* ── Form field labels ── */
 .field-hint {
     font-family:'Capriola',sans-serif; font-size:12px;
     color:#444; margin-bottom:4px; font-weight:600;
@@ -132,60 +127,56 @@ st.markdown("""
     font-weight:700; color:#1a1a1a; margin-bottom:18px;
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   ADD NEW USER CARD — correct approach using CSS :has() selector
-   
-   The marker <div class="form-card-marker"> is injected as the first
-   element inside col_right. The :has() selector then targets the
-   Streamlit column container itself, which genuinely wraps all the
-   form widgets in the DOM.
+/* ─────────────────────────────────────────────────────────────────────
+   ADD NEW USER CARD — CSS :has() approach
 
-   This matches the .card-box style used for Account and Status on
-   the Home page: same background, border-radius, shadow, border.
-   ──────────────────────────────────────────────────────────────── */
+   The Streamlit column [data-testid="column"] that contains
+   .form-card-marker genuinely wraps all form widgets in the DOM.
+   We apply the card style directly to that column via :has().
+
+   Card values match the project's card system:
+   same as .admin-card and 5_Analysis.py result-panel.
+
+   This approach works. The broken open/close <div> across separate
+   st.markdown() calls does NOT work — the browser auto-closes the
+   <div> inside the first st.markdown element, creating a tiny empty
+   white rectangle. :has() targets the real container instead.
+   ─────────────────────────────────────────────────────────────────── */
 .form-card-marker {
-    display: block;
-    height: 0;
-    width: 0;
-    overflow: hidden;
-    visibility: hidden;
-    position: absolute;
+    display:block; height:0; width:0;
+    overflow:hidden; visibility:hidden; position:absolute;
 }
 
-/* Card applied to the column that contains the marker */
 [data-testid="column"]:has(.form-card-marker) {
     background: rgba(255,255,255,0.92);
-    border-radius: 18px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-    border: 1px solid rgba(220,220,220,0.7);
+    border-radius: 22px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    border: 1px solid rgba(220,220,220,0.6);
     padding: 24px 22px 20px 22px !important;
     position: relative;
     z-index: 2;
 }
 
-/* ── text inputs ── */
+/* ── Text inputs ── */
 div.stTextInput input {
-    background:#F0EEEE !important;
-    color:#1a1a1a !important;
-    border:1px solid #ccc !important;
-    border-radius:6px !important;
-    font-size:14px !important;
-    padding-left:12px !important;
-    min-height:40px !important;
+    background:#F0EEEE !important; color:#1a1a1a !important;
+    border:1px solid rgba(220,220,220,0.8) !important;
+    border-radius:6px !important; font-size:14px !important;
+    padding-left:12px !important; min-height:40px !important;
 }
 div.stTextInput input::placeholder { color:#999 !important; }
 
-/* ── buttons ── */
+/* ── Buttons ── */
 div.stButton > button {
-    background:#0070FF; color:white; border:none; border-radius:6px;
-    min-height:44px; font-family:'Capriola',sans-serif; font-size:15px;
-    box-shadow:3px 4px 4px rgba(0,0,0,0.14);
+    background:#0070FF; color:white; border:none; border-radius:10px;
+    min-height:46px; font-family:'Capriola',sans-serif; font-size:15px;
+    box-shadow:4px 5px 4px rgba(0,0,0,.14);
 }
 div.stButton > button:hover { background:#005fe0; color:white; }
 div.stButton > button[kind="primary"] {
     background:#0070FF !important; color:white !important;
-    border-radius:8px !important; font-size:15px !important;
-    min-height:44px !important; font-family:'Capriola',sans-serif !important;
+    border-radius:10px !important; min-height:46px !important;
+    font-family:'Capriola',sans-serif !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -199,8 +190,8 @@ with col_left:
     st.markdown('<div class="admin-wrap">', unsafe_allow_html=True)
     st.markdown('<div class="admin-title">User Management</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="admin-sub">Add, view, and remove user accounts.<br>'
-        '<small>Changes take effect immediately in the current session.</small></div>',
+        "<div class='admin-sub'>Add, view, and remove user accounts.<br>"
+        "<small>Changes take effect immediately in the current session.</small></div>",
         unsafe_allow_html=True,
     )
 
@@ -212,24 +203,23 @@ with col_left:
         del_clicked = st.button("🗑 Delete selected", key="del_btn")
     with t4:
         st.markdown(
-            "<div style='font-family:Capriola,sans-serif;font-size:12px;"
-            "color:#555;padding:8px 0;text-align:right;'>"
+            f"<div style='font-family:Capriola,sans-serif;font-size:12px;"
+            f"color:#555;padding:8px 0;text-align:right;'>"
             f"{len(User._user_registry)} user(s) in system</div>",
             unsafe_allow_html=True,
         )
 
     # table header
-    st.markdown("""
-    <div class="tbl-head">
-      <span>☐</span>
-      <span>#</span>
-      <span>Name</span>
-      <span>Email</span>
-      <span>Role</span>
-      <span>Created</span>
-      <span>Status</span>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='tbl-head'>"
+        "<span>☐</span><span>#</span><span>Name</span>"
+        "<span>Email</span><span>Role</span>"
+        "<span>Created</span><span>Status</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
+    # table rows
     users_list   = _users_to_display()
     selected_ids = []
 
@@ -243,7 +233,6 @@ with col_left:
     else:
         for u in users_list:
             chk_col, data_col = st.columns([0.07, 0.93])
-
             with chk_col:
                 checked = st.checkbox(
                     "", key=f"chk_{u['user_id']}",
@@ -252,29 +241,27 @@ with col_left:
             if checked:
                 selected_ids.append(u["user_id"])
 
-            st_class = "status-active" if u["status"] == "Active" else "status-disabled"
-            st_icon  = "● Active" if u["status"] == "Active" else "● Disabled"
+            st_class = "status-active"   if u["status"] == "Active" else "status-disabled"
+            st_icon  = "● Active"        if u["status"] == "Active" else "● Disabled"
 
             with data_col:
+                # Pure HTML row — matches the tbl-head grid columns exactly
                 st.markdown(
-                    f"""
-                    <div class="tbl-data-row" style="
-                        display:grid;
-                        grid-template-columns: 44px 1fr 1.5fr 80px 100px 80px;
-                        align-items:center;
-                        padding:9px 8px 9px 0;
-                    ">
-                      <span style="font-size:13px;color:#222;"><b>{u['id']}</b></span>
-                      <span style="font-size:13px;color:#1a1a1a;font-weight:600;">{u['name']}</span>
-                      <span style="font-size:12px;color:#444;">{u['email']}</span>
-                      <span style="font-size:12px;color:#333;">{u['role']}</span>
-                      <span style="font-size:12px;color:#555;">{u['created']}</span>
-                      <span class="{st_class}">{st_icon}</span>
-                    </div>
-                    """,
+                    f"<div class='tbl-data-row' style='"
+                    f"display:grid;"
+                    f"grid-template-columns:44px 1fr 1.5fr 80px 100px 80px;"
+                    f"align-items:center;padding:9px 8px 9px 0;'>"
+                    f"<span style='font-size:13px;color:#222;'><b>{escape(str(u['id']))}</b></span>"
+                    f"<span style='font-size:13px;color:#1a1a1a;font-weight:600;'>{escape(u['name'])}</span>"
+                    f"<span style='font-size:12px;color:#444;'>{escape(u['email'])}</span>"
+                    f"<span style='font-size:12px;color:#333;'>{escape(u['role'])}</span>"
+                    f"<span style='font-size:12px;color:#555;'>{escape(u['created'])}</span>"
+                    f"<span class='{st_class}'>{st_icon}</span>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
 
+    # delete action
     if del_clicked:
         if not selected_ids:
             st.warning("Select at least one user to delete.")
@@ -294,19 +281,15 @@ with col_left:
 # ═══════════════════════════════════════════════════════════════════════════
 # RIGHT: Add New User form
 #
-# HOW THE CARD WORKS:
-# The invisible .form-card-marker div is injected here as the very first
-# element in col_right. The CSS rule:
-#   [data-testid="column"]:has(.form-card-marker) { ...card styles... }
-# targets the Streamlit column container itself — the element that
-# genuinely contains all the widgets below it in the real DOM.
-# No open/close div wrapping. No extra white rectangles.
+# Card is applied via CSS :has(.form-card-marker) on the column element.
+# .form-card-marker injected FIRST — triggers card style on col_right.
+# All form widgets follow below it inside the same column.
+# No open/close <div> split across st.markdown() calls.
 # ═══════════════════════════════════════════════════════════════════════════
 with col_right:
-    # Marker injected FIRST — triggers the :has() card CSS on this column
+    # Marker FIRST — triggers :has() card CSS on this column
     st.markdown('<div class="form-card-marker"></div>', unsafe_allow_html=True)
 
-    # Form content — all sits inside the card-styled column
     st.markdown('<div class="add-form-title">Add New User</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="field-hint">Full Name</div>', unsafe_allow_html=True)
@@ -378,7 +361,7 @@ with col_right:
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
     st.markdown(
         "<div style='font-family:Capriola,sans-serif;font-size:12px;"
-        "color:#555;line-height:1.6;'>"
+        "color:#666;line-height:1.6;'>"
         "New users can log in immediately.<br>"
         "User data is stored in memory for this session.</div>",
         unsafe_allow_html=True,
