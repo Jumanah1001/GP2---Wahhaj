@@ -276,7 +276,7 @@ def require_login(redirect: str = "pages/1_Login.py") -> None:
 def render_top_home_button(target_page: str = "pages/2_Home.py") -> None:
     left, center, right = st.columns([10.2, 0.8, 1.0])
     with right:
-        if st.button("🏠", use_container_width=True,
+        if st.button(":material/home:", use_container_width=True,
                      key=f"home_btn_{target_page}"):
             st.switch_page(target_page)
 

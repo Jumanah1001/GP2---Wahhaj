@@ -125,7 +125,7 @@ st.markdown('<div class="results-card">', unsafe_allow_html=True)
 # toolbar
 del_col, filt_col, exp_col, add_col = st.columns([1, 1, 1, 1])
 with del_col:
-    st.button("🗑 Delete")
+    st.button(":material/delete: Delete")
 with filt_col:
     st.button("⚙ Filters")
 with exp_col:
