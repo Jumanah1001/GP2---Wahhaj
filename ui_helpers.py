@@ -226,31 +226,35 @@ def save_selected_location(
     latitude: float,
     longitude: float,
     aoi_half_deg: float = _AOI_HALF_DEGREE,
+    explicit_aoi: "AOI | None" = None,
 ) -> dict:
     location_dict = {
         "location_name": location_name.strip(),
-        "latitude":      latitude,
-        "longitude":     longitude,
+        "latitude": latitude,
+        "longitude": longitude,
     }
     st.session_state["selected_location"] = location_dict
-    st.session_state["location_saved"]    = True
+    st.session_state["location_saved"] = True
 
-    aoi: AOI = (
-        longitude - aoi_half_deg,
-        latitude  - aoi_half_deg,
-        longitude + aoi_half_deg,
-        latitude  + aoi_half_deg,
-    )
+    if explicit_aoi is not None:
+        aoi: AOI = explicit_aoi
+    else:
+        aoi: AOI = (
+            longitude - aoi_half_deg,
+            latitude - aoi_half_deg,
+            longitude + aoi_half_deg,
+            latitude + aoi_half_deg,
+        )
+
     st.session_state["aoi"] = aoi
 
     dataset = Dataset(
-        name   = location_name.strip(),
-        aoi    = aoi,
-        images = [],
+        name=location_name.strip(),
+        aoi=aoi,
+        images=[],
     )
     st.session_state["dataset"] = dataset
     return location_dict
-
 
 def get_aoi() -> "AOI | None":
     return st.session_state.get("aoi")

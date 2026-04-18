@@ -635,22 +635,25 @@ class Report:
             lon_step = (lon_max - lon_min) / cols
             lat_step = (lat_max - lat_min) / rows
             CELL_ALPHA = 140  # ~55% opacity like page 6
-
             for r in range(rows):
                 for c in range(cols):
                     sc = float(data[r, c])
                     if not np.isfinite(sc) or sc == nodata:
                         continue
-                    # cell geographic bounds (origin lower-left)
+
+                    # row 0 = north, last row = south
                     cell_lon_min = lon_min + c * lon_step
                     cell_lon_max = cell_lon_min + lon_step
-                    cell_lat_min = lat_min + r * lat_step
-                    cell_lat_max = cell_lat_min + lat_step
+
+                    cell_lat_max = lat_max - r * lat_step
+                    cell_lat_min = cell_lat_max - lat_step
+
                     # pixel bounds
                     px0 = lon_to_px(cell_lon_min)
                     px1 = lon_to_px(cell_lon_max)
                     py0 = lat_to_px(cell_lat_max)   # top
                     py1 = lat_to_px(cell_lat_min)   # bottom
+
                     rgb = _score_rgb(sc)
                     fill_rgba = rgb + (CELL_ALPHA,)
                     border_rgba = tuple(int(v * 0.75) for v in rgb) + (200,)

@@ -1,11 +1,12 @@
 """
-6_Suitability_Heatmap.py — WAHHAJ Real Suitability Heatmap
-==========================================================
-Professional user-facing map page:
-- Real satellite / street basemap
-- Suitability-colored AOI regions
-- Selected site marker
-- Top areas highlighted on the real map
+6_Suitability_Heatmap.py — WAHHAJ AOI Suitability Heatmap
+=========================================================
+Single-site heatmap page:
+- Shows suitability distribution ONLY inside the selected AOI
+- No "top areas" / no multiple-site comparison
+- Selected location is shown as the centre marker
+- Ranked comparison between multiple saved sites should be handled
+  later in Ranked Results, not here
 """
 
 import json
@@ -53,6 +54,11 @@ ICO_WARN = _i(
     "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z",
     c="#E2534A",
     ep='<line x1="12" y1="9" x2="12" y2="13" stroke="#E2534A" stroke-width="2"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="#E2534A" stroke-width="2"/>',
+)
+ICO_INFO = _i(
+    "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z",
+    c="#0070FF",
+    ep='<line x1="12" y1="10" x2="12" y2="16" stroke="#0070FF" stroke-width="2"/><line x1="12" y1="7" x2="12.01" y2="7" stroke="#0070FF" stroke-width="2"/>',
 )
 
 
@@ -172,7 +178,6 @@ def _extract_cells(suitability, aoi, selected_row=None, selected_col=None):
     rows, cols = data.shape
 
     cells = []
-    zone_idx = 1
 
     for row in range(rows):
         for col in range(cols):
@@ -187,7 +192,7 @@ def _extract_cells(suitability, aoi, selected_row=None, selected_col=None):
 
             cells.append(
                 {
-                    "zone_name": f"Zone {zone_idx:02d}",
+                    "cell_name": f"Cell ({row+1}, {col+1})",
                     "row": row,
                     "col": col,
                     "score": score,
@@ -201,28 +206,19 @@ def _extract_cells(suitability, aoi, selected_row=None, selected_col=None):
                     "is_selected": is_selected,
                 }
             )
-            zone_idx += 1
 
     return cells
 
 
-def _top_areas(cells, exclude_row=None, exclude_col=None, k=3):
-    ranked = sorted(cells, key=lambda x: x["score"], reverse=True)
-
-    picked = []
-    area_names = ["Area A", "Area B", "Area C", "Area D"]
-
-    for cell in ranked:
-        if exclude_row is not None and exclude_col is not None:
-            if cell["row"] == exclude_row and cell["col"] == exclude_col:
-                continue
-        picked.append(cell)
-        if len(picked) == k:
-            break
-
-    for idx, item in enumerate(picked):
-        item["area_name"] = area_names[idx] if idx < len(area_names) else f"Area {idx+1}"
-    return picked
+def _aoi_bounds_polygon(aoi):
+    lon_min, lat_min, lon_max, lat_max = aoi
+    return [
+        [lat_min, lon_min],
+        [lat_min, lon_max],
+        [lat_max, lon_max],
+        [lat_max, lon_min],
+        [lat_min, lon_min],
+    ]
 
 
 def _find_existing_page(candidates=None, contains=None):
@@ -245,7 +241,7 @@ def _find_existing_page(candidates=None, contains=None):
     return None
 
 
-def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
+def _build_map_html(aoi, cells, selected_site, selected_cell_info, height=720):
     map_id = f"wahhaj_map_{uuid4().hex}"
 
     lon_min, lat_min, lon_max, lat_max = aoi
@@ -253,7 +249,7 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
 
     polygons = [
         {
-            "name": c["zone_name"],
+            "name": c["cell_name"],
             "score_text": c["score_text"],
             "suitability": c["suitability"],
             "fillColor": c["fill_color"],
@@ -264,17 +260,6 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
         for c in cells
     ]
 
-    labels = [
-        {
-            "name": a["area_name"],
-            "score_text": a["score_text"],
-            "suitability": a["suitability"],
-            "lat": a["lat"],
-            "lon": a["lon"],
-        }
-        for a in top_areas
-    ]
-
     selected = {
         "name": selected_site["name"],
         "score_text": selected_site["score_text"],
@@ -283,10 +268,13 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
         "lon": selected_site["lon"],
     }
 
+    aoi_outline = _aoi_bounds_polygon(aoi)
+
     polygons_json = json.dumps(polygons, ensure_ascii=False)
-    labels_json = json.dumps(labels, ensure_ascii=False)
     selected_json = json.dumps(selected, ensure_ascii=False)
     bounds_json = json.dumps(bounds)
+    aoi_outline_json = json.dumps(aoi_outline)
+    selected_cell_json = json.dumps(selected_cell_info, ensure_ascii=False)
 
     html = f"""
 <!DOCTYPE html>
@@ -328,7 +316,7 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
             padding: 12px 14px;
             box-shadow: 0 4px 18px rgba(0,0,0,0.12);
             line-height: 1.35;
-            min-width: 210px;
+            min-width: 230px;
         }}
 
         .wahhaj-legend-title {{
@@ -356,22 +344,7 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
         .wahhaj-legend-note {{
             font-size: 11px;
             color: #666;
-        }}
-
-        .area-label {{
-            background: transparent;
-            border: none;
-        }}
-
-        .area-label div {{
-            background: rgba(31,56,100,0.95);
-            color: #fff;
-            padding: 5px 8px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+            margin-bottom: 4px;
         }}
 
         .selected-label {{
@@ -409,9 +382,10 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
 
     <script>
         const polygons = {polygons_json};
-        const labels = {labels_json};
         const selected = {selected_json};
         const bounds = {bounds_json};
+        const aoiOutline = {aoi_outline_json};
+        const selectedCell = {selected_cell_json};
 
         const map = L.map("{map_id}", {{
             zoomControl: true,
@@ -449,7 +423,7 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
 
         polygons.forEach((p) => {{
             const popupHtml = `
-                <div class="wahhaj-popup-title">${{p.isSelected ? "Selected Site Area" : p.name}}</div>
+                <div class="wahhaj-popup-title">${{p.isSelected ? "Selected internal cell" : "Internal analysis cell"}}</div>
                 <div class="wahhaj-popup-line">Score: ${{p.score_text}}</div>
                 <div class="wahhaj-popup-line">Suitability: ${{p.suitability}}</div>
             `;
@@ -464,22 +438,16 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
             .addTo(map);
         }});
 
-        labels.forEach((a) => {{
-            const labelIcon = L.divIcon({{
-                className: "area-label",
-                html: `<div>${{a.name}}</div>`,
-                iconSize: [70, 24],
-                iconAnchor: [35, 12]
-            }});
-
-            L.marker([a.lat, a.lon], {{ icon: labelIcon }})
-                .bindPopup(`
-                    <div class="wahhaj-popup-title">${{a.name}}</div>
-                    <div class="wahhaj-popup-line">Score: ${{a.score_text}}</div>
-                    <div class="wahhaj-popup-line">Suitability: ${{a.suitability}}</div>
-                `)
-                .addTo(map);
-        }});
+        L.polygon(aoiOutline, {{
+            color: "#0070FF",
+            weight: 2.8,
+            fillOpacity: 0
+        }})
+        .bindPopup(`
+            <div class="wahhaj-popup-title">Selected analysis boundary</div>
+            <div class="wahhaj-popup-line">This heatmap represents internal suitability distribution within the chosen AOI.</div>
+        `)
+        .addTo(map);
 
         const selectedIcon = L.divIcon({{
             className: "selected-label",
@@ -497,7 +465,7 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
         }})
         .bindPopup(`
             <div class="wahhaj-popup-title">${{selected.name}}</div>
-            <div class="wahhaj-popup-line">Score: ${{selected.score_text}}</div>
+            <div class="wahhaj-popup-line">Selected cell score: ${{selected.score_text}}</div>
             <div class="wahhaj-popup-line">Suitability: ${{selected.suitability}}</div>
         `)
         .addTo(map);
@@ -510,13 +478,15 @@ def _build_map_html(aoi, cells, selected_site, top_areas, height=720):
         legend.onAdd = function() {{
             const div = L.DomUtil.create("div", "wahhaj-legend");
             div.innerHTML = `
-                <div class="wahhaj-legend-title">Suitability Scale</div>
+                <div class="wahhaj-legend-title">AOI Suitability Scale</div>
                 <div class="wahhaj-legend-bar"></div>
                 <div class="wahhaj-legend-scale">
                     <span>Low</span>
                     <span>High</span>
                 </div>
-                <div class="wahhaj-legend-note">Blue marker = selected site</div>
+                <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
+                <div class="wahhaj-legend-note">Blue marker = selected location center</div>
+                <div class="wahhaj-legend-note">Blue-bordered cell = selected internal cell</div>
             `;
             return div;
         }};
@@ -587,6 +557,38 @@ st.markdown(
 .state-msg.error{
     color:#B91C1C;
 }
+.summary-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:14px;
+    margin-top:16px;
+}
+.summary-card{
+    background:rgba(255,255,255,0.88);
+    border-radius:18px;
+    padding:16px 18px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.06);
+    border:1px solid rgba(255,255,255,0.6);
+}
+.summary-label{
+    font-family:'Capriola',sans-serif;
+    font-size:12px;
+    color:#7a7a7a;
+    margin-bottom:8px;
+}
+.summary-value{
+    font-family:'Capriola',sans-serif;
+    font-size:18px;
+    color:#1F3864;
+    line-height:1.4;
+}
+.summary-sub{
+    font-family:'Capriola',sans-serif;
+    font-size:12px;
+    color:#666;
+    margin-top:6px;
+    line-height:1.5;
+}
 .actions-wrap{
     margin-top:10px;
 }
@@ -609,6 +611,11 @@ div.stButton>button:disabled{
 div[data-testid="stVerticalBlock"]{
     gap:.35rem;
 }
+@media (max-width: 900px){
+    .summary-grid{
+        grid-template-columns:1fr;
+    }
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -619,7 +626,7 @@ render_top_home_button("pages/2_Home.py")
 st.markdown('<div class="wrap">', unsafe_allow_html=True)
 st.markdown('<div class="page-title">Suitability Heatmap</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="page-subtitle">Explore the suitability distribution across the selected area</div>',
+    '<div class="page-subtitle">This map shows the internal suitability distribution within the single selected analysis boundary</div>',
     unsafe_allow_html=True,
 )
 
@@ -678,13 +685,11 @@ cells = _extract_cells(
 if not cells:
     st.markdown(
         "<div class='state-panel'>"
-        f"<div class='state-msg error'>{ICO_WARN} No valid suitability regions were found for rendering.</div>"
+        f"<div class='state-msg error'>{ICO_WARN} No valid suitability cells were found for rendering.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
     st.stop()
-
-top_areas = _top_areas(cells, exclude_row=selected_row, exclude_col=selected_col, k=3)
 
 selected_score = selected_site.get("score")
 if selected_score is None:
@@ -698,10 +703,18 @@ selected_info = {
     "lon": lon,
 }
 
+lon_min, lat_min, lon_max, lat_max = aoi
+selected_cell_info = {
+    "row": selected_row + 1,
+    "col": selected_col + 1,
+    "score_text": _safe_pct(selected_score),
+    "suitability": selected_info["suitability"],
+}
+
 # ── render real map ───────────────────────────────────────────
 st.markdown(
     "<div class='map-panel'>"
-    f"<div class='map-title'>{ICO_MAP} Suitability Heatmap</div>",
+    f"<div class='map-title'>{ICO_MAP} AOI Suitability Distribution</div>",
     unsafe_allow_html=True,
 )
 
@@ -710,7 +723,7 @@ components.html(
         aoi=aoi,
         cells=cells,
         selected_site=selected_info,
-        top_areas=top_areas,
+        selected_cell_info=selected_cell_info,
         height=720,
     ),
     height=740,
@@ -719,11 +732,34 @@ components.html(
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# ── summary ───────────────────────────────────────────────────
+st.markdown(
+    f"""
+    <div class="summary-grid">
+        <div class="summary-card">
+            <div class="summary-label">Selected Site</div>
+            <div class="summary-value">{site_display_name}</div>
+            <div class="summary-sub">The analysis shown on the map belongs to this one selected site boundary only.</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Selected Internal Cell</div>
+            <div class="summary-value">{selected_cell_info["score_text"]}</div>
+            <div class="summary-sub">
+                Suitability: {selected_cell_info["suitability"]}<br>
+                Grid position: row {selected_cell_info["row"]}, col {selected_cell_info["col"]}
+            </div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">AOI Boundary</div>
+            <div class="summary-value">({lat_min:.4f}, {lon_min:.4f}) → ({lat_max:.4f}, {lon_max:.4f})</div>
+            <div class="summary-sub">Blue outline on the map represents the exact boundary chosen by the user.</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 # ── navigation ────────────────────────────────────────────────
-# FIX: added "pages/8_Final_Report.py" as first candidate — this is the
-# actual file in this project version. The old list only contained names
-# like "pages/7_Final_Report.py" which do not exist, permanently
-# disabling the Generate Report button.
 report_page = _find_existing_page(
     candidates=[
         "pages/8_Final_Report.py",

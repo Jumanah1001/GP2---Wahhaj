@@ -1,36 +1,21 @@
 """
 pages/3_Choose_Location.py
 ==========================
-Let the user pick or confirm a location before uploading UAV data.
+Choose a site by drawing an AOI rectangle on the map.
 
-Changes in this version
------------------------
-1. Backend/internal text removed from the user-facing UI:
-   - "Backend objects ready ✓" (was developer debug text)
-   - "AOI that will be saved" with raw coordinate values (backend detail)
-   - "AOI: (lon, lat, lon, lat)" box after save (internal)
-   Replaced with a clean, user-friendly confirmation message.
-
-2. Next button visual fix:
-   - Before save: grey background (#d0d0d0), dark text (#666), clearly disabled.
-   - After save: blue (#0070FF), white text, enabled.
-   Explicit CSS overrides Streamlit's semi-transparent disabled style.
-
-3. Text input color improved:
-   - Input text is now color:#1a1a1a (near-black on #F0EEEE background).
-   - Contrast ratio ~12:1 — clearly readable.
-
-4. Candidate info box simplified:
-   - Shows Name / Latitude / Longitude clearly.
-   - No raw AOI math or backend object references.
-
-5. Status badge simplified:
-   - Shows "✅ Location saved: <Name>" or "No location selected yet".
-   - No backend coordinates shown.
+Behavior in this version
+------------------------
+1. Search/manual coordinates are used to move the map to the desired place.
+2. The user must draw a rectangle (AOI) on the map.
+3. The saved analysis location is the drawn AOI itself.
+4. The AOI centre is calculated automatically and stored as the selected location.
+5. All downstream analysis uses this saved AOI.
 """
-import streamlit as st
-import requests as _req
+
 import logging
+
+import requests as _req
+import streamlit as st
 
 from ui_helpers import (
     init_state,
@@ -38,9 +23,9 @@ from ui_helpers import (
     render_bg,
     render_footer,
     render_top_home_button,
-    save_selected_location,
     require_login,
 )
+from Wahhaj.FeatureExtractor import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -50,33 +35,33 @@ apply_global_style()
 render_bg()
 require_login()
 
-# ── page-level working state ───────────────────────────────────────────────────
+# ── page-level working state ────────────────────────────────────────────────
 for _k, _v in {
-    "loc_candidate_lat":  None,
-    "loc_candidate_lon":  None,
+    "loc_candidate_lat": None,
+    "loc_candidate_lon": None,
     "loc_candidate_name": "",
-    "loc_search_input":   "",
-    "loc_map_lat":        24.7136,
-    "loc_map_lon":        46.6753,
+    "loc_search_input": "",
+    "loc_map_lat": 24.7136,
+    "loc_map_lon": 46.6753,
+    "loc_candidate_aoi": None,          # draft rectangle before save
+    "loc_rectangle_drawn": False,
 }.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# ── optional Folium ────────────────────────────────────────────────────────────
+# ── optional Folium ─────────────────────────────────────────────────────────
 try:
     import folium
+    from folium.plugins import Draw
     from streamlit_folium import st_folium
     _FOLIUM = True
 except ImportError:
     _FOLIUM = False
 
-# ── geocoding helpers ──────────────────────────────────────────────────────────
+# ── geocoding helpers ───────────────────────────────────────────────────────
 def _geocode(query: str):
     """
     Returns (lat, lon, name) where name is ALWAYS the user's typed query string.
-    We force Accept-Language: en so Nominatim returns English even if the
-    browser/server locale is Arabic, but we still prefer the user's own text
-    as the display name to guarantee it stays in English.
     """
     try:
         r = _req.get(
@@ -84,7 +69,7 @@ def _geocode(query: str):
             params={"q": query, "format": "json", "limit": 1},
             headers={
                 "User-Agent": "WAHHAJ-App/1.0",
-                "Accept-Language": "en",          # force English from Nominatim
+                "Accept-Language": "en",
             },
             timeout=8,
         )
@@ -92,7 +77,6 @@ def _geocode(query: str):
         results = r.json()
         if results:
             res = results[0]
-            # Always use the query the user typed — never the Arabic display_name.
             return float(res["lat"]), float(res["lon"]), query.strip()
     except Exception as e:
         logger.debug("Geocode error: %s", e)
@@ -102,8 +86,6 @@ def _geocode(query: str):
 def _reverse_geocode(lat: float, lon: float):
     """
     English-only reverse geocode.
-    Uses accept-language=en as a query param (more reliable than header)
-    so Nominatim always returns English place names.
     """
     try:
         r = _req.get(
@@ -112,7 +94,7 @@ def _reverse_geocode(lat: float, lon: float):
                 "lat": lat,
                 "lon": lon,
                 "format": "jsonv2",
-                "accept-language": "en",   # query param forces English output
+                "accept-language": "en",
                 "namedetails": 1,
             },
             headers={"User-Agent": "WAHHAJ-App/1.0"},
@@ -120,7 +102,6 @@ def _reverse_geocode(lat: float, lon: float):
         )
         r.raise_for_status()
         result = r.json()
-        # Use English name from namedetails if available, fallback to display_name
         name_details = result.get("namedetails", {})
         english_name = (
             name_details.get("name:en")
@@ -133,7 +114,64 @@ def _reverse_geocode(lat: float, lon: float):
     return None
 
 
-# ── page style ─────────────────────────────────────────────────────────────────
+def _center_from_aoi(aoi):
+    lon_min, lat_min, lon_max, lat_max = aoi
+    return (
+        round((lat_min + lat_max) / 2.0, 6),
+        round((lon_min + lon_max) / 2.0, 6),
+    )
+
+
+def _aoi_from_drawn_geojson(geojson):
+    """
+    Convert drawn rectangle/polygon GeoJSON into:
+    (lon_min, lat_min, lon_max, lat_max)
+    """
+    try:
+        geometry = geojson.get("geometry", {})
+        coords = geometry.get("coordinates", [])
+        if not coords:
+            return None
+
+        ring = coords[0]
+        lons = [pt[0] for pt in ring]
+        lats = [pt[1] for pt in ring]
+
+        lon_min = round(min(lons), 6)
+        lon_max = round(max(lons), 6)
+        lat_min = round(min(lats), 6)
+        lat_max = round(max(lats), 6)
+
+        if lon_max <= lon_min or lat_max <= lat_min:
+            return None
+
+        return (lon_min, lat_min, lon_max, lat_max)
+    except Exception as e:
+        logger.debug("AOI extraction error: %s", e)
+        return None
+
+
+def _persist_selected_location(location_name: str, latitude: float, longitude: float, aoi):
+    """
+    Save selected location + explicit AOI to session_state and dataset.
+    """
+    location_dict = {
+        "location_name": location_name.strip(),
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+    st.session_state["selected_location"] = location_dict
+    st.session_state["location_saved"] = True
+    st.session_state["aoi"] = aoi
+    st.session_state["dataset"] = Dataset(
+        name=location_name.strip(),
+        aoi=aoi,
+        images=[],
+    )
+    return location_dict
+
+
+# ── page style ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 .location-page { position:relative; z-index:2; padding-top:10px; }
@@ -150,7 +188,7 @@ st.markdown("""
     color:#1a1a1a; font-weight:600; margin-bottom:8px;
 }
 
-/* ── input text: dark on light background ── */
+/* ── input text ── */
 div[data-testid="stTextInput"] input {
     background:#F0EEEE !important;
     color:#1a1a1a !important;
@@ -166,7 +204,7 @@ div[data-testid="stTextInput"] input::placeholder {
     color:#999 !important;
 }
 
-/* ── candidate info card ── */
+/* ── info card ── */
 .coord-card {
     background:rgba(255,255,255,0.88);
     border-radius:12px;
@@ -181,7 +219,7 @@ div[data-testid="stTextInput"] input::placeholder {
 }
 .coord-card b { color:#0070FF; }
 
-/* ── save confirmation (user-friendly, no backend data) ── */
+/* ── save confirmation ── */
 .save-confirm {
     background:#dcfce7;
     border-radius:10px;
@@ -203,7 +241,15 @@ div[data-testid="stTextInput"] input::placeholder {
     text-align:center;
 }
 
-/* — Next button — same size in both states — */
+.area-hint {
+    font-family:'Capriola',sans-serif;
+    font-size:12px;
+    color:#555;
+    margin-top:8px;
+    line-height:1.6;
+}
+
+/* ── buttons ── */
 div.stButton > button:disabled,
 div.stButton > button[disabled],
 div.stButton > button:not(:disabled) {
@@ -217,7 +263,6 @@ div.stButton > button:not(:disabled) {
     box-sizing:border-box !important;
 }
 
-/* disabled = grey */
 div.stButton > button:disabled,
 div.stButton > button[disabled] {
     background:#d0d0d0 !important;
@@ -228,7 +273,6 @@ div.stButton > button[disabled] {
     opacity:1 !important;
 }
 
-/* enabled = blue */
 div.stButton > button:not(:disabled) {
     background:#0070FF !important;
     color:white !important;
@@ -240,7 +284,6 @@ div.stButton > button:not(:disabled):hover {
     background:#005fe0;
 }
 
-/* ── hint below disabled Next ── */
 .next-hint {
     font-family:'Capriola',sans-serif;
     font-size:11px;
@@ -256,7 +299,7 @@ render_top_home_button("pages/2_Home.py")
 st.markdown('<div class="location-page">', unsafe_allow_html=True)
 st.markdown('<div class="page-title">Choose Location</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="page-subtitle">Select the target site before uploading the UAV image</div>',
+    '<div class="page-subtitle">Search the site, then draw the analysis boundary on the map</div>',
     unsafe_allow_html=True,
 )
 
@@ -267,7 +310,6 @@ left_col, right_col = st.columns([1.1, 0.9], gap="large")
 # ═══════════════════════════════════════════════════════════════════════════
 with left_col:
 
-    # ── search bar ────────────────────────────────────────────────────────
     st.markdown('<div class="search-label">Search Location</div>', unsafe_allow_html=True)
     sc1, sc2 = st.columns([4, 1])
     with sc1:
@@ -287,30 +329,35 @@ with left_col:
         if result:
             lat, lon, display = result
             st.session_state.update({
-                "loc_candidate_lat":  lat,
-                "loc_candidate_lon":  lon,
-                "loc_candidate_name": search_val.strip(),
+                "loc_candidate_lat": lat,
+                "loc_candidate_lon": lon,
+                "loc_candidate_name": display,
                 "loc_map_lat": lat,
                 "loc_map_lon": lon,
             })
-            st.success(f"✅ Found: {search_val.strip()}")
+            st.success(f"✅ Found: {display}")
         else:
-            st.warning("Location not found. Try a different name or enter coordinates manually.")
+            st.warning("Location not found. Try another name or enter coordinates manually.")
 
-    # ── manual coord entry ────────────────────────────────────────────────
     with st.expander("Enter coordinates manually", expanded=False):
         mc1, mc2 = st.columns(2)
         with mc1:
             m_lat = st.number_input(
-                "Latitude", min_value=-90.0, max_value=90.0,
+                "Latitude",
+                min_value=-90.0,
+                max_value=90.0,
                 value=float(st.session_state["loc_candidate_lat"] or 24.7136),
-                format="%.6f", key="manual_lat",
+                format="%.6f",
+                key="manual_lat",
             )
         with mc2:
             m_lon = st.number_input(
-                "Longitude", min_value=-180.0, max_value=180.0,
+                "Longitude",
+                min_value=-180.0,
+                max_value=180.0,
                 value=float(st.session_state["loc_candidate_lon"] or 46.6753),
-                format="%.6f", key="manual_lon",
+                format="%.6f",
+                key="manual_lon",
             )
         m_name = st.text_input(
             "Location name",
@@ -320,65 +367,99 @@ with left_col:
         )
         if st.button("Use these coordinates", key="use_manual_btn"):
             st.session_state.update({
-                "loc_candidate_lat":  m_lat,
-                "loc_candidate_lon":  m_lon,
-                "loc_candidate_name": m_name or f"{m_lat:.4f}°N, {m_lon:.4f}°E",
+                "loc_candidate_lat": m_lat,
+                "loc_candidate_lon": m_lon,
+                "loc_candidate_name": m_name.strip() or f"{m_lat:.4f}°N, {m_lon:.4f}°E",
                 "loc_map_lat": m_lat,
                 "loc_map_lon": m_lon,
             })
             st.rerun()
 
-    # ── candidate info — user-friendly, no backend details ───────────────
-    c_lat  = st.session_state["loc_candidate_lat"]
-    c_lon  = st.session_state["loc_candidate_lon"]
+    c_lat = st.session_state["loc_candidate_lat"]
+    c_lon = st.session_state["loc_candidate_lon"]
     c_name = st.session_state["loc_candidate_name"]
+    c_aoi = st.session_state.get("loc_candidate_aoi")
 
-    if c_lat is not None and c_lon is not None:
+    if c_aoi is not None:
+        lon_min, lat_min, lon_max, lat_max = c_aoi
         display_name = c_name.strip() if c_name else f"{c_lat:.4f}°N, {c_lon:.4f}°E"
         st.markdown(
             f"""
             <div class="coord-card">
                 📍 <b>{display_name}</b><br>
-                Latitude:&nbsp;&nbsp; {c_lat:.5f}°<br>
-                Longitude: {c_lon:.5f}°
+                Center Latitude:&nbsp;&nbsp; {c_lat:.5f}°<br>
+                Center Longitude: {c_lon:.5f}°<br>
+                Boundary selected successfully
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif c_lat is not None and c_lon is not None:
+        display_name = c_name.strip() if c_name else f"{c_lat:.4f}°N, {c_lon:.4f}°E"
+        st.markdown(
+            f"""
+            <div class="coord-card">
+                📍 <b>{display_name}</b><br>
+                Center Latitude:&nbsp;&nbsp; {c_lat:.5f}°<br>
+                Center Longitude: {c_lon:.5f}°<br>
+                Draw a rectangle on the map to define the analysis area
             </div>
             """,
             unsafe_allow_html=True,
         )
     else:
-        st.info("Search for a location or click on the map to select a point.")
+        st.info("Search for a location, then draw the analysis boundary on the map.")
+
+    st.markdown(
+        """
+        <div class="area-hint">
+            1) Search or move to your site<br>
+            2) Use the rectangle tool on the map<br>
+            3) Draw the exact analysis boundary<br>
+            4) Save the location
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.write("")
 
-    # ── action buttons ────────────────────────────────────────────────────
     b1, b2, b3 = st.columns(3)
 
     with b1:
         if st.button("Save Location", use_container_width=True, key="save_loc_btn"):
-            if c_lat is None or c_lon is None:
-                st.warning("Please search for a location or enter coordinates first.")
+            if c_aoi is None:
+                st.warning("Please draw the analysis boundary rectangle on the map first.")
             else:
                 name = (c_name or "").strip() or f"{c_lat:.4f}°N, {c_lon:.4f}°E"
-                save_selected_location(
-                    location_name = name,
-                    latitude      = c_lat,
-                    longitude     = c_lon,
-                    aoi_half_deg  = 0.1,
+                _persist_selected_location(
+                    location_name=name,
+                    latitude=c_lat,
+                    longitude=c_lon,
+                    aoi=c_aoi,
                 )
                 st.rerun()
 
     with b2:
         if st.button("Clear", use_container_width=True, key="clear_loc_btn"):
-            for _k in ("loc_candidate_lat", "loc_candidate_lon",
-                       "loc_candidate_name", "loc_search_input"):
-                st.session_state[_k] = None if "lat" in _k or "lon" in _k else ""
+            for _k in (
+                "loc_candidate_lat",
+                "loc_candidate_lon",
+                "loc_candidate_name",
+                "loc_search_input",
+                "loc_candidate_aoi",
+            ):
+                st.session_state[_k] = None if "lat" in _k or "lon" in _k or _k == "loc_candidate_aoi" else ""
+            st.session_state["loc_rectangle_drawn"] = False
             st.session_state["loc_map_lat"] = 24.7136
             st.session_state["loc_map_lon"] = 46.6753
             st.session_state["selected_location"] = {
-                "location_name": "", "latitude": None, "longitude": None
+                "location_name": "",
+                "latitude": None,
+                "longitude": None,
             }
             st.session_state["location_saved"] = False
-            st.session_state["aoi"]     = None
+            st.session_state["aoi"] = None
             st.session_state["dataset"] = None
             st.rerun()
 
@@ -386,7 +467,6 @@ with left_col:
         location_is_saved = st.session_state.get("location_saved", False)
 
         if not location_is_saved:
-            # ── Grey, disabled — user cannot proceed ───────────────────
             st.button(
                 "Next →",
                 use_container_width=True,
@@ -394,33 +474,30 @@ with left_col:
                 disabled=True,
             )
             st.markdown(
-                '<div class="next-hint">Save a location first</div>',
+                '<div class="next-hint">Save an analysis boundary first</div>',
                 unsafe_allow_html=True,
             )
         else:
-            # ── Blue, enabled — user can proceed ───────────────────────
             if st.button("Next →", use_container_width=True, key="next_loc_btn"):
                 st.switch_page("pages/4_Upload_Image.py")
 
-    # ── status — clean, no backend data ─────────────────────────────────
     st.write("")
-    saved_loc  = st.session_state.get("selected_location", {})
+    saved_loc = st.session_state.get("selected_location", {})
     saved_name = saved_loc.get("location_name", "")
 
     if st.session_state.get("location_saved") and saved_name:
-        # User-friendly confirmation — no coordinates, no AOI, no backend text
         st.markdown(
             f'<div class="save-confirm">✅ Location saved: {saved_name}</div>',
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            '<div class="status-note">No location selected yet</div>',
+            '<div class="status-note">No analysis boundary saved yet</div>',
             unsafe_allow_html=True,
         )
 
 # ═══════════════════════════════════════════════════════════════════════════
-# RIGHT: map (Folium) or fallback
+# RIGHT: map
 # ═══════════════════════════════════════════════════════════════════════════
 with right_col:
     if not _FOLIUM:
@@ -434,7 +511,7 @@ with right_col:
                  border:1px solid #ddd;">
                 Interactive map requires:<br>
                 <code>pip install streamlit-folium folium requests</code><br><br>
-                Use the Search box or manual coordinate entry on the left.
+                Search for a place, then draw the analysis boundary rectangle.
             </div>
             """,
             unsafe_allow_html=True,
@@ -450,57 +527,86 @@ with right_col:
             tiles="OpenStreetMap",
         )
 
-        aoi = st.session_state.get("aoi")
-        if aoi:
-            lon_min, lat_min, lon_max, lat_max = aoi
+        Draw(
+            export=False,
+            draw_options={
+                "polyline": False,
+                "polygon": False,
+                "circle": False,
+                "circlemarker": False,
+                "marker": False,
+                "rectangle": True,
+            },
+            edit_options={"edit": False, "remove": True},
+        ).add_to(m)
+
+        draft_aoi = st.session_state.get("loc_candidate_aoi")
+        saved_aoi = st.session_state.get("aoi")
+
+        # Show draft AOI if present, otherwise show saved AOI
+        aoi_to_show = draft_aoi if draft_aoi is not None else saved_aoi
+        if aoi_to_show:
+            lon_min, lat_min, lon_max, lat_max = aoi_to_show
             folium.Rectangle(
                 bounds=[[lat_min, lon_min], [lat_max, lon_max]],
-                color="#0070FF", fill=True, fill_opacity=0.12,
-                tooltip="Selected area",
+                color="#0070FF",
+                fill=True,
+                fill_opacity=0.12,
+                tooltip="Analysis boundary",
             ).add_to(m)
 
         loc = st.session_state.get("selected_location", {})
-        if loc.get("latitude") and loc.get("longitude"):
+        if loc.get("latitude") is not None and loc.get("longitude") is not None:
             folium.Marker(
                 location=[loc["latitude"], loc["longitude"]],
                 tooltip=loc.get("location_name", "Selected"),
                 icon=folium.Icon(color="blue", icon="sun", prefix="fa"),
             ).add_to(m)
+        elif c_lat is not None and c_lon is not None:
+            folium.Marker(
+                location=[c_lat, c_lon],
+                tooltip=c_name or "Candidate center",
+                icon=folium.Icon(color="blue", icon="info-sign"),
+            ).add_to(m)
 
         map_data = st_folium(
-            m, width="100%", height=400,
-            returned_objects=["last_clicked"],
+            m,
+            width="100%",
+            height=400,
+            returned_objects=["last_active_drawing"],
             key="loc_main_map",
         )
 
-        if map_data and map_data.get("last_clicked"):
-            click   = map_data["last_clicked"]
-            clk_lat = click["lat"]
-            clk_lon = click["lng"]
-            prev_lat = st.session_state.get("loc_candidate_lat")
-            prev_lon = st.session_state.get("loc_candidate_lon")
-            if (prev_lat is None or prev_lon is None
-                    or abs(clk_lat - prev_lat) > 0.00001
-                    or abs(clk_lon - prev_lon) > 0.00001):
-                # 1) user typed a search term → use it as-is (always English)
-                # 2) user clicked map directly → reverse geocode forced to English
-                # 3) geocode fails → fall back to plain coordinates
-                user_typed = st.session_state.get("loc_search_input", "").strip()
-                if user_typed:
-                    resolved_name = user_typed
-                else:
-                    resolved_name = (
-                        _reverse_geocode(clk_lat, clk_lon)
-                        or f"{round(clk_lat, 4)}N, {round(clk_lon, 4)}E"
-                    )
-                st.session_state.update({
-                    "loc_candidate_lat":  round(clk_lat, 6),
-                    "loc_candidate_lon":  round(clk_lon, 6),
-                    "loc_candidate_name": resolved_name,
-                })
-                st.rerun()
+        if map_data and map_data.get("last_active_drawing"):
+            drawn = map_data["last_active_drawing"]
+            drawn_aoi = _aoi_from_drawn_geojson(drawn)
 
-        st.caption("Click the map to pick a location, or use the search box.")
+            if drawn_aoi is not None:
+                prev_aoi = st.session_state.get("loc_candidate_aoi")
+                if prev_aoi != drawn_aoi:
+                    center_lat, center_lon = _center_from_aoi(drawn_aoi)
+
+                    user_typed = st.session_state.get("loc_search_input", "").strip()
+                    if user_typed:
+                        resolved_name = user_typed
+                    else:
+                        resolved_name = (
+                            _reverse_geocode(center_lat, center_lon)
+                            or f"AOI Center ({center_lat:.4f}, {center_lon:.4f})"
+                        )
+
+                    st.session_state.update({
+                        "loc_candidate_aoi": drawn_aoi,
+                        "loc_rectangle_drawn": True,
+                        "loc_candidate_lat": center_lat,
+                        "loc_candidate_lon": center_lon,
+                        "loc_candidate_name": resolved_name,
+                        "loc_map_lat": center_lat,
+                        "loc_map_lon": center_lon,
+                    })
+                    st.rerun()
+
+        st.caption("Search the area, then use the rectangle tool on the map to define the analysis boundary.")
 
 st.markdown("</div>", unsafe_allow_html=True)
 render_footer()

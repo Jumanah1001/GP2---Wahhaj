@@ -301,7 +301,9 @@ class AnalysisRun:
         x_res = (lon_max - lon_min) / cols
         y_res = (lat_max - lat_min) / rows
 
-        x_origin, y_origin = lon_min, lat_min
+        x_origin = lon_min
+        y_origin = lat_max
+
 
         # Flatten and sort valid pixels
         flat_scores = data.copy()
@@ -324,7 +326,7 @@ class AnalysisRun:
 
             # Convert pixel centre → geographic coordinates
             lon = x_origin + (c + 0.5) * x_res
-            lat = y_origin + (r + 0.5) * y_res   # y_res is negative (north-up)
+            lat = y_origin - (r + 0.5) * y_res
 
             candidates.append(SiteCandidate(
                 score    = score,
