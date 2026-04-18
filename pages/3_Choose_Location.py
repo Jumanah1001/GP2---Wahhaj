@@ -24,6 +24,7 @@ from ui_helpers import (
     render_footer,
     render_top_home_button,
     require_login,
+    ui_icon
 )
 from Wahhaj.FeatureExtractor import Dataset
 
@@ -335,7 +336,7 @@ with left_col:
                 "loc_map_lat": lat,
                 "loc_map_lon": lon,
             })
-            st.success(f"✅ Found: {display}")
+            st.success(f"Found: {display}")
         else:
             st.warning("Location not found. Try another name or enter coordinates manually.")
 
@@ -386,7 +387,7 @@ with left_col:
         st.markdown(
             f"""
             <div class="coord-card">
-                📍 <b>{display_name}</b><br>
+                {ui_icon('location', 16, '#0070FF')} <b>{display_name}</b><br>
                 Center Latitude:&nbsp;&nbsp; {c_lat:.5f}°<br>
                 Center Longitude: {c_lon:.5f}°<br>
                 Boundary selected successfully
@@ -399,7 +400,7 @@ with left_col:
         st.markdown(
             f"""
             <div class="coord-card">
-                📍 <b>{display_name}</b><br>
+                {ui_icon('location', 16, '#0070FF')} <b>{display_name}</b><br>
                 Center Latitude:&nbsp;&nbsp; {c_lat:.5f}°<br>
                 Center Longitude: {c_lon:.5f}°<br>
                 Draw a rectangle on the map to define the analysis area

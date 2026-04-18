@@ -51,7 +51,7 @@ require_login()
 # ── top-right home button ──────────────────────────────────────────────────
 top_l, top_r = st.columns([9, 1])
 with top_r:
-    if st.button("🏠"):
+    if st.button(":material/home:"):
         st.switch_page("pages/2_Home.py")
 
 # ── page-level CSS ─────────────────────────────────────────────────────────
@@ -179,6 +179,7 @@ st.markdown("""
     padding: 5px 12px; font-size: 12px; font-weight: 700;
     font-family: 'Capriola', sans-serif; margin-bottom: 6px;
 }
+            
 </style>
 """, unsafe_allow_html=True)
 
@@ -351,7 +352,13 @@ if ranked:
     </div>
     """, unsafe_allow_html=True)
 
-    medals = ["🥇", "🥈", "🥉"]
+    medals = [
+    
+    '<span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(180deg,#FDE68A 0%,#F59E0B 100%);color:#7C2D12;font-weight:700;font-family:Capriola,sans-serif;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.10);">1</span>',
+    '<span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(180deg,#F3F4F6 0%,#9CA3AF 100%);color:#1F2937;font-weight:700;font-family:Capriola,sans-serif;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.10);">2</span>',
+    '<span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(180deg,#FED7AA 0%,#C2410C 100%);color:#7C2D12;font-weight:700;font-family:Capriola,sans-serif;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,0.10);">3</span>',
+
+]
     cols   = st.columns(min(5, len(ranked)))
     for i, (col, c) in enumerate(zip(cols, ranked[:5])):
         s_pct = c.score * 100
