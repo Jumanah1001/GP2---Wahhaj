@@ -26,7 +26,7 @@ Why :has() works here:
 import streamlit as st
 from html import escape
 
-from ui_helpers import init_state, apply_global_style, render_bg, require_login
+from ui_helpers import init_state, apply_global_style, render_bg, require_login, ui_icon
 
 st.set_page_config(page_title="User Management", layout="wide")
 init_state()
@@ -37,13 +37,13 @@ require_login()
 # ── top bar ───────────────────────────────────────────────────────────────────
 top_l, top_r = st.columns([9, 1])
 with top_r:
-    if st.button("🏠"):
+    if st.button(":material/home:"):
         st.switch_page("pages/2_Home.py")
 
 # ── Admin-only guard ──────────────────────────────────────────────────────────
 user_role = st.session_state.get("user_role", "")
 if user_role != "Admin":
-    st.error("🚫 Access denied. This page requires Admin role.")
+    st.error("Access denied. This page requires Admin role.")
     st.stop()
 
 from Wahhaj.User import User, UserRole
@@ -200,7 +200,7 @@ with col_left:
     # toolbar
     t1, _, t4 = st.columns([1.2, 1.2, 1.6])
     with t1:
-        del_clicked = st.button("🗑 Delete selected", key="del_btn")
+        del_clicked = st.button(":material/delete: Delete selected", key="del_btn")
     with t4:
         st.markdown(
             f"<div style='font-family:Capriola,sans-serif;font-size:12px;"
@@ -272,7 +272,7 @@ with col_left:
             else:
                 for uid in selected_ids:
                     User._user_registry.pop(uid, None)
-                st.success(f"✅ Deleted {len(selected_ids)} user(s).")
+                st.success(f"Deleted {len(selected_ids)} user(s).")
                 st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)  # admin-card
@@ -355,7 +355,7 @@ with col_right:
                 is_active       = True,
             )
             User._user_registry[new_user.userId] = new_user
-            st.success(f"✅ **{new_username.strip()}** added as {new_role}.")
+            st.success(f"**{new_username.strip()}** added as {new_role}.")
             st.rerun()
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)

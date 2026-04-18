@@ -39,6 +39,7 @@ from ui_helpers import (
     show_logo,
     logout_user,
     get_analysis_history,
+    ui_icon,
 )
 
 st.set_page_config(page_title="Home", layout="wide")
@@ -260,14 +261,14 @@ with top_r:
     if is_admin:
         btn_a, btn_b = st.columns([1, 1])
         with btn_a:
-            if st.button("👥 Admin", use_container_width=True):
+            if st.button(":material/group: Admin", use_container_width=True):
                 st.switch_page("pages/9_Add_New_User.py")
         with btn_b:
-            if st.button("🚪 Logout", use_container_width=True):
+            if st.button(":material/logout: Logout", use_container_width=True):
                 logout_user()
                 st.switch_page("pages/1_Login.py")
     else:
-        if st.button("🚪 Logout", use_container_width=True):
+        if st.button(":material/logout: Logout", use_container_width=True):
             logout_user()
             st.switch_page("pages/1_Login.py")
 
@@ -299,7 +300,7 @@ with acc_col:
     badge_cls = "badge-role badge-admin" if is_admin else "badge-role"
     st.markdown(
         f"<div class='card-box'>"
-        f"<div class='card-title'>👤 Account</div>"
+        f"<div class='card-title'>{ui_icon('account', 18, '#1a1a1a')} &nbsp;Account</div>"
         f"<div class='card-text'>"
         f"<b>{escape(username)}</b><br>"
         f"{escape(user_email)}<br>"
@@ -327,7 +328,7 @@ with stat_col:
 
     st.markdown(
         f"<div class='card-box'>"
-        f"<div class='card-title'>📊 Status</div>"
+        f"<div class='card-title'>{ui_icon('status', 18, '#1a1a1a')} &nbsp;Status</div>"
         f"<div class='card-text'>"
         f"Saved analyses: <b>{total}</b><br>"
         f"{progress_text}<br>"
@@ -356,7 +357,10 @@ st.write("")
 
 # Section heading lives ABOVE the card (same pattern as page-title/page-subtitle
 # sitting outside panels in 5_Analysis.py)
-st.markdown('<div class="section-title">📋 Analysis History</div>', unsafe_allow_html=True)
+st.markdown(
+    f'<div class="section-title">{ui_icon("history", 18, "#1a1a1a")} &nbsp;Analysis History</div>',
+    unsafe_allow_html=True,
+)
 st.markdown(
     '<div class="section-sub">All previous site analyses — newest first</div>',
     unsafe_allow_html=True,
@@ -374,7 +378,7 @@ with st.container():
         # ── Empty state: pure HTML block — same pattern as state-panel in 5_Analysis.py
         st.markdown(
             "<div class='empty-history'>"
-            "<div style='font-size:32px;margin-bottom:10px;'>📭</div>"
+            f"<div style='margin-bottom:10px;'>{ui_icon('history', 28, '#888')}</div>"
             "<div style='font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px;'>"
             "No analysis results yet</div>"
             "<div style='color:#555;font-family:Capriola,sans-serif;'>"
@@ -442,13 +446,13 @@ with st.container():
 
                 if rec == "Highly Recommended":
                     badge_cls = "hb-high"
-                    badge_label = "🏆 Highly Recommended"
+                    badge_label = "Highly Recommended"
                 elif rec == "Recommended":
                     badge_cls = "hb-rec"
-                    badge_label = "✅ Recommended"
+                    badge_label = "Recommended"
                 else:
                     badge_cls = "hb-review"
-                    badge_label = "⚠️ Review Required"
+                    badge_label = "Review Required"
 
                 # ── Candidate table rows HTML ──────────────────────────────────
                 if ranked:
@@ -485,7 +489,7 @@ with st.container():
                     "<div class='hist-entry'>"
 
                     # Location + date
-                    f"<div class='hist-location'>📍 {loc_label}</div>"
+                    f"<div class='hist-location'>{ui_icon('location', 16, '#0070FF')} &nbsp;{loc_label}</div>"
                     f"<div class='hist-meta'>{analysed}</div>"
 
                     # Score + badge + candidate count

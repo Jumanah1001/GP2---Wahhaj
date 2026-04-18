@@ -322,6 +322,65 @@ def render_bg() -> None:
         unsafe_allow_html=True,
     )
 
+def ui_icon(name: str, sz: int = 16, color: str = "currentColor") -> str:
+    icons = {
+        "home": (
+            '<path d="M3 10.5L12 3l9 7.5"/>'
+            '<path d="M5 9.5V21h14V9.5"/>'
+        ),
+        "logout": (
+            '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>'
+            '<path d="M16 17l5-5-5-5"/>'
+            '<path d="M21 12H9"/>'
+        ),
+        "users": (
+            '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>'
+            '<circle cx="9" cy="7" r="4"/>'
+            '<path d="M22 21v-2a4 4 0 0 0-3-3.87"/>'
+            '<path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
+        ),
+        "account": (
+            '<circle cx="12" cy="8" r="4"/>'
+            '<path d="M4 21a8 8 0 0 1 16 0"/>'
+        ),
+        "status": (
+            '<path d="M4 19h16"/>'
+            '<path d="M7 16V8"/>'
+            '<path d="M12 16V5"/>'
+            '<path d="M17 16v-4"/>'
+        ),
+        "history": (
+            '<path d="M3 12a9 9 0 1 0 3-6.7"/>'
+            '<path d="M3 3v6h6"/>'
+            '<path d="M12 7v5l3 3"/>'
+        ),
+        "location": (
+            '<path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/>'
+            '<circle cx="12" cy="10" r="2.5"/>'
+        ),
+        "delete": (
+            '<path d="M3 6h18"/>'
+            '<path d="M8 6V4h8v2"/>'
+            '<path d="M19 6l-1 14H6L5 6"/>'
+        ),
+        "warning": (
+            '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>'
+            '<path d="M12 9v4"/>'
+            '<path d="M12 17h.01"/>'
+        ),
+        "check": (
+            '<path d="M20 6L9 17l-5-5"/>'
+        ),
+    }
+
+    body = icons.get(name, icons["check"])
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{sz}" height="{sz}" '
+        f'viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" '
+        f'stroke-linecap="round" stroke-linejoin="round" '
+        f'style="display:inline-block;vertical-align:middle;flex-shrink:0;">'
+        f"{body}</svg>"
+    )
 
 def apply_global_style() -> None:
     st.markdown(
