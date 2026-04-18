@@ -38,6 +38,7 @@ from ui_helpers import (
     render_bg,
     show_logo,
     logout_user,
+    render_footer,
     get_analysis_history,
 )
 
@@ -505,13 +506,5 @@ with st.container():
                 )
                 st.markdown(entry_html, unsafe_allow_html=True)
 
-# ── Footer ────────────────────────────────────────────────────────────────────
-st.markdown(
-    "<div class='footer-note'>"
-    "Danah Alhamdi - Walah Alshwaier - Ruba Aletri - Jumanah Alharbi"
-    "<br>© 2025 By PNU's CS Students"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
 st.markdown("</div>", unsafe_allow_html=True)  # home-page
+render_footer()

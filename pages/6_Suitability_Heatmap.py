@@ -732,32 +732,6 @@ components.html(
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ── summary ───────────────────────────────────────────────────
-st.markdown(
-    f"""
-    <div class="summary-grid">
-        <div class="summary-card">
-            <div class="summary-label">Selected Site</div>
-            <div class="summary-value">{site_display_name}</div>
-            <div class="summary-sub">The analysis shown on the map belongs to this one selected site boundary only.</div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-label">Selected Internal Cell</div>
-            <div class="summary-value">{selected_cell_info["score_text"]}</div>
-            <div class="summary-sub">
-                Suitability: {selected_cell_info["suitability"]}<br>
-                Grid position: row {selected_cell_info["row"]}, col {selected_cell_info["col"]}
-            </div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-label">AOI Boundary</div>
-            <div class="summary-value">({lat_min:.4f}, {lon_min:.4f}) → ({lat_max:.4f}, {lon_max:.4f})</div>
-            <div class="summary-sub">Blue outline on the map represents the exact boundary chosen by the user.</div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 # ── navigation ────────────────────────────────────────────────
 report_page = _find_existing_page(
@@ -779,7 +753,7 @@ with c1:
         st.switch_page("pages/5_Analysis.py")
 with c2:
     if st.button(
-        "Generate Final Report",
+        "View Final Report",
         use_container_width=True,
         disabled=report_page is None,
     ):
