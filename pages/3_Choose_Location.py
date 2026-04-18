@@ -72,34 +72,62 @@ except ImportError:
 
 # ── geocoding helpers ──────────────────────────────────────────────────────────
 def _geocode(query: str):
+    """
+    Returns (lat, lon, name) where name is ALWAYS the user's typed query string.
+    We force Accept-Language: en so Nominatim returns English even if the
+    browser/server locale is Arabic, but we still prefer the user's own text
+    as the display name to guarantee it stays in English.
+    """
     try:
         r = _req.get(
             "https://nominatim.openstreetmap.org/search",
             params={"q": query, "format": "json", "limit": 1},
-            headers={"User-Agent": "WAHHAJ-App/1.0"},
+            headers={
+                "User-Agent": "WAHHAJ-App/1.0",
+                "Accept-Language": "en",          # force English from Nominatim
+            },
             timeout=8,
         )
         r.raise_for_status()
         results = r.json()
         if results:
             res = results[0]
-            return float(res["lat"]), float(res["lon"]), res["display_name"]
+            # Always use the query the user typed — never the Arabic display_name.
+            return float(res["lat"]), float(res["lon"]), query.strip()
     except Exception as e:
         logger.debug("Geocode error: %s", e)
     return None
 
 
 def _reverse_geocode(lat: float, lon: float):
+    """
+    English-only reverse geocode.
+    Uses accept-language=en as a query param (more reliable than header)
+    so Nominatim always returns English place names.
+    """
     try:
         r = _req.get(
             "https://nominatim.openstreetmap.org/reverse",
-            params={"lat": lat, "lon": lon, "format": "jsonv2"},
+            params={
+                "lat": lat,
+                "lon": lon,
+                "format": "jsonv2",
+                "accept-language": "en",   # query param forces English output
+                "namedetails": 1,
+            },
             headers={"User-Agent": "WAHHAJ-App/1.0"},
             timeout=8,
         )
         r.raise_for_status()
         result = r.json()
-        return result.get("display_name")
+        # Use English name from namedetails if available, fallback to display_name
+        name_details = result.get("namedetails", {})
+        english_name = (
+            name_details.get("name:en")
+            or result.get("display_name")
+            or ""
+        )
+        return english_name.strip() or None
     except Exception as e:
         logger.debug("Reverse geocode error: %s", e)
     return None
@@ -454,15 +482,21 @@ with right_col:
             if (prev_lat is None or prev_lon is None
                     or abs(clk_lat - prev_lat) > 0.00001
                     or abs(clk_lon - prev_lon) > 0.00001):
-                reverse_name = _reverse_geocode(clk_lat, clk_lon)
+                # 1) user typed a search term → use it as-is (always English)
+                # 2) user clicked map directly → reverse geocode forced to English
+                # 3) geocode fails → fall back to plain coordinates
+                user_typed = st.session_state.get("loc_search_input", "").strip()
+                if user_typed:
+                    resolved_name = user_typed
+                else:
+                    resolved_name = (
+                        _reverse_geocode(clk_lat, clk_lon)
+                        or f"{round(clk_lat, 4)}N, {round(clk_lon, 4)}E"
+                    )
                 st.session_state.update({
                     "loc_candidate_lat":  round(clk_lat, 6),
                     "loc_candidate_lon":  round(clk_lon, 6),
-                    "loc_candidate_name": (
-                        reverse_name or
-                        st.session_state.get("loc_search_input") or
-                        f"{clk_lat:.4f}°N, {clk_lon:.4f}°E"
-                    ),
+                    "loc_candidate_name": resolved_name,
                 })
                 st.rerun()
 
