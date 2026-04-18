@@ -3,19 +3,23 @@ pages/2_Home.py
 ===============
 Dashboard home page — shown after login.
 
-Fixes in this version
----------------------
-1. Analysis History card:
-   - The .hist-card CSS class was defined but never applied to any HTML element.
-   - The history section (title, filter bar, and all entries) is now wrapped
-     inside a single white card container (.history-section-card).
-   - The card uses the same visual style as the other cards in the project:
-     white background, rounded corners, subtle shadow, border.
-   - All text inside the card uses dark colors (#1a1a1a, #222, #333) on the
-     white background — no faint or low-contrast text.
-   - The expander label text and internal content text are explicitly styled
-     to be dark and readable.
-   - Empty state is also inside the card.
+Changes in this version
+-----------------------
+1. Analysis History section replaces the single "Analysis Progress" card.
+   - Shows ALL saved analysis runs (saved by save_analysis_to_history()).
+   - Each entry shows: location, date, top score, recommendation, candidates.
+   - User can expand any entry to see ranked candidates table.
+
+2. Working filter: filter by recommendation level (All / Highly Recommended /
+   Recommended / Review Required) and by location name search.
+
+3. All dead navigation links corrected:
+   - pages/10_Add_New_User.py  →  pages/9_Add_New_User.py
+   - pages/8_Ranked_Results.py →  pages/7_Ranked_Results.py
+   - pages/6_Run_Analysis.py   →  pages/5_Analysis.py
+   - pages/4_Environmental_Data.py → pages/4_Upload_Image.py
+
+4. Text contrast improved throughout (dark text on light backgrounds).
 """
 import streamlit as st
 from ui_helpers import (
@@ -44,7 +48,7 @@ has_run      = st.session_state.get("analysis_run") is not None
 has_location = st.session_state.get("location_saved", False)
 has_image    = bool(st.session_state.get("uploaded_image_name", ""))
 
-history = get_analysis_history()
+history = get_analysis_history()  # newest first
 
 # ── styles ────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -58,13 +62,11 @@ st.markdown("""
     font-family:'Capriola',sans-serif; font-size:14px;
     color:#444; text-align:center; margin-bottom:18px;
 }
-
-/* ── Account / Status cards ── */
 .card-box {
-    background:rgba(255,255,255,0.92); border-radius:18px;
+    background:rgba(255,255,255,0.88); border-radius:18px;
     box-shadow:0 4px 16px rgba(0,0,0,0.06);
     padding:20px 22px; min-height:130px;
-    border:1px solid rgba(220,220,220,0.7);
+    border:1px solid rgba(220,220,220,0.6);
 }
 .card-title {
     font-family:'Capriola',sans-serif; font-size:18px;
@@ -72,7 +74,7 @@ st.markdown("""
 }
 .card-text {
     font-family:'Capriola',sans-serif; font-size:14px;
-    color:#222; line-height:1.9;
+    color:#333; line-height:1.9;
 }
 .badge-role {
     display:inline-block; padding:2px 10px; border-radius:12px;
@@ -80,118 +82,99 @@ st.markdown("""
     background:#dcfce7; color:#166534;
 }
 .badge-admin { background:#ffedd5; color:#9a3412; }
-
-/* ── History section heading ── */
 .section-title {
-    font-family:'Capriola',sans-serif; font-size:20px; font-weight:700;
-    color:#1a1a1a; margin-bottom:2px; margin-top:0;
+    font-family:'Capriola',sans-serif; font-size:22px; font-weight:700;
+    color:#1a1a1a; margin-bottom:4px; margin-top:20px;
 }
 .section-sub {
     font-family:'Capriola',sans-serif; font-size:13px; color:#555;
-    margin-bottom:0;
+    margin-bottom:16px;
 }
 
-/* ── History section outer card (FIX: was missing) ── */
-.history-section-card {
-    background:rgba(255,255,255,0.92);
-    border-radius:18px;
-    box-shadow:0 4px 16px rgba(0,0,0,0.06);
-    padding:24px 26px;
-    border:1px solid rgba(220,220,220,0.7);
-    margin-top:8px;
+/* history entry card */
+.hist-card {
+    background:rgba(255,255,255,0.92); border-radius:14px;
+    padding:16px 20px; margin-bottom:12px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.06);
+    border:1px solid #e4e4e4;
 }
-
-/* ── Count line inside history card ── */
-.history-count {
-    font-family:'Capriola',sans-serif; font-size:12px;
-    color:#555; margin-bottom:12px;
+.hist-location {
+    font-family:'Capriola',sans-serif; font-size:17px; font-weight:700;
+    color:#1a1a1a; margin-bottom:4px;
 }
-
-/* ── Score + badge row inside each expander ── */
+.hist-meta {
+    font-family:'Capriola',sans-serif; font-size:12px; color:#666;
+    margin-bottom:10px;
+}
 .hist-score {
     font-family:'Capriola',sans-serif; font-size:26px; font-weight:800;
     color:#0070FF; display:inline-block; margin-right:12px;
 }
 .hist-badge {
     display:inline-block; padding:4px 12px; border-radius:20px;
-    font-size:12px; font-weight:700; vertical-align:middle;
+    font-size:12px; font-weight:700;
+    vertical-align:middle;
 }
 .hb-high   { background:#dcfce7; color:#166534; }
 .hb-rec    { background:#fef9c3; color:#713f12; }
 .hb-review { background:#ffe4e6; color:#9f1239; }
 
-/* ── Candidates count text inside expander ── */
-.cands-text {
-    font-family:'Capriola',sans-serif; font-size:13px; color:#333;
-}
-
-/* ── Ranked mini-table ── */
-.mini-tbl {
-    width:100%; border-collapse:collapse;
-    font-size:12px; margin-top:10px;
-}
+/* ranked mini table */
+.mini-tbl { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
 .mini-tbl th {
-    background:#f4f4f4; color:#333; font-weight:700;
-    padding:7px 10px; text-align:left; border-bottom:1px solid #e0e0e0;
+    background:#f4f4f4; color:#444; font-weight:700;
+    padding:6px 10px; text-align:left; border-bottom:1px solid #e0e0e0;
 }
 .mini-tbl td {
-    padding:7px 10px; color:#222; border-bottom:1px solid #f0f0f0;
+    padding:6px 10px; color:#222; border-bottom:1px solid #f0f0f0;
 }
 .mini-tbl tr:last-child td { border-bottom:none; }
 
-/* ── Empty state inside history card ── */
+/* empty state */
 .empty-history {
-    padding:28px 16px; text-align:center;
+    background:rgba(255,255,255,0.75); border-radius:14px;
+    padding:32px; text-align:center;
     font-family:'Capriola',sans-serif; font-size:14px; color:#555;
-    border:1px dashed #ccc; border-radius:10px;
+    border:1px dashed #ccc; margin-top:8px;
 }
 
-/* ── Streamlit expander: make sure text is dark inside ── */
-[data-testid="stExpander"] summary p,
-[data-testid="stExpander"] summary span {
-    color:#1a1a1a !important;
-    font-family:'Capriola',sans-serif !important;
-    font-size:14px !important;
-    font-weight:600 !important;
-}
-[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
-    color:#222 !important;
+/* filter bar */
+.filter-bar {
+    background:rgba(255,255,255,0.88); border-radius:10px;
+    padding:12px 16px; margin-bottom:14px;
+    border:1px solid #e4e4e4;
+    display:flex; gap:12px; align-items:center; flex-wrap:wrap;
 }
 
-/* ── Buttons ── */
+.footer-note {
+    font-family:'Capriola',sans-serif; font-size:13px; color:#555;
+    text-align:center; margin-top:28px; line-height:1.6;
+}
 div.stButton > button {
     background:#0070FF; color:white; border:none; border-radius:6px;
     min-height:44px; font-family:'Capriola',sans-serif; font-size:15px;
     box-shadow:3px 4px 4px rgba(0,0,0,0.14);
 }
 div.stButton > button:hover { background:#005fe0; color:white; }
-
-/* ── Filter inputs ── */
 div[data-testid="stTextInput"] input {
     background:#F0EEEE !important; color:#1a1a1a !important;
     border:1px solid #ccc !important; border-radius:6px !important;
     font-size:14px !important;
 }
 div[data-testid="stTextInput"] input::placeholder { color:#999 !important; }
-
-/* ── Footer ── */
-.footer-note {
-    font-family:'Capriola',sans-serif; font-size:13px; color:#555;
-    text-align:center; margin-top:28px; line-height:1.6;
-}
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="home-page">', unsafe_allow_html=True)
 
-# ── top bar ───────────────────────────────────────────────────────────────────
+# ── top bar: logout + admin ───────────────────────────────────────────────────
 top_l, top_mid, top_r = st.columns([5, 3, 2])
 with top_r:
     if is_admin:
         btn_a, btn_b = st.columns([1, 1])
         with btn_a:
             if st.button("👥 Admin", use_container_width=True):
-                st.switch_page("pages/9_Add_New_User.py")
+                st.switch_page("pages/9_Add_New_User.py")  # FIXED
         with btn_b:
             if st.button("🚪 Logout", use_container_width=True):
                 logout_user()
@@ -221,7 +204,7 @@ with start_col:
 
 st.write("")
 
-# ── account + status cards ────────────────────────────────────────────────────
+# ── top info strip: account + quick status ────────────────────────────────────
 acc_col, stat_col = st.columns([1.2, 1.8], gap="large")
 
 with acc_col:
@@ -241,7 +224,7 @@ with acc_col:
     )
 
 with stat_col:
-    total    = len(history)
+    total = len(history)
     loc_name = st.session_state.get("selected_location", {}).get("location_name", "")
     last_loc = f"Last: {loc_name}" if loc_name else "No active location"
 
@@ -262,7 +245,7 @@ with stat_col:
             <div class="card-text">
                 Saved analyses: <b>{total}</b><br>
                 {progress_text}<br>
-                <span style="font-size:12px;color:#666;">{last_loc}</span>
+                <span style="font-size:12px;color:#888;">{last_loc}</span>
             </div>
         </div>
         """,
@@ -272,32 +255,26 @@ with stat_col:
     st.write("")
     if has_run:
         if st.button("Continue to Results →", use_container_width=True):
-            st.switch_page("pages/7_Ranked_Results.py")
+            st.switch_page("pages/7_Ranked_Results.py")  # FIXED
     elif has_location or has_image:
         if st.button("Continue Pipeline →", use_container_width=True):
             if has_image:
-                st.switch_page("pages/5_Analysis.py")
+                st.switch_page("pages/5_Analysis.py")    # FIXED
             else:
                 st.switch_page("pages/4_Upload_Image.py")
 
 st.write("")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ANALYSIS HISTORY — wrapped in a white card (FIX)
+# ANALYSIS HISTORY — full saved results with working filter
 # ═══════════════════════════════════════════════════════════════════════════
-
-# Section heading sits OUTSIDE the card so it reads as a page-level label
 st.markdown('<div class="section-title">📋 Analysis History</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="section-sub">All previous site analyses — newest first</div>',
     unsafe_allow_html=True,
 )
 
-# FIX: open the white card wrapper BEFORE any history content
-st.markdown('<div class="history-section-card">', unsafe_allow_html=True)
-
 if not history:
-    # Empty state is inside the card
     st.markdown(
         """
         <div class="empty-history">
@@ -305,7 +282,7 @@ if not history:
             <div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">
                 No analysis results yet
             </div>
-            <div style="color:#444;">
+            <div style="color:#666;">
                 Run your first solar site analysis to see results here.
             </div>
         </div>
@@ -313,7 +290,7 @@ if not history:
         unsafe_allow_html=True,
     )
 else:
-    # ── filter controls ──────────────────────────────────────────────────
+    # ── Working filter bar ────────────────────────────────────────────────
     f_col1, f_col2 = st.columns([2, 1.5])
     with f_col1:
         filter_search = st.text_input(
@@ -331,36 +308,38 @@ else:
             key="hist_rec_filter",
         )
 
-    # ── apply filter ──────────────────────────────────────────────────────
-    filtered = history
+    # ── Apply filter ──────────────────────────────────────────────────────
+    filtered_history = history
     if filter_search.strip():
         q = filter_search.strip().lower()
-        filtered = [e for e in filtered if q in e.get("location_name", "").lower()]
+        filtered_history = [
+            e for e in filtered_history
+            if q in e.get("location_name", "").lower()
+        ]
     if filter_rec != "All":
-        filtered = [e for e in filtered if e.get("recommendation", "") == filter_rec]
+        filtered_history = [
+            e for e in filtered_history
+            if e.get("recommendation", "") == filter_rec
+        ]
 
-    if not filtered:
-        st.markdown(
-            "<div style='padding:16px 0;font-family:Capriola,sans-serif;"
-            "font-size:14px;color:#555;'>"
-            "No results match your filter.</div>",
-            unsafe_allow_html=True,
-        )
+    if not filtered_history:
+        st.info("No results match your filter. Try changing the search or category.")
     else:
         st.markdown(
-            f'<div class="history-count">'
-            f'Showing {len(filtered)} of {len(history)} result(s)</div>',
+            f'<div style="font-family:Capriola,sans-serif;font-size:12px;color:#666;'
+            f'margin-bottom:10px;">'
+            f'Showing {len(filtered_history)} of {len(history)} result(s)</div>',
             unsafe_allow_html=True,
         )
 
-        for entry in filtered:
-            loc_name  = entry.get("location_name", "Unknown")
-            analysed  = entry.get("analysed_at", "—")
-            top_score = entry.get("top_score", 0.0)
-            score_pct = f"{top_score * 100:.1f}%"
-            rec       = entry.get("recommendation", "—")
-            n_cands   = entry.get("candidate_count", 0)
-            ranked    = entry.get("ranked", [])
+        for entry in filtered_history:
+            loc_name   = entry.get("location_name", "Unknown")
+            analysed   = entry.get("analysed_at", "—")
+            top_score  = entry.get("top_score", 0.0)
+            score_pct  = f"{top_score * 100:.1f}%"
+            rec        = entry.get("recommendation", "—")
+            n_cands    = entry.get("candidate_count", 0)
+            ranked     = entry.get("ranked", [])
 
             if rec == "Highly Recommended":
                 badge_cls = "hb-high"
@@ -372,18 +351,16 @@ else:
                 badge_cls = "hb-review"
                 rec_icon  = "⚠️"
 
-            with st.expander(
-                f"📍 {loc_name}  —  {score_pct}  —  {analysed}",
-                expanded=False,
-            ):
-                # Score + badge + candidate count
+            with st.expander(f"📍 {loc_name}  —  {score_pct}  —  {analysed}", expanded=False):
+                # Header row
                 st.markdown(
                     f"""
                     <div style="display:flex;align-items:center;gap:16px;
                          margin-bottom:14px;flex-wrap:wrap;">
                         <span class="hist-score">{score_pct}</span>
                         <span class="hist-badge {badge_cls}">{rec_icon} {rec}</span>
-                        <span class="cands-text">{n_cands} candidate(s) found</span>
+                        <span style="font-family:Capriola,sans-serif;font-size:13px;
+                                     color:#555;">{n_cands} candidate(s) found</span>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -423,9 +400,6 @@ else:
                 else:
                     st.caption("No detailed candidate data available for this run.")
 
-# FIX: close the white card wrapper AFTER all history content
-st.markdown("</div>", unsafe_allow_html=True)  # history-section-card
-
 # ── footer ────────────────────────────────────────────────────────────────────
 st.markdown(
     """
@@ -438,4 +412,4 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown("</div>", unsafe_allow_html=True)  # home-page
+st.markdown("</div>", unsafe_allow_html=True)
