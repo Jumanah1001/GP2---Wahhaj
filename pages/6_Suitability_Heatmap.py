@@ -1,12 +1,11 @@
 """
-6_Suitability_Heatmap.py — WAHHAJ AOI Suitability Heatmap
-=========================================================
-Single-site heatmap page:
-- Shows suitability distribution ONLY inside the selected AOI
-- No "top areas" / no multiple-site comparison
-- Selected location is shown as the centre marker
-- Ranked comparison between multiple saved sites should be handled
-  later in Ranked Results, not here
+6_Suitability_Heatmap.py — WAHHAJ Site Suitability Map
+======================================================
+Single-site map page:
+- Shows ONE overall color for the selected AOI
+- No internal grid coloring
+- No multiple-site comparison here
+- Multiple colored sites should be handled later in Ranked Results
 """
 
 import json
@@ -25,7 +24,7 @@ from ui_helpers import (
     render_top_home_button,
 )
 
-st.set_page_config(page_title="Suitability Heatmap - WAHHAJ", layout="wide")
+st.set_page_config(page_title="Site Suitability Map - WAHHAJ", layout="wide")
 init_state()
 apply_global_style()
 render_bg()
@@ -55,15 +54,10 @@ ICO_WARN = _i(
     c="#E2534A",
     ep='<line x1="12" y1="9" x2="12" y2="13" stroke="#E2534A" stroke-width="2"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="#E2534A" stroke-width="2"/>',
 )
-ICO_INFO = _i(
-    "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z",
-    c="#0070FF",
-    ep='<line x1="12" y1="10" x2="12" y2="16" stroke="#0070FF" stroke-width="2"/><line x1="12" y1="7" x2="12.01" y2="7" stroke="#0070FF" stroke-width="2"/>',
-)
 
 
 # ── helpers ───────────────────────────────────────────────────
-def suitability_badge(score):
+def suitability_badge(score: float) -> str:
     s = score * 100
     if s >= 75:
         return "Highly Suitable"
@@ -82,57 +76,9 @@ def _display_location_name(location_name, lat, lon):
     name = (location_name or "").strip()
     if name and any(ch.isalpha() for ch in name):
         return name
+    if lat is not None and lon is not None:
+        return f"Selected Site ({lat:.4f}, {lon:.4f})"
     return "Selected Site"
-
-
-def _point_to_grid_cell(lat, lon, aoi, shape):
-    lon_min, lat_min, lon_max, lat_max = aoi
-    rows, cols = shape[:2]
-
-    if lon_max <= lon_min or lat_max <= lat_min:
-        return 0, 0
-
-    x_ratio = (lon - lon_min) / (lon_max - lon_min)
-    y_ratio = (lat_max - lat) / (lat_max - lat_min)
-
-    col = int(x_ratio * cols)
-    row = int(y_ratio * rows)
-
-    col = max(0, min(cols - 1, col))
-    row = max(0, min(rows - 1, row))
-    return row, col
-
-
-def _cell_bounds(aoi, shape, row, col):
-    lon_min, lat_min, lon_max, lat_max = aoi
-    rows, cols = shape[:2]
-
-    lon_step = (lon_max - lon_min) / cols
-    lat_step = (lat_max - lat_min) / rows
-
-    west = lon_min + (col * lon_step)
-    east = west + lon_step
-
-    north = lat_max - (row * lat_step)
-    south = north - lat_step
-
-    return west, south, east, north
-
-
-def _cell_polygon_latlng(aoi, shape, row, col):
-    west, south, east, north = _cell_bounds(aoi, shape, row, col)
-    return [
-        [south, west],
-        [south, east],
-        [north, east],
-        [north, west],
-        [south, west],
-    ]
-
-
-def _cell_center(aoi, shape, row, col):
-    west, south, east, north = _cell_bounds(aoi, shape, row, col)
-    return (south + north) / 2.0, (west + east) / 2.0
 
 
 def _interp(v0, v1, t):
@@ -168,48 +114,6 @@ def _rgb_to_hex(rgb):
     return "#{:02x}{:02x}{:02x}".format(*rgb)
 
 
-def _darken(rgb, factor=0.78):
-    return tuple(max(0, min(255, int(v * factor))) for v in rgb)
-
-
-def _extract_cells(suitability, aoi, selected_row=None, selected_col=None):
-    data = suitability.data.astype(np.float32)
-    nodata = getattr(suitability, "nodata", -9999.0)
-    rows, cols = data.shape
-
-    cells = []
-
-    for row in range(rows):
-        for col in range(cols):
-            score = float(data[row, col])
-            if not np.isfinite(score) or score == nodata:
-                continue
-
-            rgb = _score_color_rgb(score)
-            center_lat, center_lon = _cell_center(aoi, data.shape, row, col)
-            label = suitability_badge(score)
-            is_selected = row == selected_row and col == selected_col
-
-            cells.append(
-                {
-                    "cell_name": f"Cell ({row+1}, {col+1})",
-                    "row": row,
-                    "col": col,
-                    "score": score,
-                    "score_text": _safe_pct(score),
-                    "suitability": label,
-                    "polygon": _cell_polygon_latlng(aoi, data.shape, row, col),
-                    "lat": center_lat,
-                    "lon": center_lon,
-                    "fill_color": _rgb_to_hex(rgb),
-                    "border_color": "#0070FF" if is_selected else _rgb_to_hex(_darken(rgb)),
-                    "is_selected": is_selected,
-                }
-            )
-
-    return cells
-
-
 def _aoi_bounds_polygon(aoi):
     lon_min, lat_min, lon_max, lat_max = aoi
     return [
@@ -241,40 +145,61 @@ def _find_existing_page(candidates=None, contains=None):
     return None
 
 
-def _build_map_html(aoi, cells, selected_site, selected_cell_info, height=720):
+def _mean_valid_suitability_score(suitability) -> float | None:
+    if suitability is None or getattr(suitability, "data", None) is None:
+        return None
+
+    data = np.asarray(suitability.data, dtype=np.float32)
+    nodata = getattr(suitability, "nodata", -9999.0)
+
+    valid = data[np.isfinite(data)]
+    valid = valid[valid != nodata]
+
+    if valid.size == 0:
+        return None
+
+    return float(valid.mean())
+
+
+def _resolve_site_score(run, selected_site):
+    """
+    Prefer an explicit site-level score if available.
+    Otherwise fall back to the mean of valid suitability cells
+    as a practical whole-site score for this single-site page.
+    """
+    candidate_keys = [
+        "overall_score",
+        "site_score",
+        "final_score",
+        "score",
+    ]
+
+    if isinstance(selected_site, dict):
+        for key in candidate_keys:
+            value = selected_site.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+
+    if run is not None:
+        for key in candidate_keys:
+            value = getattr(run, key, None)
+            if isinstance(value, (int, float)):
+                return float(value)
+
+    suitability = getattr(run, "suitability", None) if run is not None else None
+    return _mean_valid_suitability_score(suitability)
+
+
+def _build_map_html(aoi, site_info, height=720):
     map_id = f"wahhaj_map_{uuid4().hex}"
 
     lon_min, lat_min, lon_max, lat_max = aoi
     bounds = [[lat_min, lon_min], [lat_max, lon_max]]
-
-    polygons = [
-        {
-            "name": c["cell_name"],
-            "score_text": c["score_text"],
-            "suitability": c["suitability"],
-            "fillColor": c["fill_color"],
-            "borderColor": c["border_color"],
-            "isSelected": c["is_selected"],
-            "coords": c["polygon"],
-        }
-        for c in cells
-    ]
-
-    selected = {
-        "name": selected_site["name"],
-        "score_text": selected_site["score_text"],
-        "suitability": selected_site["suitability"],
-        "lat": selected_site["lat"],
-        "lon": selected_site["lon"],
-    }
-
     aoi_outline = _aoi_bounds_polygon(aoi)
 
-    polygons_json = json.dumps(polygons, ensure_ascii=False)
-    selected_json = json.dumps(selected, ensure_ascii=False)
+    selected_json = json.dumps(site_info, ensure_ascii=False)
     bounds_json = json.dumps(bounds)
     aoi_outline_json = json.dumps(aoi_outline)
-    selected_cell_json = json.dumps(selected_cell_info, ensure_ascii=False)
 
     html = f"""
 <!DOCTYPE html>
@@ -381,11 +306,9 @@ def _build_map_html(aoi, cells, selected_site, selected_cell_info, height=720):
     <div id="{map_id}"></div>
 
     <script>
-        const polygons = {polygons_json};
         const selected = {selected_json};
         const bounds = {bounds_json};
         const aoiOutline = {aoi_outline_json};
-        const selectedCell = {selected_cell_json};
 
         const map = L.map("{map_id}", {{
             zoomControl: true,
@@ -421,39 +344,24 @@ def _build_map_html(aoi, cells, selected_site, selected_cell_info, height=720):
             position: "topright"
         }}).addTo(map);
 
-        polygons.forEach((p) => {{
-            const popupHtml = `
-                <div class="wahhaj-popup-title">${{p.isSelected ? "Selected internal cell" : "Internal analysis cell"}}</div>
-                <div class="wahhaj-popup-line">Score: ${{p.score_text}}</div>
-                <div class="wahhaj-popup-line">Suitability: ${{p.suitability}}</div>
-            `;
-
-            L.polygon(p.coords, {{
-                color: p.borderColor,
-                weight: p.isSelected ? 2.6 : 1.2,
-                fillColor: p.fillColor,
-                fillOpacity: p.isSelected ? 0.58 : 0.48
-            }})
-            .bindPopup(popupHtml)
-            .addTo(map);
-        }});
-
         L.polygon(aoiOutline, {{
             color: "#0070FF",
             weight: 2.8,
-            fillOpacity: 0
+            fillColor: selected.fillColor,
+            fillOpacity: 0.38
         }})
         .bindPopup(`
-            <div class="wahhaj-popup-title">Selected analysis boundary</div>
-            <div class="wahhaj-popup-line">This heatmap represents internal suitability distribution within the chosen AOI.</div>
+            <div class="wahhaj-popup-title">${{selected.name}}</div>
+            <div class="wahhaj-popup-line">Overall score: ${{selected.score_text}}</div>
+            <div class="wahhaj-popup-line">Suitability: ${{selected.suitability}}</div>
         `)
         .addTo(map);
 
         const selectedIcon = L.divIcon({{
             className: "selected-label",
             html: `<div>${{selected.name}}</div>`,
-            iconSize: [120, 26],
-            iconAnchor: [60, -6]
+            iconSize: [130, 26],
+            iconAnchor: [65, -6]
         }});
 
         L.circleMarker([selected.lat, selected.lon], {{
@@ -465,7 +373,7 @@ def _build_map_html(aoi, cells, selected_site, selected_cell_info, height=720):
         }})
         .bindPopup(`
             <div class="wahhaj-popup-title">${{selected.name}}</div>
-            <div class="wahhaj-popup-line">Selected cell score: ${{selected.score_text}}</div>
+            <div class="wahhaj-popup-line">Overall score: ${{selected.score_text}}</div>
             <div class="wahhaj-popup-line">Suitability: ${{selected.suitability}}</div>
         `)
         .addTo(map);
@@ -478,15 +386,15 @@ def _build_map_html(aoi, cells, selected_site, selected_cell_info, height=720):
         legend.onAdd = function() {{
             const div = L.DomUtil.create("div", "wahhaj-legend");
             div.innerHTML = `
-                <div class="wahhaj-legend-title">AOI Suitability Scale</div>
+                <div class="wahhaj-legend-title">Site Suitability Scale</div>
                 <div class="wahhaj-legend-bar"></div>
                 <div class="wahhaj-legend-scale">
                     <span>Low</span>
                     <span>High</span>
                 </div>
                 <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
-                <div class="wahhaj-legend-note">Blue marker = selected location center</div>
-                <div class="wahhaj-legend-note">Blue-bordered cell = selected internal cell</div>
+                <div class="wahhaj-legend-note">Filled area = overall site suitability</div>
+                <div class="wahhaj-legend-note">Blue marker = selected site center</div>
             `;
             return div;
         }};
@@ -557,38 +465,6 @@ st.markdown(
 .state-msg.error{
     color:#B91C1C;
 }
-.summary-grid{
-    display:grid;
-    grid-template-columns:repeat(3,1fr);
-    gap:14px;
-    margin-top:16px;
-}
-.summary-card{
-    background:rgba(255,255,255,0.88);
-    border-radius:18px;
-    padding:16px 18px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    border:1px solid rgba(255,255,255,0.6);
-}
-.summary-label{
-    font-family:'Capriola',sans-serif;
-    font-size:12px;
-    color:#7a7a7a;
-    margin-bottom:8px;
-}
-.summary-value{
-    font-family:'Capriola',sans-serif;
-    font-size:18px;
-    color:#1F3864;
-    line-height:1.4;
-}
-.summary-sub{
-    font-family:'Capriola',sans-serif;
-    font-size:12px;
-    color:#666;
-    margin-top:6px;
-    line-height:1.5;
-}
 .actions-wrap{
     margin-top:10px;
 }
@@ -611,11 +487,6 @@ div.stButton>button:disabled{
 div[data-testid="stVerticalBlock"]{
     gap:.35rem;
 }
-@media (max-width: 900px){
-    .summary-grid{
-        grid-template-columns:1fr;
-    }
-}
 </style>
 """,
     unsafe_allow_html=True,
@@ -624,9 +495,9 @@ div[data-testid="stVerticalBlock"]{
 render_top_home_button("pages/2_Home.py")
 
 st.markdown('<div class="wrap">', unsafe_allow_html=True)
-st.markdown('<div class="page-title">Suitability Heatmap</div>', unsafe_allow_html=True)
+st.markdown('<div class="page-title">Site Suitability Map</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="page-subtitle">This map shows the internal suitability distribution within the single selected analysis boundary</div>',
+    '<div class="page-subtitle">This map shows the overall suitability of the selected site as one unified area</div>',
     unsafe_allow_html=True,
 )
 
@@ -659,10 +530,7 @@ if not aoi:
 lat = selected_site.get("latitude", sel_loc.get("latitude"))
 lon = selected_site.get("longitude", sel_loc.get("longitude"))
 location_name = selected_site.get("location_name", sel_loc.get("location_name", ""))
-site_display_name = selected_site.get(
-    "site_display_name",
-    _display_location_name(location_name, lat, lon),
-)
+site_display_name = _display_location_name(location_name, lat, lon)
 
 if lat is None or lon is None:
     st.markdown(
@@ -673,57 +541,40 @@ if lat is None or lon is None:
     )
     st.stop()
 
-suitability = run.suitability
-selected_row, selected_col = _point_to_grid_cell(lat, lon, aoi, suitability.data.shape)
-cells = _extract_cells(
-    suitability=suitability,
-    aoi=aoi,
-    selected_row=selected_row,
-    selected_col=selected_col,
-)
+site_score = _resolve_site_score(run, selected_site)
 
-if not cells:
+if site_score is None:
     st.markdown(
         "<div class='state-panel'>"
-        f"<div class='state-msg error'>{ICO_WARN} No valid suitability cells were found for rendering.</div>"
+        f"<div class='state-msg error'>{ICO_WARN} Could not determine an overall site score for this map.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
     st.stop()
 
-selected_score = selected_site.get("score")
-if selected_score is None:
-    selected_score = float(suitability.data[selected_row, selected_col])
+rgb = _score_color_rgb(site_score)
+fill_color = _rgb_to_hex(rgb)
 
-selected_info = {
+site_info = {
     "name": site_display_name,
-    "score_text": _safe_pct(selected_score),
-    "suitability": selected_site.get("label", suitability_badge(selected_score)),
+    "score_text": _safe_pct(site_score),
+    "suitability": suitability_badge(site_score),
     "lat": lat,
     "lon": lon,
+    "fillColor": fill_color,
 }
 
-lon_min, lat_min, lon_max, lat_max = aoi
-selected_cell_info = {
-    "row": selected_row + 1,
-    "col": selected_col + 1,
-    "score_text": _safe_pct(selected_score),
-    "suitability": selected_info["suitability"],
-}
-
-# ── render real map ───────────────────────────────────────────
+# ── render map ────────────────────────────────────────────────
 st.markdown(
     "<div class='map-panel'>"
-    f"<div class='map-title'>{ICO_MAP} AOI Suitability Distribution</div>",
+    f"<div class='map-title'>{ICO_MAP} Overall Site Suitability</div>",
     unsafe_allow_html=True,
 )
 
 components.html(
     _build_map_html(
         aoi=aoi,
-        cells=cells,
-        selected_site=selected_info,
-        selected_cell_info=selected_cell_info,
+        site_info=site_info,
         height=720,
     ),
     height=740,
@@ -731,7 +582,6 @@ components.html(
 )
 
 st.markdown("</div>", unsafe_allow_html=True)
-
 
 # ── navigation ────────────────────────────────────────────────
 report_page = _find_existing_page(

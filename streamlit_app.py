@@ -25,7 +25,7 @@ st.markdown(
     <div class="credits">
         Danah Alhamdi - Walah Alshwaier - Ruba Aletri - Jumanah Alharbi
         <br><br>
-        © 2025 By PNU's CS Students
+        © 2026 By PNU's CS Students
     </div>
     """,
     unsafe_allow_html=True,
