@@ -9,6 +9,7 @@ from ui_helpers import (
     apply_global_style,
     render_bg,
     login_user,
+    render_footer,
     show_logo,
 )
 
@@ -156,3 +157,4 @@ with right:
     )
 
 st.markdown("</div>", unsafe_allow_html=True)
+render_footer()
