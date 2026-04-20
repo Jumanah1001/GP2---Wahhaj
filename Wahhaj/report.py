@@ -55,7 +55,13 @@ class Report:
 
     # ── Public API ────────────────────────────────────────────────────────
 
-    def generate(self, run, ranks: List, location: Optional[dict] = None) -> None:
+    def generate(
+        self,
+        run,
+        ranks: List,
+        location: Optional[dict] = None,
+        selected_site: Optional[dict] = None,
+    ) -> None:
         """
         Build the summary string and set file_path.
 
@@ -64,10 +70,35 @@ class Report:
         run      : AnalysisRun
         ranks    : List[SiteCandidate]  (already ranked)
         location : dict with optional keys "location_name", "latitude", "longitude"
+        selected_site : dict with the official selected-site result from page 5
         """
         loc_name = (location or {}).get("location_name", "Unknown Location")
+        selected_site = selected_site or {}
 
-        if ranks:
+        site_score = selected_site.get("score")
+        site_label = selected_site.get("label")
+
+        if site_score is not None:
+            try:
+                site_score = float(site_score)
+            except Exception:
+                site_score = None
+
+        if site_score is not None:
+            candidate_sentence = (
+                f" The analysed area also produced {len(ranks)} candidate site(s) for comparison."
+                if ranks else
+                " No additional candidate sites were identified in the analysed area."
+            )
+            label_sentence = f" and was classified as {site_label}" if site_label else ""
+            self.summary = (
+                f"Solar site analysis for {loc_name} completed on "
+                f"{self.date.strftime('%Y-%m-%d')}. "
+                f"The selected site achieved a suitability score of {site_score * 100:.1f}%"
+                f"{label_sentence}."
+                f"{candidate_sentence}"
+            )
+        elif ranks:
             top = ranks[0].score
             self.summary = (
                 f"Solar site analysis for {loc_name} completed on "
@@ -99,6 +130,7 @@ class Report:
         location: Optional[dict] = None,
         suitability=None,       # Raster or None
         aoi: Optional[tuple] = None,
+        selected_site: Optional[dict] = None,
     ) -> Optional[bytes]:
         """
         Build and return a PDF as bytes using reportlab.
@@ -116,7 +148,7 @@ class Report:
         to the .txt download).
         """
         try:
-            return self._build_pdf_reportlab(run, ranked, location, suitability, aoi)
+            return self._build_pdf_reportlab(run, ranked, location, suitability, aoi, selected_site)
         except ImportError:
             logger.warning("reportlab not installed — PDF export unavailable.")
             return None
@@ -252,6 +284,7 @@ class Report:
         location: Optional[dict],
         suitability,
         aoi: Optional[tuple],
+        selected_site: Optional[dict],
     ) -> bytes:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -350,7 +383,7 @@ class Report:
         story.append(Spacer(1, 0.3*cm))
 
         # ── Heatmap image ────────────────────────────────────────────────
-        heatmap_img = self._render_heatmap_image(suitability, aoi, ranked)
+        heatmap_img = self._render_heatmap_image(suitability, aoi, location=location, selected_site=selected_site)
         if heatmap_img is not None:
             story.append(Paragraph("Suitability Heatmap", h2))
             story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
@@ -512,19 +545,18 @@ class Report:
 
     # ── Private: heatmap image builder ────────────────────────────────────
 
-    def _render_heatmap_image(self, suitability, aoi, ranked):
+    def _render_heatmap_image(self, suitability, aoi, location=None, selected_site=None):
         """
-        Render a PNG for the PDF that matches the Suitability Heatmap page (page 6).
-        Uses PIL + requests to fetch Esri satellite tiles as the basemap,
-        then draws colored cells and ranked-site pill labels on top — pure PIL,
-        no new dependencies beyond what the project already uses.
-        Falls back to a plain colored grid if tiles cannot be fetched.
+        Render a PNG for the PDF that matches the Suitability Heatmap page.
+        It keeps the same AOI-centred framing, blue outline, fill behaviour,
+        and selected-site marker instead of drawing alternative candidates.
         """
         if suitability is None or not hasattr(suitability, "data"):
             return None
 
         try:
-            import math, io as _io
+            import io as _io
+            import math
             import numpy as np
             import requests as _req
             from PIL import Image as PILImage, ImageDraw, ImageFont
@@ -533,30 +565,33 @@ class Report:
 
             effective_aoi = aoi if (aoi and len(aoi) == 4) else (0, 0, 1, 1)
             lon_min, lat_min, lon_max, lat_max = effective_aoi
+            span_lon = max(lon_max - lon_min, 1e-6)
+            span_lat = max(lat_max - lat_min, 1e-6)
 
-            data   = suitability.data.astype(np.float32)
-            nodata = getattr(suitability, "nodata", -9999.0)
-            rows, cols = data.shape
+            # Add padding so the PDF map is readable and not over-zoomed.
+            pad_lon = max(span_lon * 0.16, 0.01)
+            pad_lat = max(span_lat * 0.16, 0.01)
+            view_lon_min = lon_min - pad_lon
+            view_lon_max = lon_max + pad_lon
+            view_lat_min = lat_min - pad_lat
+            view_lat_max = lat_max + pad_lat
 
-            # ── output canvas size ────────────────────────────────────────
-            IMG_W, IMG_H = 1200, 680
+            IMG_W, IMG_H = 1400, 820
 
-            # ── coordinate → pixel helpers ────────────────────────────────
             def lon_to_px(lon):
-                return int((lon - lon_min) / (lon_max - lon_min) * IMG_W)
+                return int((lon - view_lon_min) / (view_lon_max - view_lon_min) * IMG_W)
 
             def lat_to_px(lat):
-                return int((1 - (lat - lat_min) / (lat_max - lat_min)) * IMG_H)
+                return int((1 - (lat - view_lat_min) / (view_lat_max - view_lat_min)) * IMG_H)
 
-            # ── same color scale as page 6 ────────────────────────────────
             def _score_rgb(score):
                 score = float(max(0.0, min(1.0, score)))
                 anchors = [
-                    (0.00, (231, 76,  60)),
+                    (0.00, (231, 76, 60)),
                     (0.35, (244, 176, 64)),
                     (0.55, (241, 196, 15)),
                     (0.75, (127, 204, 80)),
-                    (1.00, (34,  197, 94)),
+                    (1.00, (34, 197, 94)),
                 ]
                 for i in range(len(anchors) - 1):
                     s0, c0 = anchors[i]
@@ -564,14 +599,49 @@ class Report:
                     if s0 <= score <= s1:
                         t = 0.0 if s1 == s0 else (score - s0) / (s1 - s0)
                         return tuple(int(round(c0[k] + (c1[k] - c0[k]) * t)) for k in range(3))
-                return (34, 197, 94)
+                return anchors[-1][1]
 
-            # ── fetch Esri satellite tiles ────────────────────────────────
+            def _suitability_badge(score: float) -> str:
+                s = float(score) * 100
+                if s >= 75:
+                    return "Highly Suitable"
+                if s >= 55:
+                    return "Suitable"
+                if s >= 35:
+                    return "Moderately Suitable"
+                return "Not Suitable"
+
+            def _display_location_name(location_name, lat, lon):
+                name = (location_name or "").strip()
+                if name and any(ch.isalpha() for ch in name):
+                    return name
+                if lat is not None and lon is not None:
+                    return f"Selected Site ({lat:.4f}, {lon:.4f})"
+                return "Selected Site"
+
+            def _resolve_site_score(lat, lon):
+                if lat is None or lon is None:
+                    return None
+                data = suitability.data.astype(np.float32)
+                nodata = getattr(suitability, "nodata", -9999.0)
+                rows, cols = data.shape
+                row = int(round((lat_max - lat) / span_lat * (rows - 1)))
+                col = int(round((lon - lon_min) / span_lon * (cols - 1)))
+                row = max(0, min(rows - 1, row))
+                col = max(0, min(cols - 1, col))
+                val = float(data[row, col])
+                if not np.isfinite(val) or val == nodata:
+                    valid = data[(data != nodata) & np.isfinite(data)]
+                    if valid.size == 0:
+                        return None
+                    return float(np.nanmean(valid))
+                return float(val)
+
             def _deg2tile(lat, lon, z):
                 lr = math.radians(lat)
-                n  = 2 ** z
-                x  = int((lon + 180) / 360 * n)
-                y  = int((1 - math.log(math.tan(lr) + 1 / math.cos(lr)) / math.pi) / 2 * n)
+                n = 2 ** z
+                x = int((lon + 180) / 360 * n)
+                y = int((1 - math.log(math.tan(lr) + 1 / math.cos(lr)) / math.pi) / 2 * n)
                 return x, y
 
             def _tile2lon(tx, z):
@@ -580,17 +650,29 @@ class Report:
             def _tile2lat(ty, z):
                 return math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * ty / (2 ** z)))))
 
-            def _fetch_basemap(zoom=11):
-                x0, y0 = _deg2tile(lat_max, lon_min, zoom)
-                x1, y1 = _deg2tile(lat_min, lon_max, zoom)
+            def _best_zoom():
+                max_span = max(view_lon_max - view_lon_min, view_lat_max - view_lat_min)
+                if max_span <= 0.10:
+                    return 12
+                if max_span <= 0.22:
+                    return 11
+                if max_span <= 0.40:
+                    return 10
+                return 9
+
+            def _fetch_basemap(zoom=None):
+                if zoom is None:
+                    zoom = _best_zoom()
+                x0, y0 = _deg2tile(view_lat_max, view_lon_min, zoom)
+                x1, y1 = _deg2tile(view_lat_min, view_lon_max, zoom)
                 x0, x1 = min(x0, x1), max(x0, x1)
                 y0, y1 = min(y0, y1), max(y0, y1)
                 TS = 256
-                mosaic = PILImage.new("RGB", ((x1-x0+1)*TS, (y1-y0+1)*TS), (210, 180, 140))
+                mosaic = PILImage.new("RGB", ((x1 - x0 + 1) * TS, (y1 - y0 + 1) * TS), (214, 190, 160))
                 fetched = 0
                 hdrs = {"User-Agent": "Mozilla/5.0 WAHHAJ/1.0"}
-                for tx in range(x0, x1+1):
-                    for ty in range(y0, y1+1):
+                for tx in range(x0, x1 + 1):
+                    for ty in range(y0, y1 + 1):
                         url = (
                             "https://server.arcgisonline.com/ArcGIS/rest/services"
                             f"/World_Imagery/MapServer/tile/{zoom}/{ty}/{tx}"
@@ -599,125 +681,97 @@ class Report:
                             r = _req.get(url, headers=hdrs, timeout=8)
                             if r.status_code == 200:
                                 tile = PILImage.open(_io.BytesIO(r.content)).convert("RGB")
-                                mosaic.paste(tile, ((tx-x0)*TS, (ty-y0)*TS))
+                                mosaic.paste(tile, ((tx - x0) * TS, (ty - y0) * TS))
                                 fetched += 1
                         except Exception:
                             pass
                 if fetched == 0:
-                    return None, None, None, None
-                # tile extent in degrees
-                t_lon_min = _tile2lon(x0,    zoom)
-                t_lon_max = _tile2lon(x1+1,  zoom)
-                t_lat_max = _tile2lat(y0,    zoom)
-                t_lat_min = _tile2lat(y1+1,  zoom)
-                # crop and resize to canvas
-                def _lon2px_t(lon): return int((lon - t_lon_min) / (t_lon_max - t_lon_min) * mosaic.width)
-                def _lat2px_t(lat): return int((1 - (lat - t_lat_min) / (t_lat_max - t_lat_min)) * mosaic.height)
-                cx0 = max(0, _lon2px_t(lon_min))
-                cy0 = max(0, _lat2px_t(lat_max))
-                cx1 = min(mosaic.width,  _lon2px_t(lon_max))
-                cy1 = min(mosaic.height, _lat2px_t(lat_min))
-                cropped = mosaic.crop((cx0, cy0, cx1, cy1)).resize((IMG_W, IMG_H), PILImage.LANCZOS)
-                return cropped, fetched, None, None
+                    return None
 
-            basemap, n_tiles, _, __ = _fetch_basemap(zoom=11)
+                t_lon_min = _tile2lon(x0, zoom)
+                t_lon_max = _tile2lon(x1 + 1, zoom)
+                t_lat_max = _tile2lat(y0, zoom)
+                t_lat_min = _tile2lat(y1 + 1, zoom)
 
-            # ── build canvas ──────────────────────────────────────────────
-            if basemap is not None:
-                canvas = basemap.copy()
-            else:
-                # fallback: sandy desert background matching Esri palette
-                canvas = PILImage.new("RGB", (IMG_W, IMG_H), (210, 175, 130))
+                def _lon2px_t(lon):
+                    return int((lon - t_lon_min) / (t_lon_max - t_lon_min) * mosaic.width)
 
+                def _lat2px_t(lat):
+                    return int((1 - (lat - t_lat_min) / (t_lat_max - t_lat_min)) * mosaic.height)
+
+                cx0 = max(0, _lon2px_t(view_lon_min))
+                cy0 = max(0, _lat2px_t(view_lat_max))
+                cx1 = min(mosaic.width, _lon2px_t(view_lon_max))
+                cy1 = min(mosaic.height, _lat2px_t(view_lat_min))
+                return mosaic.crop((cx0, cy0, cx1, cy1)).resize((IMG_W, IMG_H), PILImage.LANCZOS)
+
+            basemap = _fetch_basemap()
+            canvas = basemap.copy() if basemap is not None else PILImage.new("RGB", (IMG_W, IMG_H), (226, 205, 178))
             draw = ImageDraw.Draw(canvas, "RGBA")
 
-            # ── draw suitability cells ────────────────────────────────────
-            lon_step = (lon_max - lon_min) / cols
-            lat_step = (lat_max - lat_min) / rows
-            CELL_ALPHA = 140  # ~55% opacity like page 6
-            for r in range(rows):
-                for c in range(cols):
-                    sc = float(data[r, c])
-                    if not np.isfinite(sc) or sc == nodata:
-                        continue
+            site = selected_site or {}
+            site_lat = site.get("latitude", (location or {}).get("latitude"))
+            site_lon = site.get("longitude", (location or {}).get("longitude"))
+            site_name = _display_location_name(site.get("location_name", (location or {}).get("location_name")), site_lat, site_lon)
+            site_score = site.get("score")
+            if site_score is None:
+                site_score = _resolve_site_score(site_lat, site_lon)
+            if site_score is None:
+                valid = suitability.data[np.isfinite(suitability.data)]
+                site_score = float(np.nanmean(valid)) if getattr(valid, "size", 0) else 0.0
 
-                    # row 0 = north, last row = south
-                    cell_lon_min = lon_min + c * lon_step
-                    cell_lon_max = cell_lon_min + lon_step
+            fill_rgb = _score_rgb(site_score)
+            poly = [
+                (lon_to_px(lon_min), lat_to_px(lat_max)),
+                (lon_to_px(lon_max), lat_to_px(lat_max)),
+                (lon_to_px(lon_max), lat_to_px(lat_min)),
+                (lon_to_px(lon_min), lat_to_px(lat_min)),
+            ]
+            draw.polygon(poly, fill=fill_rgb + (105,))
+            draw.line(poly + [poly[0]], fill=(0, 112, 255, 255), width=6)
 
-                    cell_lat_max = lat_max - r * lat_step
-                    cell_lat_min = cell_lat_max - lat_step
+            if site_lat is not None and site_lon is not None:
+                mx = lon_to_px(site_lon)
+                my = lat_to_px(site_lat)
+                draw.ellipse([mx - 13, my - 13, mx + 13, my + 13], fill=(255,255,255,245), outline=(0, 112, 255, 255), width=5)
+                draw.ellipse([mx - 8, my - 8, mx + 8, my + 8], fill=(0, 112, 255, 255))
+                try:
+                    font_lbl = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+                except Exception:
+                    font_lbl = ImageFont.load_default()
+                bbox = draw.textbbox((0, 0), site_name, font=font_lbl)
+                tw = bbox[2] - bbox[0]
+                th = bbox[3] - bbox[1]
+                pad_x, pad_y = 16, 10
+                pill_w = tw + pad_x * 2
+                pill_h = th + pad_y * 2
+                pill_x = max(24, min(IMG_W - pill_w - 24, mx - pill_w // 2))
+                pill_y = max(24, my - pill_h - 26)
+                draw.rounded_rectangle([pill_x, pill_y, pill_x + pill_w, pill_y + pill_h], radius=16, fill=(31, 56, 100, 228))
+                draw.text((pill_x + pad_x, pill_y + pad_y - 1), site_name, font=font_lbl, fill=(255, 255, 255, 255))
 
-                    # pixel bounds
-                    px0 = lon_to_px(cell_lon_min)
-                    px1 = lon_to_px(cell_lon_max)
-                    py0 = lat_to_px(cell_lat_max)   # top
-                    py1 = lat_to_px(cell_lat_min)   # bottom
-
-                    rgb = _score_rgb(sc)
-                    fill_rgba = rgb + (CELL_ALPHA,)
-                    border_rgba = tuple(int(v * 0.75) for v in rgb) + (200,)
-                    draw.rectangle([px0, py0, px1, py1], fill=fill_rgba, outline=border_rgba)
-
-            # ── ranked candidate pill labels ──────────────────────────────
-            PILL_BG   = (31, 56, 100, 230)   # dark navy like page 6
-            PILL_TEXT = (255, 255, 255, 255)
-
+            LG_X, LG_Y = 30, IMG_H - 132
+            LEG_W, LEG_H = 250, 16
+            draw.rounded_rectangle([LG_X - 12, LG_Y - 42, LG_X + LEG_W + 12, LG_Y + LEG_H + 74], radius=12, fill=(255,255,255,224))
             try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-            except Exception:
-                font = ImageFont.load_default()
-
-            if ranked:
-                for c_site in ranked[:7]:
-                    if not c_site.centroid:
-                        continue
-                    cx = lon_to_px(c_site.centroid.lon)
-                    cy = lat_to_px(c_site.centroid.lat)
-                    label = f"#{c_site.rank} \u2014 {c_site.score * 100:.1f}%"
-                    # measure text
-                    bbox = draw.textbbox((0, 0), label, font=font)
-                    tw = bbox[2] - bbox[0]
-                    th = bbox[3] - bbox[1]
-                    pad_x, pad_y = 14, 8
-                    pill_w = tw + pad_x * 2
-                    pill_h = th + pad_y * 2
-                    pill_x = cx - pill_w - 8   # left of the cell cluster
-                    pill_y = cy - pill_h // 2
-                    # draw pill
-                    draw.rounded_rectangle(
-                        [pill_x, pill_y, pill_x + pill_w, pill_y + pill_h],
-                        radius=pill_h // 2,
-                        fill=PILL_BG,
-                    )
-                    draw.text((pill_x + pad_x, pill_y + pad_y), label, font=font, fill=PILL_TEXT)
-
-            # ── legend bar (bottom-left like page 6) ──────────────────────
-            LG_X, LG_Y = 30, IMG_H - 110
-            LG_W, LG_H = 200, 14
-
-            draw.rounded_rectangle([LG_X - 10, LG_Y - 35, LG_X + LG_W + 10, LG_Y + LG_H + 35],
-                                   radius=10, fill=(255, 255, 255, 220))
-            try:
-                font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
-                font_xs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+                font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+                font_xs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
             except Exception:
                 font_sm = font_xs = ImageFont.load_default()
+            draw.text((LG_X, LG_Y - 32), "Site Suitability Scale", font=font_sm, fill=(31, 56, 100, 255))
+            for i in range(LEG_W):
+                t = i / max(1, LEG_W - 1)
+                draw.line([(LG_X + i, LG_Y), (LG_X + i, LG_Y + LEG_H)], fill=_score_rgb(t))
+            draw.text((LG_X, LG_Y + LEG_H + 6), "Low", font=font_xs, fill=(80,80,80,255))
+            draw.text((LG_X + LEG_W - 24, LG_Y + LEG_H + 6), "High", font=font_xs, fill=(80,80,80,255))
+            draw.text((LG_X, LG_Y + LEG_H + 28), "Blue outline = selected analysis boundary", font=font_xs, fill=(80,80,80,255))
+            draw.text((LG_X, LG_Y + LEG_H + 46), f"Filled area = {_suitability_badge(site_score)}", font=font_xs, fill=(80,80,80,255))
+            draw.text((LG_X, LG_Y + LEG_H + 64), "Blue marker = selected site center", font=font_xs, fill=(80,80,80,255))
 
-            draw.text((LG_X, LG_Y - 28), "Suitability Scale", font=font_sm, fill=(31, 56, 100, 255))
-            # gradient bar
-            for i in range(LG_W):
-                t = i / LG_W
-                rgb = _score_rgb(t)
-                draw.line([(LG_X + i, LG_Y), (LG_X + i, LG_Y + LG_H)], fill=rgb)
-            draw.text((LG_X,          LG_Y + LG_H + 4), "Low",  font=font_xs, fill=(80, 80, 80, 255))
-            draw.text((LG_X + LG_W - 20, LG_Y + LG_H + 4), "High", font=font_xs, fill=(80, 80, 80, 255))
-
-            # ── encode to PNG → reportlab Image ──────────────────────────
             buf = _io.BytesIO()
-            canvas.save(buf, format="PNG", dpi=(150, 150))
+            canvas.save(buf, format="PNG", dpi=(170, 170))
             buf.seek(0)
-            return RLImage(buf, width=17 * cm, height=9.5 * cm)
+            return RLImage(buf, width=17 * cm, height=9.9 * cm)
 
         except Exception as exc:
             logger.warning("Heatmap image generation failed: %s", exc, exc_info=True)

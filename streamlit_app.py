@@ -1,5 +1,5 @@
 import streamlit as st
-from ui_helpers import init_state, apply_global_style, render_bg, show_logo
+from ui_helpers import init_state, apply_global_style, render_bg, show_logo, render_footer
 
 st.set_page_config(page_title="WAHHAJ", layout="wide")
 init_state()
@@ -20,15 +20,7 @@ with btn_center:
     if st.button("Login", use_container_width=True):
         st.switch_page("pages/1_Login.py")
 
-st.markdown(
-    """
-    <div class="credits">
-        Danah Alhamdi - Walah Alshwaier - Ruba Aletri - Jumanah Alharbi
-        <br><br>
-        © 2026 By PNU's CS Students
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+
 
 st.markdown("</div>", unsafe_allow_html=True)
+render_footer()

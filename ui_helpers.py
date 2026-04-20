@@ -121,78 +121,131 @@ def init_state() -> None:
 
 def save_analysis_to_history(run, ranked: list, location: dict) -> None:
     """
-    Append a completed analysis run to the persistent history list in
-    session_state["analysis_history"].
+    Append one saved analysis entry for the selected site.
 
-    Called from pages/8_Final_Report.py after analysis completes.
-
-    Parameters
-    ----------
-    run      : AnalysisRun instance (must have .runId, .suitability, .summary())
-    ranked   : List[SiteCandidate] already ranked (from SiteCandidate.rank_all)
-    location : dict with keys "location_name", "latitude", "longitude"
+    The Home page history should behave like a list of saved analyses, not a
+    table of alternative candidate sites. We still keep some legacy fields for
+    backward compatibility, but the primary displayed values are the selected
+    site score/label and a lightweight snapshot that can reopen the Final Report
+    page for the saved run within the same local session.
     """
     from datetime import datetime
 
     if "analysis_history" not in st.session_state:
         st.session_state["analysis_history"] = []
 
-    # Avoid duplicate entries for the same run
     existing_ids = {e.get("run_id") for e in st.session_state["analysis_history"]}
     if run.runId in existing_ids:
         return
 
     summary = run.summary()
-    suit    = summary.get("suitability", {})
-    score_mean = suit.get("mean", 0.0) or 0.0
+    suit = summary.get("suitability", {})
+    score_mean = float(suit.get("mean", 0.0) or 0.0)
+    top_score = float(ranked[0].score) if ranked else 0.0
 
-    top_score = ranked[0].score if ranked else 0.0
-    if top_score >= 0.8:
-        recommendation = "Highly Recommended"
-    elif top_score >= 0.6:
-        recommendation = "Recommended"
-    else:
-        recommendation = "Review Required"
+    selected_site = st.session_state.get("selected_site_analysis") or {}
+    selected_score = selected_site.get("score")
+    try:
+        selected_score = float(selected_score)
+    except Exception:
+        selected_score = top_score if top_score > 0 else score_mean
+
+    selected_label = str(selected_site.get("label") or "").strip()
+    if not selected_label:
+        if selected_score >= 0.8:
+            selected_label = "Highly Recommended"
+        elif selected_score >= 0.6:
+            selected_label = "Recommended"
+        else:
+            selected_label = "Review Required"
 
     ranked_list = []
     for c in ranked[:10]:
-        s10  = round(c.score * 10, 2)
-        lat  = round(c.centroid.lat, 4) if c.centroid else None
-        lon  = round(c.centroid.lon, 4) if c.centroid else None
-        rec  = (
+        s10 = round(c.score * 10, 2)
+        lat = round(c.centroid.lat, 4) if c.centroid else None
+        lon = round(c.centroid.lon, 4) if c.centroid else None
+        rec = (
             "Highly Recommended" if c.score >= 0.8 else
-            "Recommended"        if c.score >= 0.6 else
+            "Recommended" if c.score >= 0.6 else
             "Not Applicable"
         )
         ranked_list.append({
-            "rank":  c.rank,
-            "lat":   lat,
-            "lon":   lon,
+            "rank": c.rank,
+            "lat": lat,
+            "lon": lon,
             "score": round(c.score, 4),
-            "s10":   s10,
-            "rec":   rec,
+            "s10": s10,
+            "rec": rec,
         })
 
     entry = {
-        "run_id":          run.runId,
-        "location_name":   location.get("location_name", "Unknown"),
-        "lat":             location.get("latitude"),
-        "lon":             location.get("longitude"),
-        "aoi":             st.session_state.get("aoi"),
-        "score_mean":      round(score_mean, 4),
-        "top_score":       round(top_score, 4),
-        "candidate_count": len(ranked),
-        "recommendation":  recommendation,
-        "analysed_at":     datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "ranked":          ranked_list,
+        "run_id": run.runId,
+        "location_name": location.get("location_name", "Unknown"),
+        "lat": location.get("latitude"),
+        "lon": location.get("longitude"),
+        "aoi": st.session_state.get("aoi"),
+        "selected_score": round(selected_score, 4),
+        "selected_label": selected_label,
+        "score_mean": round(score_mean, 4),      # legacy fallback
+        "top_score": round(top_score, 4),        # legacy fallback
+        "candidate_count": len(ranked),          # legacy fallback
+        "recommendation": selected_label,
+        "analysed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "ranked": ranked_list,                   # legacy fallback
+        "state_snapshot": {
+            "analysis_run": run,
+            "report_obj": st.session_state.get("report_obj"),
+            "selected_location": dict(location or {}),
+            "location_saved": True,
+            "aoi": st.session_state.get("aoi"),
+            "selected_site_analysis": dict(selected_site) if isinstance(selected_site, dict) else selected_site,
+            "analysis_ref": dict(st.session_state.get("analysis_ref") or {}),
+        },
     }
 
-    st.session_state["analysis_history"].insert(0, entry)  # newest first
+    st.session_state["analysis_history"].insert(0, entry)
 
 
 def get_analysis_history() -> list:
     """Return the analysis history list (newest first)."""
     return st.session_state.get("analysis_history", [])
+
+
+def restore_analysis_history_entry(entry: dict) -> bool:
+    """Restore enough session state to reopen the saved Final Report page."""
+    if not isinstance(entry, dict):
+        return False
+
+    snapshot = entry.get("state_snapshot") or {}
+    run = snapshot.get("analysis_run")
+    if run is None:
+        return False
+
+    st.session_state["analysis_run"] = run
+    st.session_state["_analysis_run_cache"] = run
+
+    report_obj = snapshot.get("report_obj")
+    if report_obj is not None:
+        st.session_state["report_obj"] = report_obj
+
+    location = snapshot.get("selected_location") or {
+        "location_name": entry.get("location_name", "Unknown"),
+        "latitude": entry.get("lat"),
+        "longitude": entry.get("lon"),
+    }
+    st.session_state["selected_location"] = dict(location)
+    st.session_state["location_saved"] = bool(snapshot.get("location_saved", True))
+    st.session_state["aoi"] = snapshot.get("aoi", entry.get("aoi"))
+
+    selected_site = snapshot.get("selected_site_analysis")
+    if selected_site is not None:
+        st.session_state["selected_site_analysis"] = dict(selected_site) if isinstance(selected_site, dict) else selected_site
+
+    analysis_ref = snapshot.get("analysis_ref")
+    if analysis_ref:
+        st.session_state["analysis_ref"] = dict(analysis_ref)
+
+    return True
 
 
 

@@ -198,8 +198,31 @@ st.markdown("""
     color:#444; margin-bottom:14px; text-align:center;
 }
 .search-label {
-    font-family:'Capriola',sans-serif; font-size:16px;
+    font-family:'Capriola',sans-serif; font-size:17px;
     color:#1a1a1a; font-weight:600; margin-bottom:8px;
+}
+
+/* ── unified content card ── */
+.loc-card-anchor { height:0; }
+
+div[data-testid="stVerticalBlock"]:has(.loc-card-anchor) {
+    background: rgba(255,255,255,0.94);
+    border: 1px solid #e2e8f0;
+    border-radius: 22px;
+    padding: 24px 26px 18px;
+    margin: 18px 0 20px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+div[data-testid="stVerticalBlock"]:has(.loc-card-anchor) > div[data-testid="stVerticalBlockBorderWrapper"] {
+    padding: 0 !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(.loc-card-anchor) .loc-card-anchor {
+    display:block;
+    height:0;
+    margin:0;
+    padding:0;
 }
 
 /* ── input text ── */
@@ -208,9 +231,9 @@ div[data-testid="stTextInput"] input {
     color:#1a1a1a !important;
     border:1px solid #ccc !important;
     border-radius:6px !important;
-    min-height:40px !important;
+    min-height:42px !important;
     font-family:'Capriola',sans-serif !important;
-    font-size:14px !important;
+    font-size:15px !important;
     padding-left:12px !important;
     box-shadow:none !important;
 }
@@ -224,12 +247,12 @@ div[data-testid="stTextInput"] input::placeholder {
     border-radius:12px;
     padding:14px 18px;
     font-family:'Capriola',sans-serif;
-    font-size:14px;
+    font-size:15px;
     color:#1a1a1a;
     margin-top:10px;
     box-shadow:0 2px 8px rgba(0,0,0,0.06);
     border:1px solid #e0e0e0;
-    line-height:1.8;
+    line-height:1.85;
 }
 .coord-card b { color:#0070FF; }
 
@@ -249,7 +272,7 @@ div[data-testid="stTextInput"] input::placeholder {
 /* ── status note ── */
 .status-note {
     font-family:'Capriola',sans-serif;
-    font-size:13px;
+    font-size:14px;
     color:#444;
     margin-top:10px;
     text-align:center;
@@ -257,10 +280,10 @@ div[data-testid="stTextInput"] input::placeholder {
 
 .area-hint {
     font-family:'Capriola',sans-serif;
-    font-size:12px;
-    color:#555;
-    margin-top:8px;
-    line-height:1.6;
+    font-size:17px;
+    color:#4b5563;
+    margin-top:10px;
+    line-height:1.85;
 }
 
 /* ── buttons ── */
@@ -300,10 +323,10 @@ div.stButton > button:not(:disabled):hover {
 
 .next-hint {
     font-family:'Capriola',sans-serif;
-    font-size:11px;
-    color:#888;
+    font-size:13px;
+    color:#6b7280;
     text-align:center;
-    margin-top:4px;
+    margin-top:6px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -317,7 +340,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-left_col, right_col = st.columns([1.1, 0.9], gap="large")
+card_box = st.container()
+with card_box:
+    st.markdown('<div class="loc-card-anchor"></div>', unsafe_allow_html=True)
+    left_col, right_col = st.columns([1.12, 0.88], gap="large")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # LEFT: controls

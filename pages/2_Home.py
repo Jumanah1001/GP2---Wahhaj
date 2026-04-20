@@ -17,6 +17,7 @@ from ui_helpers import (
     logout_user,
     render_footer,
     get_analysis_history,
+    restore_analysis_history_entry,
     reset_for_new_analysis,
     ui_icon,
 )
@@ -46,125 +47,107 @@ has_image = bool(st.session_state.get("uploaded_image_name", "")) or bool(image_
 history = get_analysis_history()
 
 
-def _safe_location_name(raw: str, max_len: int = 55) -> str:
+def _safe_location_name(raw: str, max_len: int = 70) -> str:
     if not raw:
         return "Unknown Location"
-    safe = re.sub(r"[^\w\s\u0600-\u06FF\-,.()/\u00B0]", " ", raw)
+    safe = re.sub(r"[^\w\s؀-ۿ\-,.()/°]", " ", raw)
     safe = re.sub(r"\s+", " ", safe).strip()
     if len(safe) > max_len:
         safe = safe[:max_len].rstrip(" ,-") + "…"
     return safe or "Unknown Location"
 
 
-def _fmt_coord(value, suffix: str) -> str:
-    if value is None or value == "":
-        return "—"
-    try:
-        return f"{float(value):.5f}°{suffix}"
-    except Exception:
-        return escape(str(value))
+def _history_badge(label: str) -> tuple[str, str]:
+    label = str(label or "").strip()
+    low = label.lower()
+    if "high" in low:
+        return "hb-high", "Highly Recommended"
+    if "recommend" in low:
+        return "hb-rec", "Recommended"
+    if "suitable" in low:
+        return "hb-suitable", "Suitable"
+    return "hb-review", (label or "Review Required")
 
 
-def _build_history_section(history_items) -> str:
+def _render_history_section(history_items) -> None:
     history_icon = ui_icon("history", 18, "#1a1a1a")
 
-    if not history_items:
-        return (
-            "<div class='history-card'>"
-            f"<div class='section-title'>{history_icon} &nbsp;Analysis History</div>"
-            "<div class='section-sub'>All previous site analyses </div>"
-            "<div class='empty-history'>"
-            f"<div style='margin-bottom:10px;'>{ui_icon('history', 28, '#888')}</div>"
-            "<div style='font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px;'>"
-            "No analysis results yet</div>"
-            "<div style='color:#555;font-family:Capriola,sans-serif;'>"
-            "Run your first solar site analysis to see results here.</div>"
-            "</div>"
-            "</div>"
+    # ── الكارد الخارجية ── st.container(border=True) هي الطريقة المضمونة
+    with st.container(border=True):
+
+        st.markdown(
+            f"""
+            <div class='section-title'>{history_icon} &nbsp;Analysis History</div>
+            <div class='section-sub'>All previous site analyses</div>
+            """,
+            unsafe_allow_html=True,
         )
 
-    entry_blocks = []
-
-    for entry in history_items:
-        raw_loc = entry.get("location_name", "Unknown")
-        loc_label = escape(_safe_location_name(raw_loc))
-        analysed = escape(str(entry.get("analysed_at", "—")))
-        top_score = float(entry.get("top_score", 0.0) or 0.0)
-        score_pct = escape(f"{top_score * 100:.1f}%")
-        rec = str(entry.get("recommendation", "—"))
-        n_cands = int(entry.get("candidate_count", 0) or 0)
-        ranked = entry.get("ranked", []) or []
-
-        if rec == "Highly Recommended":
-            badge_cls = "hb-high"
-            badge_label = "Highly Recommended"
-        elif rec == "Recommended":
-            badge_cls = "hb-rec"
-            badge_label = "Recommended"
-        else:
-            badge_cls = "hb-review"
-            badge_label = "Review Required"
-
-        if ranked:
-            rows_html_parts = []
-            for r in ranked:
-                rank = escape(str(r.get("rank", "—")))
-                lat = _fmt_coord(r.get("lat"), "N")
-                lon = _fmt_coord(r.get("lon"), "E")
-                s10 = escape(str(r.get("s10", "—")))
-                rec_txt = escape(str(r.get("rec", "—")))
-
-                rows_html_parts.append(
-                    "<tr>"
-                    f"<td><b>{rank}</b></td>"
-                    f"<td>{lat}</td>"
-                    f"<td>{lon}</td>"
-                    f"<td><b>{s10}/10</b></td>"
-                    f"<td>{rec_txt}</td>"
-                    "</tr>"
+        if not history_items:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown(
+                    f"""
+                    <div style='text-align:center; padding:20px 0;'>
+                        <div style='margin-bottom:10px;'>{ui_icon('history', 26, '#8a8a8a')}</div>
+                        <div style='font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:8px;font-family:Capriola,sans-serif;'>
+                            No analysis results yet
+                        </div>
+                        <div style='color:#5b5b5b;font-family:Capriola,sans-serif;font-size:14px;'>
+                            Run your first solar site analysis to see results here.
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
+            return
 
-            rows_html = "".join(rows_html_parts)
-            table_html = (
-                "<table class='mini-tbl'>"
-                "<thead><tr>"
-                "<th>Rank</th><th>Latitude</th><th>Longitude</th>"
-                "<th>Score</th><th>Recommendation</th>"
-                "</tr></thead>"
-                f"<tbody>{rows_html}</tbody>"
-                "</table>"
+        for idx, entry in enumerate(history_items):
+            loc_label = escape(_safe_location_name(entry.get("location_name", "Unknown")))
+            analysed = escape(str(entry.get("analysed_at", "—")))
+
+            score_val = entry.get("selected_score", entry.get("top_score", 0.0))
+            try:
+                score_val = float(score_val or 0.0)
+            except Exception:
+                score_val = 0.0
+            score_pct = escape(f"{score_val * 100:.1f}%")
+
+            badge_cls, badge_label = _history_badge(
+                entry.get("selected_label", entry.get("recommendation", ""))
             )
-        else:
-            table_html = (
-                "<div style='font-family:Capriola,sans-serif;font-size:13px;color:#888;padding:8px 0;'>"
-                "No candidate data available."
-                "</div>"
-            )
 
-        entry_html = (
-            "<div class='hist-entry'>"
-            f"<div class='hist-location'>{ui_icon('location', 16, '#0070FF')} &nbsp;{loc_label}</div>"
-            f"<div class='hist-meta'>{analysed}</div>"
-            "<div class='hist-entry-header'>"
-            f"<span class='hist-score'>{score_pct}</span>"
-            f"<span class='hist-badge {badge_cls}'>{badge_label}</span>"
-            f"<span class='hist-cands'>{n_cands} candidate(s)</span>"
-            "</div>"
-            "<hr class='hist-divider'>"
-            f"{table_html}"
-            "</div>"
-        )
-        entry_blocks.append(entry_html)
-
-    joined_entries = "".join(entry_blocks)
-
-    return (
-        "<div class='history-card'>"
-        f"<div class='section-title'>{history_icon} &nbsp;Analysis History</div>"
-        "<div class='section-sub'>All previous site analyses</div>"
-        f"{joined_entries}"
-        "</div>"
-    )
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+            with st.container(border=True):
+                row_left, row_right = st.columns(
+                    [4.4, 1.35], gap="large", vertical_alignment="center"
+                )
+                with row_left:
+                    st.markdown(
+                        f"""
+                        <div class='hist-location'>{ui_icon('location', 16, '#0070FF')} &nbsp;{loc_label}</div>
+                        <div class='hist-simple-meta'>{analysed}</div>
+                        <div class='hist-simple-row'>
+                            <span class='hist-score'>{score_pct}</span>
+                            <span class='hist-badge {badge_cls}'>{escape(badge_label)}</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with row_right:
+                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                    if st.button(
+                        "Open Final Report",
+                        key=f"hist_open_{idx}_{entry.get('run_id', idx)}",
+                        use_container_width=True,
+                    ):
+                        ok = restore_analysis_history_entry(entry)
+                        if ok:
+                            st.switch_page("pages/8_Final_Report.py")
+                        else:
+                            st.warning(
+                                "This saved entry cannot be reopened in the current session yet."
+                            )
 
 
 st.markdown(
@@ -233,48 +216,19 @@ st.markdown(
     color: #9a3412;
 }
 
-.history-card {
-    background: rgba(255,255,255,0.92);
-    border-radius: 22px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    padding: 20px 22px;
-    border: 1px solid rgba(220,220,220,0.6);
-    margin-top: 6px;
-}
-
 .section-title {
     font-family: 'Capriola', sans-serif;
     font-size: 20px;
     font-weight: 700;
     color: #1a1a1a;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
 }
 
 .section-sub {
     font-family: 'Capriola', sans-serif;
     font-size: 13px;
     color: #5E5B5B;
-    margin-bottom: 12px;
-}
-
-.hist-entry {
-    background: #FAFAFA;
-    border-radius: 18px;
-    padding: 18px 20px;
-    border: 1px solid rgba(225,225,225,0.9);
-    margin-bottom: 12px;
-}
-
-.hist-entry:last-child {
-    margin-bottom: 0;
-}
-
-.hist-entry-header {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
-    margin-bottom: 14px;
+    margin-bottom: 2px;
 }
 
 .hist-location {
@@ -282,14 +236,21 @@ st.markdown(
     font-size: 16px;
     font-weight: 700;
     color: #1F3864;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
 }
 
-.hist-meta {
+.hist-simple-meta {
     font-family: 'Capriola', sans-serif;
     font-size: 12px;
-    color: #666;
-    margin-bottom: 10px;
+    color: #777;
+    margin-bottom: 12px;
+}
+
+.hist-simple-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .hist-score {
@@ -306,66 +267,13 @@ st.markdown(
     border-radius: 999px;
     font-size: 12px;
     font-weight: 700;
-}
-
-.hb-high   { background: #DCFCE7; color: #166534; }
-.hb-rec    { background: #FEF9C3; color: #713f12; }
-.hb-review { background: #FEE2E2; color: #991B1B; }
-
-.hist-cands {
     font-family: 'Capriola', sans-serif;
-    font-size: 13px;
-    color: #555;
 }
 
-.hist-divider {
-    border: none;
-    border-top: 1px solid #EFEFEF;
-    margin: 12px 0;
-}
-
-.mini-tbl {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-    margin-top: 4px;
-}
-
-.mini-tbl th {
-    background: #f4f4f4;
-    color: #444;
-    font-weight: 700;
-    padding: 7px 10px;
-    text-align: left;
-    border-bottom: 1px solid #e0e0e0;
-    font-family: 'Capriola', sans-serif;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-}
-
-.mini-tbl td {
-    padding: 7px 10px;
-    color: #222;
-    border-bottom: 1px solid #f0f0f0;
-    font-family: 'Capriola', sans-serif;
-    font-size: 12px;
-}
-
-.mini-tbl tr:last-child td {
-    border-bottom: none;
-}
-
-.empty-history {
-    padding: 30px 18px;
-    text-align: center;
-    font-family: 'Capriola', sans-serif;
-    font-size: 14px;
-    color: #666;
-    border: 1px dashed rgba(220,220,220,0.85);
-    border-radius: 16px;
-    background: rgba(255,255,255,0.55);
-}
+.hb-high      { background: #DCFCE7; color: #166534; }
+.hb-rec       { background: #DBEAFE; color: #1D4ED8; }
+.hb-suitable  { background: #FEE2E2; color: #B42318; }
+.hb-review    { background: #FEE2E2; color: #991B1B; }
 
 div.stButton > button {
     background: #0070FF;
@@ -485,7 +393,7 @@ with stat_col:
 
 st.write("")
 
-st.markdown(_build_history_section(history), unsafe_allow_html=True)
+_render_history_section(history)
 
 st.markdown("</div>", unsafe_allow_html=True)
 render_footer()

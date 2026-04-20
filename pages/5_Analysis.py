@@ -397,6 +397,8 @@ def _save_selected_site_analysis(
     ai_assessment,
     factor_items,
     reason_items,
+    run_id=None,
+    analysis_id=None,
 ):
     st.session_state["selected_site_analysis"] = {
         "site_display_name": site_display_name,
@@ -407,6 +409,8 @@ def _save_selected_site_analysis(
         "score": score,
         "score_text": _safe_pct(score),
         "label": label,
+        "run_id": run_id,
+        "analysis_id": analysis_id,
         "ai_assessment": ai_assessment,
         "analysed_at": datetime.now().isoformat(),
         "reasons": [
@@ -921,6 +925,8 @@ else:
             ai_assessment     = ai_assessment,
             factor_items      = factor_items,
             reason_items      = reason_items,
+            run_id            = getattr(run, "runId", None),
+            analysis_id       = (st.session_state.get("analysis_ref") or {}).get("analysis_id"),
         )
 
     # main result panel
