@@ -2,6 +2,7 @@
 pages/2_Home.py
 ===============
 Dashboard home page — shown after login.
+Built to match the current ui_helpers.py provided by the user.
 """
 
 import re
@@ -47,10 +48,10 @@ has_image = bool(st.session_state.get("uploaded_image_name", "")) or bool(image_
 history = get_analysis_history()
 
 
-def _safe_location_name(raw: str, max_len: int = 70) -> str:
+def _safe_location_name(raw: str, max_len: int = 72) -> str:
     if not raw:
         return "Unknown Location"
-    safe = re.sub(r"[^\w\s؀-ۿ\-,.()/°]", " ", raw)
+    safe = re.sub(r"[^\w\s\u0600-\u06FF\-,.()/\u00B0]", " ", str(raw))
     safe = re.sub(r"\s+", " ", safe).strip()
     if len(safe) > max_len:
         safe = safe[:max_len].rstrip(" ,-") + "…"
@@ -64,42 +65,34 @@ def _history_badge(label: str) -> tuple[str, str]:
         return "hb-high", "Highly Recommended"
     if "recommend" in low:
         return "hb-rec", "Recommended"
-    if "suitable" in low:
-        return "hb-suitable", "Suitable"
+    if "suit" in low:
+        return "hb-suit", "Suitable"
     return "hb-review", (label or "Review Required")
 
 
 def _render_history_section(history_items) -> None:
-    history_icon = ui_icon("history", 18, "#1a1a1a")
-
-    # ── الكارد الخارجية ── st.container(border=True) هي الطريقة المضمونة
-    with st.container(border=True):
-
+    with st.container(key="history_shell"):
         st.markdown(
             f"""
-            <div class='section-title'>{history_icon} &nbsp;Analysis History</div>
-            <div class='section-sub'>All previous site analyses</div>
+            <div class="history-head">
+                <div class="section-title">{ui_icon('history', 18, '#1a1a1a')} &nbsp;Analysis History</div>
+                <div class="section-sub">All previous site analyses</div>
+            </div>
             """,
             unsafe_allow_html=True,
         )
 
         if not history_items:
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            with st.container(border=True):
-                st.markdown(
-                    f"""
-                    <div style='text-align:center; padding:20px 0;'>
-                        <div style='margin-bottom:10px;'>{ui_icon('history', 26, '#8a8a8a')}</div>
-                        <div style='font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:8px;font-family:Capriola,sans-serif;'>
-                            No analysis results yet
-                        </div>
-                        <div style='color:#5b5b5b;font-family:Capriola,sans-serif;font-size:14px;'>
-                            Run your first solar site analysis to see results here.
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            st.markdown(
+                f"""
+                <div class="history-empty">
+                    <div class="history-empty-icon">{ui_icon('history', 26, '#8a8a8a')}</div>
+                    <div class="history-empty-title">No analysis results yet</div>
+                    <div class="history-empty-sub">Run your first solar site analysis to see results here.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             return
 
         for idx, entry in enumerate(history_items):
@@ -117,25 +110,22 @@ def _render_history_section(history_items) -> None:
                 entry.get("selected_label", entry.get("recommendation", ""))
             )
 
-            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            with st.container(border=True):
-                row_left, row_right = st.columns(
-                    [4.4, 1.35], gap="large", vertical_alignment="center"
-                )
-                with row_left:
+            with st.container(key=f"history_item_{idx}"):
+                left_col, right_col = st.columns([5.0, 1.45], gap="large")
+                with left_col:
                     st.markdown(
                         f"""
-                        <div class='hist-location'>{ui_icon('location', 16, '#0070FF')} &nbsp;{loc_label}</div>
-                        <div class='hist-simple-meta'>{analysed}</div>
-                        <div class='hist-simple-row'>
-                            <span class='hist-score'>{score_pct}</span>
-                            <span class='hist-badge {badge_cls}'>{escape(badge_label)}</span>
+                        <div class="hist-location">{ui_icon('location', 16, '#0070FF')} &nbsp;{loc_label}</div>
+                        <div class="hist-meta">{analysed}</div>
+                        <div class="hist-score-row">
+                            <span class="hist-score">{score_pct}</span>
+                            <span class="hist-badge {badge_cls}">{escape(badge_label)}</span>
                         </div>
                         """,
                         unsafe_allow_html=True,
                     )
-                with row_right:
-                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                with right_col:
+                    st.markdown('<div class="hist-btn-spacer"></div>', unsafe_allow_html=True)
                     if st.button(
                         "Open Final Report",
                         key=f"hist_open_{idx}_{entry.get('run_id', idx)}",
@@ -145,9 +135,7 @@ def _render_history_section(history_items) -> None:
                         if ok:
                             st.switch_page("pages/8_Final_Report.py")
                         else:
-                            st.warning(
-                                "This saved entry cannot be reopened in the current session yet."
-                            )
+                            st.warning("This saved entry cannot be reopened in the current session yet.")
 
 
 st.markdown(
@@ -210,25 +198,72 @@ st.markdown(
     background: #dcfce7;
     color: #166534;
 }
-
 .badge-admin {
     background: #ffedd5;
     color: #9a3412;
 }
 
+/* History section */
+div[class*="st-key-history_shell"] {
+    background: rgba(255,255,255,0.92);
+    border: 1px solid rgba(220,220,220,0.6);
+    border-radius: 22px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    padding: 20px 22px 18px 22px;
+    margin-top: 8px;
+}
+div[class*="st-key-history_shell"] > div[data-testid="stVerticalBlock"] {
+    gap: 0.6rem;
+}
+
+.history-head {
+    margin-bottom: 4px;
+}
 .section-title {
     font-family: 'Capriola', sans-serif;
     font-size: 20px;
     font-weight: 700;
     color: #1a1a1a;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
 }
-
 .section-sub {
     font-family: 'Capriola', sans-serif;
     font-size: 13px;
     color: #5E5B5B;
-    margin-bottom: 2px;
+}
+
+.history-empty {
+    padding: 30px 18px;
+    margin-top: 10px;
+    text-align: center;
+    border: 1px dashed rgba(220,220,220,0.92);
+    border-radius: 16px;
+    background: rgba(255,255,255,0.55);
+    font-family: 'Capriola', sans-serif;
+}
+.history-empty-icon {
+    margin-bottom: 8px;
+}
+.history-empty-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 6px;
+}
+.history-empty-sub {
+    font-size: 14px;
+    color: #666;
+}
+
+div[class*="st-key-history_item_"] {
+    background: #FAFAFA;
+    border-radius: 18px;
+    border: 1px solid rgba(225,225,225,0.95);
+    padding: 16px 18px 14px 18px;
+    margin-top: 10px;
+}
+div[class*="st-key-history_item_"] > div[data-testid="stVerticalBlock"] {
+    gap: 0.25rem;
 }
 
 .hist-location {
@@ -238,21 +273,18 @@ st.markdown(
     color: #1F3864;
     margin-bottom: 4px;
 }
-
-.hist-simple-meta {
+.hist-meta {
     font-family: 'Capriola', sans-serif;
     font-size: 12px;
-    color: #777;
-    margin-bottom: 12px;
+    color: #666;
+    margin-bottom: 10px;
 }
-
-.hist-simple-row {
+.hist-score-row {
     display: flex;
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
 }
-
 .hist-score {
     font-family: 'Capriola', sans-serif;
     font-size: 28px;
@@ -260,7 +292,6 @@ st.markdown(
     color: #0070FF;
     line-height: 1;
 }
-
 .hist-badge {
     display: inline-block;
     padding: 5px 13px;
@@ -269,26 +300,13 @@ st.markdown(
     font-weight: 700;
     font-family: 'Capriola', sans-serif;
 }
+.hb-high   { background: #DCFCE7; color: #166534; }
+.hb-rec    { background: #FEF9C3; color: #713f12; }
+.hb-suit   { background: #FEE2E2; color: #C2410C; }
+.hb-review { background: #FEE2E2; color: #991B1B; }
 
-.hb-high      { background: #DCFCE7; color: #166534; }
-.hb-rec       { background: #DBEAFE; color: #1D4ED8; }
-.hb-suitable  { background: #FEE2E2; color: #B42318; }
-.hb-review    { background: #FEE2E2; color: #991B1B; }
-
-div.stButton > button {
-    background: #0070FF;
-    color: white;
-    border: none;
-    border-radius: 10px;
-    min-height: 46px;
-    font-family: 'Capriola', sans-serif;
-    font-size: 15px;
-    box-shadow: 4px 5px 4px rgba(0,0,0,.14);
-}
-
-div.stButton > button:hover {
-    background: #005fe0;
-    color: white;
+.hist-btn-spacer {
+    height: 16px;
 }
 </style>
 """,
