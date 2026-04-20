@@ -11,6 +11,10 @@ from ui_helpers import (
     render_bg,
     render_footer,
     render_top_home_button,
+    build_image_record,
+    clear_analysis_state,
+    set_dataset_state,
+    set_image_records,
 )
 
 from Wahhaj.UploadService import UploadService
@@ -362,10 +366,10 @@ with center:
                 tmp.write(file_bytes)
                 st.session_state["uploaded_image_temp_path"] = tmp.name
 
-            # صفري نتائج قديمة
-            st.session_state["analysis_run"] = None
-            st.session_state["extractor"] = None
-            st.session_state["dataset"] = None
+            # صفري نتائج قديمة مرتبطة بأي Run سابق، لكن احتفظي بمسودة الموقع الحالية
+            clear_analysis_state(clear_dataset=False)
+            st.session_state["report_obj"] = None
+            st.session_state["selected_site_analysis"] = None
 
             # رفع فعلي للباك إند
             storage = StorageService()
@@ -391,13 +395,42 @@ with center:
                 st.error(getattr(job, "message", "Upload failed."))
                 st.stop()
 
-            st.session_state["uploaded_images"] = [
+            uploaded_cache_items = [
                 {
                     "name": uploaded_file.name,
                     "size_kb": round(len(file_bytes) / 1024, 1),
                     "db": upload_service.last_database,
                 }
             ]
+            st.session_state["uploaded_images"] = uploaded_cache_items
+
+            image_records = [
+                build_image_record(
+                    name=uploaded_file.name,
+                    size_bytes=len(file_bytes),
+                    storage_path=unique_storage_name,
+                    temp_path=st.session_state.get("uploaded_image_temp_path"),
+                    mime_type=getattr(uploaded_file, "type", None),
+                    db=upload_service.last_database,
+                    job=job,
+                )
+            ]
+            set_image_records(image_records, cache_items=uploaded_cache_items)
+
+            current_dataset = st.session_state.get("_dataset_cache") or st.session_state.get("dataset")
+            dataset_name = (
+                getattr(current_dataset, "name", None)
+                or (st.session_state.get("selected_location") or {}).get("location_name")
+                or "wahhaj_selected_site_analysis"
+            )
+            set_dataset_state(
+                current_dataset,
+                status="image_uploaded",
+                source="session",
+                image_count=len(image_records),
+                aoi=st.session_state.get("aoi"),
+                name=dataset_name,
+            )
 
             st.switch_page("pages/5_Analysis.py")
 

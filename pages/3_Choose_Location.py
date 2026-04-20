@@ -24,7 +24,11 @@ from ui_helpers import (
     render_footer,
     render_top_home_button,
     require_login,
-    ui_icon
+    reset_pipeline_for_new_location,
+    reset_location_ui_state,
+    reset_active_analysis_state,
+    set_dataset_state,
+    ui_icon,
 )
 from Wahhaj.FeatureExtractor import Dataset
 
@@ -154,7 +158,7 @@ def _aoi_from_drawn_geojson(geojson):
 
 def _persist_selected_location(location_name: str, latitude: float, longitude: float, aoi):
     """
-    Save selected location + explicit AOI to session_state and dataset.
+    Save selected location + explicit AOI to session_state and initialise a draft dataset ref.
     """
     location_dict = {
         "location_name": location_name.strip(),
@@ -164,10 +168,19 @@ def _persist_selected_location(location_name: str, latitude: float, longitude: f
     st.session_state["selected_location"] = location_dict
     st.session_state["location_saved"] = True
     st.session_state["aoi"] = aoi
-    st.session_state["dataset"] = Dataset(
+
+    draft_dataset = Dataset(
         name=location_name.strip(),
         aoi=aoi,
         images=[],
+    )
+    set_dataset_state(
+        draft_dataset,
+        status="location_selected",
+        source="session",
+        image_count=0,
+        aoi=aoi,
+        name=location_name.strip(),
     )
     return location_dict
 
@@ -432,9 +445,26 @@ with left_col:
             if c_aoi is None:
                 st.warning("Please draw the analysis boundary rectangle on the map first.")
             else:
-                name = (c_name or "").strip() or f"{c_lat:.4f}°N, {c_lon:.4f}°E"
+                prev_loc = st.session_state.get("selected_location", {}) or {}
+                prev_aoi = st.session_state.get("aoi")
+                prev_signature = (
+                    prev_loc.get("location_name"),
+                    prev_loc.get("latitude"),
+                    prev_loc.get("longitude"),
+                    tuple(prev_aoi) if isinstance(prev_aoi, (list, tuple)) else prev_aoi,
+                )
+                new_signature = (
+                    (c_name or "").strip() or f"{c_lat:.4f}°N, {c_lon:.4f}°E",
+                    c_lat,
+                    c_lon,
+                    tuple(c_aoi),
+                )
+
+                if prev_signature != new_signature:
+                    reset_pipeline_for_new_location(clear_uploaded=True)
+
                 _persist_selected_location(
-                    location_name=name,
+                    location_name=new_signature[0],
                     latitude=c_lat,
                     longitude=c_lon,
                     aoi=c_aoi,
@@ -443,25 +473,8 @@ with left_col:
 
     with b2:
         if st.button("Clear", use_container_width=True, key="clear_loc_btn"):
-            for _k in (
-                "loc_candidate_lat",
-                "loc_candidate_lon",
-                "loc_candidate_name",
-                "loc_search_input",
-                "loc_candidate_aoi",
-            ):
-                st.session_state[_k] = None if "lat" in _k or "lon" in _k or _k == "loc_candidate_aoi" else ""
-            st.session_state["loc_rectangle_drawn"] = False
-            st.session_state["loc_map_lat"] = 24.7136
-            st.session_state["loc_map_lon"] = 46.6753
-            st.session_state["selected_location"] = {
-                "location_name": "",
-                "latitude": None,
-                "longitude": None,
-            }
-            st.session_state["location_saved"] = False
-            st.session_state["aoi"] = None
-            st.session_state["dataset"] = None
+            reset_location_ui_state()
+            reset_active_analysis_state(clear_location=True)
             st.rerun()
 
     with b3:

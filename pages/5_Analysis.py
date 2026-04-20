@@ -33,11 +33,15 @@ from html import escape
 
 import streamlit as st
 from ui_helpers import (
+    get_image_records,
+    get_uploaded_image_cache,
     init_state,
     apply_global_style,
     render_bg,
     render_footer,
     render_top_home_button,
+    set_analysis_state,
+    set_dataset_state,
 )
 
 st.set_page_config(page_title="Selected Site Result - WAHHAJ", layout="wide")
@@ -137,8 +141,8 @@ def _safe_pct(score):
 
 
 def _aoi_from_selected_location(lat, lon):
-    # FIX: was ±0.5 degrees (~55 km). Changed to ±0.1 degrees (~11 km)
-    # to match ui_helpers.save_selected_location() and keep AOI consistent.
+    # Fallback only: use a small square around the selected point when no
+    # explicit AOI was saved from the location-selection page.
     half = 0.1
     return (
         round(lon - half, 4),
@@ -146,6 +150,10 @@ def _aoi_from_selected_location(lat, lon):
         round(lon + half, 4),
         round(lat + half, 4),
     )
+
+
+def _is_valid_aoi(aoi):
+    return isinstance(aoi, (list, tuple)) and len(aoi) == 4
 
 
 def _point_to_grid_cell(lat, lon, aoi, shape):
@@ -194,7 +202,9 @@ def _format_raw_value(layer_name, raw_value, unit):
 
 
 def _get_backend_image_ready():
-    uploaded_items = st.session_state.get("uploaded_images", [])
+    uploaded_items = get_uploaded_image_cache()
+    if not uploaded_items:
+        uploaded_items = st.session_state.get("uploaded_images", [])
     if not uploaded_items:
         return False
     for item in uploaded_items:
@@ -204,7 +214,9 @@ def _get_backend_image_ready():
 
 
 def _get_backend_images():
-    uploaded_items = st.session_state.get("uploaded_images", [])
+    uploaded_items = get_uploaded_image_cache()
+    if not uploaded_items:
+        uploaded_items = st.session_state.get("uploaded_images", [])
     db_list = [
         item.get("db")
         for item in uploaded_items
@@ -215,6 +227,14 @@ def _get_backend_images():
         for db in db_list
         for img in (getattr(db, "images", None) or [])
     ]
+
+
+def _uploaded_image_count() -> int:
+    records = get_image_records()
+    if records:
+        return len(records)
+    uploaded_items = get_uploaded_image_cache()
+    return len(uploaded_items or [])
 
 
 def _build_selected_site_breakdown(extractor, row, col):
@@ -696,16 +716,22 @@ img_name = st.session_state.get("uploaded_image_name", "")
 has_loc = lat is not None and lon is not None
 has_img = _get_backend_image_ready()
 
-if has_loc:
+saved_aoi = st.session_state.get("aoi")
+if _is_valid_aoi(saved_aoi):
+    aoi = tuple(saved_aoi)
+elif has_loc:
     aoi = _aoi_from_selected_location(lat, lon)
     st.session_state["aoi"] = aoi
 else:
-    aoi = st.session_state.get("aoi")
+    aoi = None
 
 site_display_name = _display_location_name(location_name, lat, lon)
 coords_text = f"{lat:.4f}N, {lon:.4f}E" if has_loc else "Coordinates unavailable"
 
-img_main = "1 image uploaded" if has_img else "No image uploaded"
+image_count = _uploaded_image_count()
+img_main = f"{image_count} image uploaded" if image_count == 1 else (
+    f"{image_count} images uploaded" if has_img else "No image uploaded"
+)
 img_sub  = img_name if img_name else "Upload a site image to continue"
 
 # ── top summary ───────────────────────────────────────────────
@@ -779,6 +805,16 @@ if run_result is None:
                 start_date=st.session_state.get("analysis_start_date", now),
                 end_date=st.session_state.get("analysis_end_date", now),
             )
+            dataset_ref = set_dataset_state(
+                dataset,
+                status="processing",
+                source="session",
+                image_count=len(backend_images),
+                aoi=aoi,
+                name=dataset.name,
+                created_at=now,
+                updated_at=now,
+            )
 
             progress.progress(40, "Loading analysis pipeline...")
             adapter   = ExternalDataSourceAdapter()
@@ -794,14 +830,39 @@ if run_result is None:
                 top_k_sites       = 10,
                 min_site_score    = 0.0,
             )
+            set_analysis_state(
+                run,
+                status="running",
+                dataset_id=dataset_ref.get("dataset_id"),
+                location_name=location_name,
+                created_at=now,
+                updated_at=now,
+            )
 
             progress.progress(68, "Running site analysis...")
             run.execute(dataset)
 
             progress.progress(92, "Saving result...")
-            st.session_state["dataset"]      = dataset
-            st.session_state["extractor"]    = extractor
-            st.session_state["analysis_run"] = run
+            completed_at = datetime.now()
+            set_dataset_state(
+                dataset,
+                status="ready",
+                source="session",
+                image_count=len(backend_images),
+                aoi=aoi,
+                name=dataset.name,
+                created_at=dataset_ref.get("created_at"),
+                updated_at=completed_at,
+            )
+            st.session_state["extractor"] = extractor
+            set_analysis_state(
+                run,
+                status="completed",
+                dataset_id=(st.session_state.get("dataset_ref") or {}).get("dataset_id"),
+                location_name=location_name,
+                created_at=now,
+                updated_at=completed_at,
+            )
 
             progress.progress(100, "Done")
             time.sleep(0.35)
@@ -809,6 +870,15 @@ if run_result is None:
 
         except Exception as exc:
             progress.empty()
+            failed_at = datetime.now()
+            set_analysis_state(
+                st.session_state.get("_analysis_run_cache"),
+                status="failed",
+                dataset_id=(st.session_state.get("dataset_ref") or {}).get("dataset_id"),
+                location_name=location_name,
+                created_at=(st.session_state.get("analysis_ref") or {}).get("created_at"),
+                updated_at=failed_at,
+            )
             st.markdown(
                 "<div class='state-panel'>"
                 f"<div class='state-msg error'>{ICO_WARN} Analysis failed. Please try again.</div>"

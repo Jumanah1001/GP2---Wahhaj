@@ -17,6 +17,7 @@ from ui_helpers import (
     logout_user,
     render_footer,
     get_analysis_history,
+    reset_for_new_analysis,
     ui_icon,
 )
 
@@ -33,9 +34,15 @@ user_email = st.session_state.get("user_email", "—")
 user_role = st.session_state.get("user_role", "Analyst")
 is_admin = user_role == "Admin"
 
-has_run = st.session_state.get("analysis_run") is not None
+analysis_ref = st.session_state.get("analysis_ref") or {}
+image_records = st.session_state.get("image_records") or []
+
+has_run = (
+    st.session_state.get("analysis_run") is not None
+    or analysis_ref.get("status") == "completed"
+)
 has_location = st.session_state.get("location_saved", False)
-has_image = bool(st.session_state.get("uploaded_image_name", ""))
+has_image = bool(st.session_state.get("uploaded_image_name", "")) or bool(image_records)
 history = get_analysis_history()
 
 
@@ -412,6 +419,7 @@ st.markdown(
 _, start_col, _ = st.columns([2.8, 1.8, 2.8])
 with start_col:
     if st.button("Start Analysis", use_container_width=True):
+        reset_for_new_analysis()
         st.switch_page("pages/3_Choose_Location.py")
 
 st.write("")

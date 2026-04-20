@@ -58,17 +58,44 @@ def init_state() -> None:
         "location_saved":   False,
         "aoi":              None,
         "dataset":          None,
+        "_dataset_cache":   None,
+        "dataset_ref": {
+            "dataset_id":   None,
+            "dataset_uri":  None,
+            "name":         None,
+            "status":       "empty",
+            "source":       None,
+            "image_count":  0,
+            "aoi":          None,
+            "created_at":   None,
+            "updated_at":   None,
+        },
 
         # ── Upload ────────────────────────────────────────────────────────
         "uploaded_image_name":      "",
         "uploaded_image_bytes":     None,
         "uploaded_image_temp_path": "",
+        "image_records":            [],
+        "_uploaded_image_cache":    [],
 
         # ── Pipeline ──────────────────────────────────────────────────────
         "extractor":              None,
         "ahp_weights_confirmed":  False,
         "analysis_run":           None,
+        "_analysis_run_cache":    None,
+        "analysis_ref": {
+            "analysis_id":   None,
+            "dataset_id":    None,
+            "status":        "idle",
+            "location_name": None,
+            "report_uri":    None,
+            "heatmap_uri":   None,
+            "created_at":    None,
+            "updated_at":    None,
+        },
         "report_obj":             None,
+        "selected_site_analysis": None,
+        "uploaded_images":        [],
 
         # ── Analysis History ──────────────────────────────────────────────
         # List of dicts — one entry per completed analysis run.
@@ -168,6 +195,284 @@ def get_analysis_history() -> list:
     return st.session_state.get("analysis_history", [])
 
 
+
+def _blank_dataset_ref() -> dict:
+    return {
+        "dataset_id": None,
+        "dataset_uri": None,
+        "name": None,
+        "status": "empty",
+        "source": None,
+        "image_count": 0,
+        "aoi": None,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+def _blank_analysis_ref() -> dict:
+    return {
+        "analysis_id": None,
+        "dataset_id": None,
+        "status": "idle",
+        "location_name": None,
+        "report_uri": None,
+        "heatmap_uri": None,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+def _timestamp_or_none(value):
+    if value is None:
+        return None
+    try:
+        return value.isoformat()
+    except Exception:
+        return str(value)
+
+
+def build_image_record(
+    *,
+    name: str,
+    size_bytes: int,
+    storage_path: str | None = None,
+    temp_path: str | None = None,
+    mime_type: str | None = None,
+    db=None,
+    job=None,
+) -> dict:
+    """
+    Build a lightweight image record that can later map cleanly to cloud storage.
+    The backend objects stay in cache, while this record keeps stable metadata.
+    """
+    image_id = None
+    dataset_id = None
+    created_at = None
+
+    images = getattr(db, "images", None) or []
+    if images:
+        first_image = images[0]
+        image_id = str(getattr(first_image, "imageId", "") or "") or None
+        created_at = _timestamp_or_none(getattr(first_image, "timestamp", None))
+
+    dataset_id = str(getattr(db, "dataset_id", "") or "") or None
+    job_id = str(getattr(job, "jobId", "") or "") or None
+
+    return {
+        "image_id": image_id,
+        "dataset_id": dataset_id,
+        "job_id": job_id,
+        "name": name,
+        "size_bytes": int(size_bytes or 0),
+        "storage_path": storage_path,
+        "temp_path": temp_path,
+        "mime_type": mime_type,
+        "status": "uploaded",
+        "created_at": created_at,
+    }
+
+
+def set_image_records(records: list, *, cache_items: list | None = None) -> None:
+    st.session_state["image_records"] = records or []
+    if cache_items is not None:
+        st.session_state["_uploaded_image_cache"] = cache_items
+        st.session_state["uploaded_images"] = cache_items
+
+
+def get_image_records() -> list:
+    return st.session_state.get("image_records", [])
+
+
+def get_uploaded_image_cache() -> list:
+    cache_items = st.session_state.get("_uploaded_image_cache") or []
+    if cache_items:
+        return cache_items
+    return st.session_state.get("uploaded_images", []) or []
+
+
+def set_dataset_state(
+    dataset=None,
+    *,
+    status: str = "draft",
+    dataset_id: str | None = None,
+    dataset_uri: str | None = None,
+    source: str | None = "session",
+    image_count: int | None = None,
+    aoi=None,
+    name: str | None = None,
+    created_at=None,
+    updated_at=None,
+) -> dict:
+    current = dict(st.session_state.get("dataset_ref") or _blank_dataset_ref())
+
+    resolved_dataset_id = dataset_id
+    if resolved_dataset_id is None and dataset is not None:
+        resolved_dataset_id = str(getattr(dataset, "dataset_id", "") or "") or None
+
+    resolved_name = name
+    if resolved_name is None and dataset is not None:
+        resolved_name = getattr(dataset, "name", None)
+
+    resolved_aoi = aoi if aoi is not None else current.get("aoi")
+    if resolved_aoi is None and dataset is not None:
+        resolved_aoi = getattr(dataset, "aoi", None)
+
+    resolved_image_count = image_count
+    if resolved_image_count is None and dataset is not None:
+        resolved_image_count = len(getattr(dataset, "images", []) or [])
+
+    if created_at is None:
+        created_at = current.get("created_at")
+    created_at = _timestamp_or_none(created_at)
+
+    if updated_at is None:
+        updated_at = getattr(dataset, "updated_at", None) if dataset is not None else None
+    updated_at = _timestamp_or_none(updated_at)
+
+    new_ref = {
+        "dataset_id": resolved_dataset_id,
+        "dataset_uri": dataset_uri if dataset_uri is not None else current.get("dataset_uri"),
+        "name": resolved_name,
+        "status": status,
+        "source": source if source is not None else current.get("source"),
+        "image_count": int(resolved_image_count or 0),
+        "aoi": tuple(resolved_aoi) if isinstance(resolved_aoi, (list, tuple)) else resolved_aoi,
+        "created_at": created_at,
+        "updated_at": updated_at,
+    }
+
+    st.session_state["dataset"] = dataset
+    st.session_state["_dataset_cache"] = dataset
+    st.session_state["dataset_ref"] = new_ref
+    return new_ref
+
+
+def set_analysis_state(
+    run=None,
+    *,
+    status: str = "idle",
+    analysis_id: str | None = None,
+    dataset_id: str | None = None,
+    location_name: str | None = None,
+    report_uri: str | None = None,
+    heatmap_uri: str | None = None,
+    created_at=None,
+    updated_at=None,
+) -> dict:
+    current = dict(st.session_state.get("analysis_ref") or _blank_analysis_ref())
+
+    resolved_analysis_id = analysis_id
+    if resolved_analysis_id is None and run is not None:
+        resolved_analysis_id = getattr(run, "runId", None)
+
+    if dataset_id is None:
+        dataset_id = (st.session_state.get("dataset_ref") or {}).get("dataset_id")
+
+    if location_name is None:
+        location_name = (st.session_state.get("selected_location") or {}).get("location_name")
+
+    if created_at is None:
+        created_at = current.get("created_at")
+    created_at = _timestamp_or_none(created_at)
+
+    if updated_at is None:
+        updated_at = getattr(run, "endedAt", None) or getattr(run, "startedAt", None) or current.get("updated_at")
+    updated_at = _timestamp_or_none(updated_at)
+
+    new_ref = {
+        "analysis_id": resolved_analysis_id,
+        "dataset_id": dataset_id,
+        "status": status,
+        "location_name": location_name,
+        "report_uri": report_uri if report_uri is not None else current.get("report_uri"),
+        "heatmap_uri": heatmap_uri if heatmap_uri is not None else current.get("heatmap_uri"),
+        "created_at": created_at,
+        "updated_at": updated_at,
+    }
+
+    st.session_state["analysis_run"] = run
+    st.session_state["_analysis_run_cache"] = run
+    st.session_state["analysis_ref"] = new_ref
+    return new_ref
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Reset helpers
+# ═══════════════════════════════════════════════════════════════════════════
+
+_LOCATION_UI_DEFAULTS = {
+    "loc_candidate_lat": None,
+    "loc_candidate_lon": None,
+    "loc_candidate_name": "",
+    "loc_search_input": "",
+    "loc_search_txt": "",
+    "loc_map_lat": 24.7136,
+    "loc_map_lon": 46.6753,
+    "loc_candidate_aoi": None,
+    "loc_rectangle_drawn": False,
+    "manual_lat": 24.7136,
+    "manual_lon": 46.6753,
+    "manual_name": "",
+}
+
+
+def reset_location_ui_state() -> None:
+    """Clear only the temporary widget state used by the location page."""
+    for key, value in _LOCATION_UI_DEFAULTS.items():
+        st.session_state[key] = value
+
+    for transient_key in (
+        "loc_main_map",
+        "loc_search_btn",
+        "use_manual_btn",
+        "save_loc_btn",
+        "clear_loc_btn",
+        "next_loc_btn",
+    ):
+        st.session_state.pop(transient_key, None)
+
+
+def reset_active_analysis_state(*, clear_location: bool = True) -> None:
+    """Clear the current draft run while keeping persisted history."""
+    if clear_location:
+        st.session_state["selected_location"] = {
+            "location_name": "",
+            "latitude": None,
+            "longitude": None,
+        }
+        st.session_state["location_saved"] = False
+        st.session_state["aoi"] = None
+        st.session_state["dataset"] = None
+        st.session_state["_dataset_cache"] = None
+        st.session_state["dataset_ref"] = _blank_dataset_ref()
+
+    st.session_state["uploaded_image_name"] = ""
+    st.session_state["uploaded_image_bytes"] = None
+    st.session_state["uploaded_image_temp_path"] = ""
+    st.session_state["uploaded_images"] = []
+    st.session_state["image_records"] = []
+    st.session_state["_uploaded_image_cache"] = []
+    st.session_state["image_records"] = []
+    st.session_state["_uploaded_image_cache"] = []
+
+    st.session_state["extractor"] = None
+    st.session_state["ahp_weights_confirmed"] = False
+    st.session_state["analysis_run"] = None
+    st.session_state["_analysis_run_cache"] = None
+    st.session_state["analysis_ref"] = _blank_analysis_ref()
+    st.session_state["report_obj"] = None
+    st.session_state["selected_site_analysis"] = None
+    st.session_state.pop("analysis_start_date", None)
+    st.session_state.pop("analysis_end_date", None)
+
+
+def reset_for_new_analysis() -> None:
+    """Start a fresh analysis draft and clear the location page UI too."""
+    reset_active_analysis_state(clear_location=True)
+    reset_location_ui_state()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Authentication
 # ═══════════════════════════════════════════════════════════════════════════
@@ -198,18 +503,58 @@ def login_user(email: str, password: str) -> bool:
     return True
 
 
+def clear_analysis_state(clear_dataset: bool = True) -> None:
+    """Clear analysis outputs that become stale between runs."""
+    keys_to_none = [
+        "extractor",
+        "analysis_run",
+        "_analysis_run_cache",
+        "report_obj",
+        "selected_site_analysis",
+        "analysis_start_date",
+        "analysis_end_date",
+    ]
+    if clear_dataset:
+        keys_to_none.extend(["dataset", "_dataset_cache"])
+
+    for key in keys_to_none:
+        st.session_state[key] = None
+
+    if clear_dataset:
+        st.session_state["dataset_ref"] = _blank_dataset_ref()
+
+    st.session_state["analysis_ref"] = _blank_analysis_ref()
+    st.session_state["ahp_weights_confirmed"] = False
+
+
+def clear_uploaded_image_state() -> None:
+    """Clear uploaded image state when the site or run changes."""
+    st.session_state["uploaded_image_name"] = ""
+    st.session_state["uploaded_image_bytes"] = None
+    st.session_state["uploaded_image_temp_path"] = ""
+    st.session_state["uploaded_images"] = []
+    st.session_state["image_records"] = []
+    st.session_state["_uploaded_image_cache"] = []
+
+
+def reset_pipeline_for_new_location(clear_uploaded: bool = True) -> None:
+    """Reset downstream pipeline state after saving/changing a location."""
+    clear_analysis_state(clear_dataset=True)
+    if clear_uploaded:
+        clear_uploaded_image_state()
+
+
+def reset_full_pipeline() -> None:
+    """Backward-compatible alias for the new analysis reset."""
+    reset_for_new_analysis()
+
+
 def logout_user() -> None:
     for key in ("logged_in", "username", "user_email", "user_role",
                 "user_id", "session_id", "session_expires"):
         st.session_state[key] = False if key == "logged_in" else ""
 
-    st.session_state["selected_location"] = {
-        "location_name": "", "latitude": None, "longitude": None
-    }
-    for key in ("location_saved", "aoi", "dataset", "uploaded_image_name",
-                "uploaded_image_bytes", "uploaded_image_temp_path",
-                "extractor", "ahp_weights_confirmed", "analysis_run", "report_obj"):
-        st.session_state[key] = False if key == "location_saved" else None
+    reset_for_new_analysis()
     # Note: analysis_history is intentionally preserved across logout
     # so history survives a re-login in the same session.
 
@@ -253,7 +598,14 @@ def save_selected_location(
         aoi=aoi,
         images=[],
     )
-    st.session_state["dataset"] = dataset
+    set_dataset_state(
+        dataset,
+        status="location_selected",
+        source="session",
+        image_count=0,
+        aoi=aoi,
+        name=location_name.strip(),
+    )
     return location_dict
 
 def get_aoi() -> "AOI | None":
@@ -261,7 +613,7 @@ def get_aoi() -> "AOI | None":
 
 
 def get_dataset() -> "Dataset | None":
-    return st.session_state.get("dataset")
+    return st.session_state.get("_dataset_cache") or st.session_state.get("dataset")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -286,7 +638,7 @@ def render_footer() -> None:
         """
         <div style="
             font-family: 'Capriola', sans-serif;
-            font-size: 13px;
+            font-size: 16px;
             color: #555;
             text-align: center;
             margin-top: 20px;
@@ -418,21 +770,54 @@ def apply_global_style() -> None:
         .section-layer { position:relative; z-index:2; }
         .home-title-space { height:30px; }
 
-        .credits {
-            text-align: center; font-family:'Capriola',sans-serif;
-            color:#5A5959; font-size:clamp(20px,2vw,32px); line-height:1.8; margin-top:70px;
+        html, body, p, li, label, span, div {
+            font-size: 18px;
+        }
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] li,
+        .stMarkdown p,
+        .stMarkdown li {
+            font-size: 18px !important;
+            line-height: 1.7;
         }
 
+        /* ── العناوين: تكبير + تغميق اللون ── */
+        h1 { font-size: clamp(46px, 3.8vw, 60px) !important; color: #1a1a1a !important; }
+        h2 { font-size: clamp(37px, 3.0vw, 48px) !important; color: #1a1a1a !important; }
+        h3 { font-size: clamp(30px, 2.4vw, 40px) !important; color: #1a1a1a !important; }
+
+        div[data-testid="stNumberInput"] input,
+        div[data-testid="stTextArea"] textarea,
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            font-family:'Capriola',sans-serif !important;
+            font-size:18px !important;
+            min-height:52px !important;
+        }
+        div[data-testid="stSelectbox"] label,
+        div[data-testid="stNumberInput"] label,
+        div[data-testid="stTextArea"] label,
+        div[data-testid="stRadio"] label,
+        div[data-testid="stCheckbox"] label {
+            font-size:18px !important;
+        }
+
+
+        .credits {
+            text-align: center; font-family:'Capriola',sans-serif;
+            color:#5A5959; font-size:clamp(24px,2.3vw,38px); line-height:1.8; margin-top:70px;
+        }
+
+        /* ── Login classes: تغميق اللون فقط ── */
         .login-title {
             font-family:'Capriola',sans-serif;
-            font-size:clamp(58px,5vw,72px); color:#5A5959; line-height:1; margin-bottom:10px;
+            font-size:clamp(74px,5.8vw,92px); color:#1a1a1a; line-height:1; margin-bottom:10px;
         }
         .login-subtitle {
-            font-family:'Capriola',sans-serif; font-size:15px; color:#5E5B5B; margin-bottom:34px;
+            font-family:'Capriola',sans-serif; font-size:18px; color:#2c2c2c; margin-bottom:34px;
         }
         .field-label {
             font-family:'Capriola',sans-serif;
-            font-size:clamp(22px,1.9vw,26px); color:#333333; margin-bottom:8px; margin-top:8px;
+            font-size:clamp(28px,2.4vw,34px); color:#1a1a1a; margin-bottom:8px; margin-top:8px;
         }
         .login-card-box {
             background:rgba(255,255,255,0.68); border-radius:24px;
@@ -446,9 +831,9 @@ def apply_global_style() -> None:
             color:#1a1a1a !important;          /* was #6f6f6f — improved to near-black */
             border:1px solid #d8d4d4 !important;
             border-radius:4px !important;
-            min-height:42px !important;
+            min-height:52px !important;
             font-family:'Capriola',sans-serif !important;
-            font-size:14px !important;
+            font-size:18px !important;
             padding-left:14px !important;
             box-shadow:none !important;
         }
@@ -460,7 +845,7 @@ def apply_global_style() -> None:
         /* ── Normal buttons: blue ── */
         div.stButton > button {
             background:#0070FF; color:white; border:none; border-radius:4px;
-            min-height:52px; font-family:'Capriola',sans-serif; font-size:18px;
+            min-height:56px; font-family:'Capriola',sans-serif; font-size:20px;
             box-shadow:5px 6px 4px rgba(0,0,0,0.18);
         }
         div.stButton > button:hover { background:#005fe0; color:white; }
@@ -502,7 +887,7 @@ def apply_global_style() -> None:
         .ray.r8{left:42px;top:48px;transform:rotate(-45deg)}
 
         .top-home-btn { width:84px; margin-left:auto; }
-        .top-home-btn div.stButton > button { min-height:44px; font-size:20px; border-radius:12px; box-shadow:none; }
+        .top-home-btn div.stButton > button { min-height:48px; font-size:22px; border-radius:12px; box-shadow:none; }
 
         @media(max-width:900px){
             .sun-wrap-fixed{display:none}

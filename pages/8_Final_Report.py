@@ -39,6 +39,7 @@ from ui_helpers import (
     apply_global_style,
     render_bg,
     require_login,
+    reset_for_new_analysis,
     save_analysis_to_history,
 )
 
@@ -680,16 +681,7 @@ st.markdown("""
 col_new, col_back = st.columns(2)
 with col_new:
     if st.button("↩  Start New Analysis", use_container_width=True):
-        for key in [
-            "uploaded_image_name", "uploaded_image_bytes", "uploaded_image_temp_path",
-            "aoi", "dataset", "selected_location", "extractor",
-            "analysis_run", "report_obj", "ahp_weights_confirmed", "location_saved",
-            "analysis_start_date", "analysis_end_date", "selected_site_analysis",
-            "uploaded_images",
-        ]:
-            st.session_state.pop(key, None)
-        from ui_helpers import init_state as _init
-        _init()
+        reset_for_new_analysis()
         st.switch_page("pages/3_Choose_Location.py")
 
 with col_back:
