@@ -2,22 +2,6 @@
 ui_helpers.py
 =============
 Shared Streamlit helpers for WAHHAJ.
-
-Exports
--------
-init_state()                 — initialise all session_state keys
-login_user()                 — real auth via User backend
-logout_user()                — clear session
-save_selected_location()     — persist location + compute AOI + create Dataset
-get_aoi()                    — accessor for downstream pages
-get_dataset()                — accessor for downstream pages
-save_analysis_to_history()   — append a completed analysis to history list
-get_analysis_history()       — return the history list for the current user
-apply_global_style()         — global CSS
-render_bg()                  — animated blob background
-show_logo()                  — logo image
-render_top_home_button()     — home button
-render_footer()              — credits footer
 """
 
 import sys
@@ -29,9 +13,9 @@ _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from Wahhaj.User import User, UserRole          # noqa: E402
-from Wahhaj.models import AOI                   # noqa: E402
-from Wahhaj.FeatureExtractor import Dataset     # noqa: E402
+from Wahhaj.User import User, UserRole
+from Wahhaj.models import AOI
+from Wahhaj.FeatureExtractor import Dataset
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -40,7 +24,6 @@ from Wahhaj.FeatureExtractor import Dataset     # noqa: E402
 
 def init_state() -> None:
     defaults: dict = {
-        # ── Auth ──────────────────────────────────────────────────────────
         "logged_in":        False,
         "username":         "",
         "user_email":       "",
@@ -48,8 +31,6 @@ def init_state() -> None:
         "user_id":          "",
         "session_id":       "",
         "session_expires":  "",
-
-        # ── Location / AOI ────────────────────────────────────────────────
         "selected_location": {
             "location_name": "",
             "latitude":      None,
@@ -70,15 +51,11 @@ def init_state() -> None:
             "created_at":   None,
             "updated_at":   None,
         },
-
-        # ── Upload ────────────────────────────────────────────────────────
         "uploaded_image_name":      "",
         "uploaded_image_bytes":     None,
         "uploaded_image_temp_path": "",
         "image_records":            [],
         "_uploaded_image_cache":    [],
-
-        # ── Pipeline ──────────────────────────────────────────────────────
         "extractor":              None,
         "ahp_weights_confirmed":  False,
         "analysis_run":           None,
@@ -96,18 +73,7 @@ def init_state() -> None:
         "report_obj":             None,
         "selected_site_analysis": None,
         "uploaded_images":        [],
-
-        # ── Analysis History ──────────────────────────────────────────────
-        # List of dicts — one entry per completed analysis run.
-        # Each entry: {
-        #   "run_id", "location_name", "lat", "lon",
-        #   "score_mean", "candidate_count", "top_score",
-        #   "recommendation", "analysed_at", "aoi",
-        #   "ranked": [{"rank", "lat", "lon", "score", "rec"}, …]
-        # }
         "analysis_history": [],
-
-        # ── Admin ──────────────────────────────────────────────────────────
         "users": None,
     }
     for key, value in defaults.items():
@@ -120,15 +86,6 @@ def init_state() -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def save_analysis_to_history(run, ranked: list, location: dict) -> None:
-    """
-    Append one saved analysis entry for the selected site.
-
-    The Home page history should behave like a list of saved analyses, not a
-    table of alternative candidate sites. We still keep some legacy fields for
-    backward compatibility, but the primary displayed values are the selected
-    site score/label and a lightweight snapshot that can reopen the Final Report
-    page for the saved run within the same local session.
-    """
     from datetime import datetime
 
     if "analysis_history" not in st.session_state:
@@ -186,12 +143,12 @@ def save_analysis_to_history(run, ranked: list, location: dict) -> None:
         "aoi": st.session_state.get("aoi"),
         "selected_score": round(selected_score, 4),
         "selected_label": selected_label,
-        "score_mean": round(score_mean, 4),      # legacy fallback
-        "top_score": round(top_score, 4),        # legacy fallback
-        "candidate_count": len(ranked),          # legacy fallback
+        "score_mean": round(score_mean, 4),
+        "top_score": round(top_score, 4),
+        "candidate_count": len(ranked),
         "recommendation": selected_label,
         "analysed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "ranked": ranked_list,                   # legacy fallback
+        "ranked": ranked_list,
         "state_snapshot": {
             "analysis_run": run,
             "report_obj": st.session_state.get("report_obj"),
@@ -207,12 +164,10 @@ def save_analysis_to_history(run, ranked: list, location: dict) -> None:
 
 
 def get_analysis_history() -> list:
-    """Return the analysis history list (newest first)."""
     return st.session_state.get("analysis_history", [])
 
 
 def restore_analysis_history_entry(entry: dict) -> bool:
-    """Restore enough session state to reopen the saved Final Report page."""
     if not isinstance(entry, dict):
         return False
 
@@ -246,7 +201,6 @@ def restore_analysis_history_entry(entry: dict) -> bool:
         st.session_state["analysis_ref"] = dict(analysis_ref)
 
     return True
-
 
 
 def _blank_dataset_ref() -> dict:
@@ -295,10 +249,6 @@ def build_image_record(
     db=None,
     job=None,
 ) -> dict:
-    """
-    Build a lightweight image record that can later map cleanly to cloud storage.
-    The backend objects stay in cache, while this record keeps stable metadata.
-    """
     image_id = None
     dataset_id = None
     created_at = None
@@ -471,23 +421,17 @@ _LOCATION_UI_DEFAULTS = {
 
 
 def reset_location_ui_state() -> None:
-    """Clear only the temporary widget state used by the location page."""
     for key, value in _LOCATION_UI_DEFAULTS.items():
         st.session_state[key] = value
 
     for transient_key in (
-        "loc_main_map",
-        "loc_search_btn",
-        "use_manual_btn",
-        "save_loc_btn",
-        "clear_loc_btn",
-        "next_loc_btn",
+        "loc_main_map", "loc_search_btn", "use_manual_btn",
+        "save_loc_btn", "clear_loc_btn", "next_loc_btn",
     ):
         st.session_state.pop(transient_key, None)
 
 
 def reset_active_analysis_state(*, clear_location: bool = True) -> None:
-    """Clear the current draft run while keeping persisted history."""
     if clear_location:
         st.session_state["selected_location"] = {
             "location_name": "",
@@ -506,9 +450,6 @@ def reset_active_analysis_state(*, clear_location: bool = True) -> None:
     st.session_state["uploaded_images"] = []
     st.session_state["image_records"] = []
     st.session_state["_uploaded_image_cache"] = []
-    st.session_state["image_records"] = []
-    st.session_state["_uploaded_image_cache"] = []
-
     st.session_state["extractor"] = None
     st.session_state["ahp_weights_confirmed"] = False
     st.session_state["analysis_run"] = None
@@ -521,9 +462,53 @@ def reset_active_analysis_state(*, clear_location: bool = True) -> None:
 
 
 def reset_for_new_analysis() -> None:
-    """Start a fresh analysis draft and clear the location page UI too."""
     reset_active_analysis_state(clear_location=True)
     reset_location_ui_state()
+
+
+def clear_analysis_state(clear_dataset: bool = True) -> None:
+    keys_to_none = [
+        "extractor", "analysis_run", "_analysis_run_cache",
+        "report_obj", "selected_site_analysis",
+        "analysis_start_date", "analysis_end_date",
+    ]
+    if clear_dataset:
+        keys_to_none.extend(["dataset", "_dataset_cache"])
+
+    for key in keys_to_none:
+        st.session_state[key] = None
+
+    if clear_dataset:
+        st.session_state["dataset_ref"] = _blank_dataset_ref()
+
+    st.session_state["analysis_ref"] = _blank_analysis_ref()
+    st.session_state["ahp_weights_confirmed"] = False
+
+
+def clear_uploaded_image_state() -> None:
+    st.session_state["uploaded_image_name"] = ""
+    st.session_state["uploaded_image_bytes"] = None
+    st.session_state["uploaded_image_temp_path"] = ""
+    st.session_state["uploaded_images"] = []
+    st.session_state["image_records"] = []
+    st.session_state["_uploaded_image_cache"] = []
+
+
+def reset_pipeline_for_new_location(clear_uploaded: bool = True) -> None:
+    clear_analysis_state(clear_dataset=True)
+    if clear_uploaded:
+        clear_uploaded_image_state()
+
+
+def reset_full_pipeline() -> None:
+    reset_for_new_analysis()
+
+
+def logout_user() -> None:
+    for key in ("logged_in", "username", "user_email", "user_role",
+                "user_id", "session_id", "session_expires"):
+        st.session_state[key] = False if key == "logged_in" else ""
+    reset_for_new_analysis()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -554,62 +539,6 @@ def login_user(email: str, password: str) -> bool:
     st.session_state["session_id"]      = session.session_id
     st.session_state["session_expires"] = session.expires_at.isoformat()
     return True
-
-
-def clear_analysis_state(clear_dataset: bool = True) -> None:
-    """Clear analysis outputs that become stale between runs."""
-    keys_to_none = [
-        "extractor",
-        "analysis_run",
-        "_analysis_run_cache",
-        "report_obj",
-        "selected_site_analysis",
-        "analysis_start_date",
-        "analysis_end_date",
-    ]
-    if clear_dataset:
-        keys_to_none.extend(["dataset", "_dataset_cache"])
-
-    for key in keys_to_none:
-        st.session_state[key] = None
-
-    if clear_dataset:
-        st.session_state["dataset_ref"] = _blank_dataset_ref()
-
-    st.session_state["analysis_ref"] = _blank_analysis_ref()
-    st.session_state["ahp_weights_confirmed"] = False
-
-
-def clear_uploaded_image_state() -> None:
-    """Clear uploaded image state when the site or run changes."""
-    st.session_state["uploaded_image_name"] = ""
-    st.session_state["uploaded_image_bytes"] = None
-    st.session_state["uploaded_image_temp_path"] = ""
-    st.session_state["uploaded_images"] = []
-    st.session_state["image_records"] = []
-    st.session_state["_uploaded_image_cache"] = []
-
-
-def reset_pipeline_for_new_location(clear_uploaded: bool = True) -> None:
-    """Reset downstream pipeline state after saving/changing a location."""
-    clear_analysis_state(clear_dataset=True)
-    if clear_uploaded:
-        clear_uploaded_image_state()
-
-
-def reset_full_pipeline() -> None:
-    """Backward-compatible alias for the new analysis reset."""
-    reset_for_new_analysis()
-
-
-def logout_user() -> None:
-    for key in ("logged_in", "username", "user_email", "user_role",
-                "user_id", "session_id", "session_expires"):
-        st.session_state[key] = False if key == "logged_in" else ""
-
-    reset_for_new_analysis()
-    # Note: analysis_history is intentionally preserved across logout
-    # so history survives a re-login in the same session.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -660,6 +589,7 @@ def save_selected_location(
         name=location_name.strip(),
     )
     return location_dict
+
 
 def get_aoi() -> "AOI | None":
     return st.session_state.get("aoi")
@@ -727,6 +657,7 @@ def render_bg() -> None:
         unsafe_allow_html=True,
     )
 
+
 def ui_icon(name: str, sz: int = 16, color: str = "currentColor") -> str:
     icons = {
         "home": (
@@ -787,6 +718,7 @@ def ui_icon(name: str, sz: int = 16, color: str = "currentColor") -> str:
         f"{body}</svg>"
     )
 
+
 def apply_global_style() -> None:
     st.markdown(
         """
@@ -797,7 +729,8 @@ def apply_global_style() -> None:
         [data-testid="stHeader"]  { background: transparent; }
         [data-testid="stToolbar"] { right: 14px; top: 10px; }
 
-        .stApp { background: #f7f7f5; }
+        /* ── التغيير الرئيسي: شفاف بدل #f7f7f5 ── */
+        .stApp { background: #f0f2f5; }
 
         .main .block-container {
             max-width: 1280px;
@@ -805,9 +738,9 @@ def apply_global_style() -> None:
             padding-bottom: 1.2rem;
         }
 
-        .page-bg {
-            position: fixed; inset: 0; z-index: 0;
-            pointer-events: none; overflow: hidden; background: #f7f7f5;
+       .page-bg {
+        position: fixed; inset: 0; z-index: 0;
+        pointer-events: none; overflow: hidden; background: #f0f2f5;
         }
         .blob {
             position: absolute; border-radius: 50%;
@@ -834,7 +767,6 @@ def apply_global_style() -> None:
             line-height: 1.7;
         }
 
-        /* ── العناوين: تكبير + تغميق اللون ── */
         h1 { font-size: clamp(46px, 3.8vw, 60px) !important; color: #1a1a1a !important; }
         h2 { font-size: clamp(37px, 3.0vw, 48px) !important; color: #1a1a1a !important; }
         h3 { font-size: clamp(30px, 2.4vw, 40px) !important; color: #1a1a1a !important; }
@@ -854,13 +786,11 @@ def apply_global_style() -> None:
             font-size:18px !important;
         }
 
-
         .credits {
             text-align: center; font-family:'Capriola',sans-serif;
             color:#5A5959; font-size:clamp(24px,2.3vw,38px); line-height:1.8; margin-top:70px;
         }
 
-        /* ── Login classes: تغميق اللون فقط ── */
         .login-title {
             font-family:'Capriola',sans-serif;
             font-size:clamp(74px,5.8vw,92px); color:#1a1a1a; line-height:1; margin-bottom:10px;
@@ -878,10 +808,9 @@ def apply_global_style() -> None:
             box-shadow:0 10px 34px rgba(0,0,0,0.04); min-height:560px;
         }
 
-        /* ── Input fields: dark text on light background ── */
         div[data-testid="stTextInput"] input {
             background:#F0EEEE !important;
-            color:#1a1a1a !important;          /* was #6f6f6f — improved to near-black */
+            color:#1a1a1a !important;
             border:1px solid #d8d4d4 !important;
             border-radius:4px !important;
             min-height:52px !important;
@@ -891,11 +820,10 @@ def apply_global_style() -> None:
             box-shadow:none !important;
         }
         div[data-testid="stTextInput"] input::placeholder {
-            color:#999 !important;             /* placeholder stays lighter */
+            color:#999 !important;
         }
         div[data-testid="stTextInput"] label { display:none !important; }
 
-        /* ── Normal buttons: blue ── */
         div.stButton > button {
             background:#0070FF; color:white; border:none; border-radius:4px;
             min-height:56px; font-family:'Capriola',sans-serif; font-size:20px;
@@ -903,7 +831,6 @@ def apply_global_style() -> None:
         }
         div.stButton > button:hover { background:#005fe0; color:white; }
 
-        /* ── Disabled buttons: clearly grey, not blue ── */
         div.stButton > button:disabled,
         div.stButton > button[disabled] {
             background:#d0d0d0 !important;
@@ -911,7 +838,7 @@ def apply_global_style() -> None:
             border:1px solid #bbb !important;
             box-shadow:none !important;
             cursor:not-allowed !important;
-            opacity:1 !important;   /* override Streamlit's default 0.38 opacity */
+            opacity:1 !important;
         }
 
         .sun-wrap-fixed { position:relative; width:390px; height:390px; margin:90px auto 0 auto; }
