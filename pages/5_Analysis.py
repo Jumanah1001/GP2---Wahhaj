@@ -435,286 +435,257 @@ def _save_selected_site_analysis(
     }
 
 
-# ── styles ────────────────────────────────────────────────────
+# ── redesigned transition-page styles ─────────────────────────
 st.markdown(
     """
 <style>
-.wrap{
+.analysis-wrap{
     position:relative;
     z-index:2;
-    padding-top:10px;
+    padding-top:18px;
+    padding-bottom:10px;
 }
-.page-title{
+.analysis-title{
     font-family:'Capriola',sans-serif;
-    font-size:clamp(34px,3vw,44px);
-    color:#5A5959;
-    line-height:1;
-    margin-bottom:4px;
+    font-size:clamp(36px,3.1vw,54px);
+    color:#1F3864;
+    line-height:1.08;
     text-align:center;
+    margin:8px 0 10px;
 }
-.page-subtitle{
+.analysis-subtitle{
     font-family:'Capriola',sans-serif;
-    font-size:14px;
-    color:#5E5B5B;
-    margin-bottom:24px;
+    font-size:15px;
+    color:#64748B;
+    line-height:1.6;
     text-align:center;
+    max-width:900px;
+    margin:0 auto 18px;
 }
-
-.summary-row{
-    display:flex;
-    gap:16px;
-    flex-wrap:wrap;
-    margin-bottom:18px;
+.ac-card{
+    background:rgba(255,255,255,0.94);
+    border:1px solid rgba(214,227,243,0.95);
+    border-radius:30px;
+    box-shadow:0 12px 34px rgba(15,23,42,0.08);
+    padding:28px 30px 28px;
+    margin:0 auto;
 }
-.summary-card{
-    flex:1;
-    min-width:240px;
-    background:rgba(255,255,255,0.92);
-    border-radius:22px;
-    padding:20px 22px 18px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    border:1px solid rgba(220,220,220,0.6);
-}
-.summary-label{
-    font-family:'Capriola',sans-serif;
-    font-size:11px;
-    color:#666;
-    text-transform:uppercase;
-    letter-spacing:.06em;
+.ac-card.processing{ padding:30px 30px 26px; }
+.ac-card.warning{ padding:28px 30px 24px; }
+.ac-icon-shell{
+    width:112px;
+    height:112px;
+    margin:0 auto 18px;
+    border-radius:50%;
+    background:linear-gradient(180deg,#F0FAF4 0%, #E5F6EC 100%);
     display:flex;
     align-items:center;
-    gap:7px;
-    margin-bottom:10px;
+    justify-content:center;
+    box-shadow:inset 0 0 0 1px #D9F1E2;
 }
-.summary-main{
+.ac-icon-ring{
+    width:76px;
+    height:76px;
+    border-radius:50%;
+    border:4px solid #16A34A;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:#16A34A;
+}
+.ac-loader-shell{
+    width:104px;
+    height:104px;
+    margin:0 auto 16px;
+    border-radius:50%;
+    background:linear-gradient(180deg,#EEF5FF 0%, #E0EEFF 100%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:inset 0 0 0 1px #D6E6FF;
+}
+.ac-loader-ring{
+    width:72px;
+    height:72px;
+    border-radius:50%;
+    border:4px solid rgba(0,112,255,0.15);
+    border-top-color:#0070FF;
+    animation:acSpin 1.1s linear infinite;
+}
+@keyframes acSpin { from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+.ac-card-title{
     font-family:'Capriola',sans-serif;
-    font-size:20px;
+    font-size:clamp(28px,2.4vw,40px);
     color:#1F3864;
-    font-weight:700;
-    line-height:1.45;
-    margin-bottom:6px;
-    word-break:break-word;
+    line-height:1.18;
+    text-align:center;
+    margin:0 0 10px;
 }
-.summary-sub{
+.ac-card-copy{
     font-family:'Capriola',sans-serif;
-    font-size:12px;
-    color:#555;
-    line-height:1.45;
+    font-size:15px;
+    color:#667085;
+    line-height:1.75;
+    text-align:center;
+    max-width:760px;
+    margin:0 auto 20px;
 }
-
-.result-panel{
-    background:rgba(255,255,255,0.92);
-    border-radius:24px;
-    padding:28px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    margin-bottom:18px;
-    border:1px solid rgba(220,220,220,0.6);
-}
-.result-grid{
+.ac-summary-grid{
     display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:28px;
-    align-items:stretch;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:14px;
+    margin:16px 0 18px;
 }
-.result-col{
-    min-width:0;
+.ac-summary-grid.processing{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    max-width:640px;
+    margin-left:auto;
+    margin-right:auto;
 }
-.result-col.right{
-    border-left:1px solid #E0E0E0;
-    padding-left:28px;
-}
-.result-label{
-    font-family:'Capriola',sans-serif;
-    font-size:12px;
-    color:#666;
-    text-transform:uppercase;
-    letter-spacing:.06em;
-    margin-bottom:12px;
-}
-.score-value{
-    font-family:'Capriola',sans-serif;
-    font-size:74px;
-    color:#0070FF;
-    font-weight:700;
-    line-height:1;
-    margin-bottom:14px;
-}
-.score-sub{
-    font-family:'Capriola',sans-serif;
-    font-size:12px;
-    color:#666;
-    text-transform:uppercase;
-    letter-spacing:.06em;
-}
-.badge{
-    font-family:'Capriola',sans-serif;
-    font-size:12px;
-    padding:7px 14px;
-    border-radius:999px;
-    display:inline-block;
-    width:fit-content;
-    margin-top:16px;
-    font-weight:700;
-}
-.b-high{background:#DCFCE7;color:#166534;}
-.b-suit{background:#FEF9C3;color:#713f12;}
-.b-mod{background:#FEF3C7;color:#92400E;}
-.b-low{background:#FEE2E2;color:#991B1B;}
-
-.ai-label{
-    font-family:'Capriola',sans-serif;
-    font-size:11px;
-    color:#666;
-    text-transform:uppercase;
-    letter-spacing:.05em;
+.ac-chip{
+    background:#FBFDFF;
+    border:1px solid #E5EEF8;
+    border-radius:18px;
+    padding:16px 16px 14px;
     display:flex;
     align-items:center;
-    gap:6px;
-    margin-bottom:12px;
+    gap:14px;
+    min-height:96px;
 }
-.ai-value{
+.ac-chip-icon{
+    width:60px;
+    height:60px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+}
+.ac-chip-icon.loc{ background:#EAF2FF; color:#1D6FFF; }
+.ac-chip-icon.img{ background:#EEF1FF; color:#4361EE; }
+.ac-chip-icon.score{ background:#ECF5FF; color:#0070FF; }
+.ac-chip-icon.result{ background:#EAF8EF; color:#16A34A; }
+.ac-chip-meta{ min-width:0; }
+.ac-chip-label{
     font-family:'Capriola',sans-serif;
-    font-size:28px;
-    color:#1F3864;
-    font-weight:700;
-    line-height:1.35;
-    word-break:break-word;
+    font-size:11px;
+    color:#7A7A7A;
+    text-transform:uppercase;
+    letter-spacing:.07em;
+    margin-bottom:5px;
 }
-
-.factors-panel{
-    background:rgba(255,255,255,0.92);
-    border-radius:24px;
-    padding:24px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    margin-bottom:18px;
-    border:1px solid rgba(220,220,220,0.6);
-}
-.panel-title{
+.ac-chip-value{
     font-family:'Capriola',sans-serif;
     font-size:18px;
+    color:#183B74;
     font-weight:700;
-    color:#1a1a1a;
-    margin-bottom:10px;
+    line-height:1.3;
+    word-break:break-word;
 }
-.reason-list{
+.ac-chip-value.score{ color:#0070FF; }
+.ac-chip-value.result{ color:#16A34A; }
+.ac-note{
     display:flex;
-    flex-direction:column;
-}
-.reason-row{
-    display:flex;
-    align-items:flex-start;
-    gap:12px;
-    padding:14px 0;
-    border-bottom:1px solid #EFEFEF;
-}
-.reason-row:last-child{
-    border-bottom:none;
-    padding-bottom:0;
-}
-.reason-icon{
-    width:22px;
-    min-width:22px;
-    margin-top:1px;
-}
-.reason-content{
-    min-width:0;
-}
-.reason-factor{
-    font-family:'Capriola',sans-serif;
-    font-size:11px;
-    color:#666;
-    text-transform:uppercase;
-    letter-spacing:.05em;
-    margin-bottom:4px;
-}
-.reason-text{
-    font-family:'Capriola',sans-serif;
-    font-size:17px;
-    color:#1F3864;
-    font-weight:700;
-    line-height:1.35;
-}
-
-.cta-wrap{
-    margin-top:14px;
-}
-.state-panel{
-    background:rgba(255,255,255,0.92);
-    border-radius:22px;
-    padding:24px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    margin-bottom:18px;
-    border:1px solid rgba(220,220,220,0.6);
-}
-.state-msg{
+    align-items:center;
+    justify-content:center;
+    gap:10px;
     font-family:'Capriola',sans-serif;
     font-size:14px;
-    color:#333;
-    line-height:1.6;
+    color:#6B7280;
+    line-height:1.5;
+    margin:2px 0 18px;
+    text-align:center;
 }
-.state-msg.error{
-    color:#991B1B;
+.ac-note .icon{ color:#36A3FF; display:flex; align-items:center; }
+.ac-progress-wrap{
+    max-width:760px;
+    margin:10px auto 0;
 }
-
-div.stButton>button,
-div.stButton>button:focus {
-    background:#0070FF !important;
-    color:white !important;
-    border:none !important;
-    border-radius:14px !important;
-    min-height:62px !important;
-    height:auto !important;
-    padding-top:18px !important;
-    padding-bottom:18px !important;
-    padding-left:32px !important;
-    padding-right:32px !important;
+.ac-progress-label{
+    font-family:'Capriola',sans-serif;
+    font-size:14px;
+    font-weight:600;
+    color:#53627C;
+    text-align:center;
+    margin:0 0 9px;
+}
+.ac-progress-track{
+    width:100%;
+    height:22px;
+    background:rgba(0,0,0,0.07);
+    border-radius:999px;
+    overflow:hidden;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.10);
+}
+.ac-progress-fill{
+    height:100%;
+    border-radius:999px;
+    background:linear-gradient(90deg,#003caa 0%,#0070FF 25%,#38b6ff 50%,#0070FF 75%,#003caa 100%);
+    background-size:400% 100%;
+    animation:wShimmer 2s linear infinite;
+    box-shadow:0 0 20px rgba(0,112,255,0.50),0 3px 10px rgba(0,112,255,0.24);
+    transition: width .7s cubic-bezier(.4,0,.2,1);
+}
+@keyframes wShimmer { 0% { background-position: 200% center; } 100% { background-position: -200% center; } }
+.ac-status-pill{
+    width:fit-content;
+    margin:12px auto 0;
+    padding:8px 14px;
+    border-radius:999px;
+    background:#EEF5FF;
+    border:1px solid #DCEAFD;
+    font-family:'Capriola',sans-serif;
+    font-size:13px;
+    color:#365277;
+}
+.ac-action-row{
+    margin-top:10px;
+}
+.ac-warning-list{
+    font-family:'Capriola',sans-serif;
+    font-size:15px;
+    color:#7A2630;
+    line-height:1.7;
+    text-align:center;
+    max-width:620px;
+    margin:0 auto 12px;
+}
+.ac-warning-icon{
+    width:104px;
+    height:104px;
+    margin:0 auto 16px;
+    border-radius:50%;
+    background:linear-gradient(180deg,#FFF2F2 0%,#FFE7E7 100%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:#E2534A;
+    box-shadow:inset 0 0 0 1px #FBD3D3;
+}
+.ac-warning-icon svg{ width:44px;height:44px; }
+.ac-center-col > div[data-testid="stVerticalBlock"]{ gap:0.65rem; }
+.ac-center-col div.stButton > button,
+.ac-center-col div.stButton > button:focus {
+    min-height:64px !important;
+    border-radius:18px !important;
+    padding:18px 24px !important;
     font-family:'Capriola',sans-serif !important;
-    font-size:17px !important;
+    font-size:19px !important;
     font-weight:700 !important;
-    letter-spacing:0.03em !important;
-    box-shadow: 0 4px 16px rgba(0,112,255,0.38), 0 2px 6px rgba(0,0,0,0.10) !important;
-    transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease !important;
-    line-height: 1.4 !important;
-    white-space: normal !important;
+    box-shadow:0 8px 18px rgba(0,112,255,0.20) !important;
 }
-div.stButton>button > div,
-div.stButton>button p {
-    font-weight:700 !important;
-    font-size:17px !important;
-    padding:0 !important; margin:0 !important;
+.ac-center-col div.stButton > button:hover{
+    transform:translateY(-1px) !important;
 }
-div.stButton>button:hover{
-    background:#005fe0 !important;
-    box-shadow: 0 6px 22px rgba(0,112,255,0.50) !important;
-    transform: translateY(-1px) !important;
+@media (max-width: 1100px){
+    .ac-summary-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
-div.stButton>button:disabled,
-div.stButton>button[disabled]{
-    opacity:.55 !important;
-    transform: none !important;
-    box-shadow:none !important;
-}
-div[data-testid="stVerticalBlock"]{
-    gap:.35rem;
-}
-
-@media (max-width: 900px){
-    .result-grid{
-        grid-template-columns:1fr;
-        gap:18px;
-    }
-    .result-col.right{
-        border-left:none;
-        border-top:1px solid #E0E0E0;
-        padding-left:0;
-        padding-top:18px;
-    }
-    .score-value{
-        font-size:56px;
-    }
-    .ai-value{
-        font-size:22px;
-    }
+@media (max-width: 760px){
+    .analysis-title{ font-size:30px; }
+    .ac-card{ padding:22px 18px; border-radius:24px; }
+    .ac-summary-grid,
+    .ac-summary-grid.processing{ grid-template-columns:1fr; }
+    .ac-chip{ min-height:88px; }
 }
 </style>
 """,
@@ -722,17 +693,87 @@ div[data-testid="stVerticalBlock"]{
 )
 
 
+def _summary_chip(icon_svg: str, icon_class: str, label: str, value: str, value_class: str = "") -> str:
+    extra = f" {value_class}" if value_class else ""
+    return (
+        f"<div class='ac-chip'>"
+        f"<div class='ac-chip-icon {icon_class}'>{icon_svg}</div>"
+        f"<div class='ac-chip-meta'>"
+        f"<div class='ac-chip-label'>{escape(label)}</div>"
+        f"<div class='ac-chip-value{extra}'>{escape(value)}</div>"
+        f"</div></div>"
+    )
+
+
+def _render_page_heading(title: str, subtitle: str) -> None:
+    st.markdown(f"<div class='analysis-title'>{escape(title)}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='analysis-subtitle'>{escape(subtitle)}</div>", unsafe_allow_html=True)
+
+
+def _render_processing_card(site_name: str, image_text: str, progress_pct: int, progress_msg: str) -> None:
+    chips = "".join([
+        _summary_chip(ICO_LOC, "loc", "Selected Location", site_name),
+        _summary_chip(ICO_IMG, "img", "Uploaded Image", image_text),
+    ])
+    st.markdown(
+        f"""
+        <div class='ac-card processing'>
+            <div class='ac-loader-shell'><div class='ac-loader-ring'></div></div>
+            <div class='ac-card-title'>Analyzing Your Selected Site</div>
+            <div class='ac-card-copy'>We are processing the selected location and preparing the final result. This may take a few moments.</div>
+            <div class='ac-summary-grid processing'>{chips}</div>
+            <div class='ac-progress-wrap'>
+                <div class='ac-progress-label'>{escape(progress_msg)}</div>
+                <div class='ac-progress-track'><div class='ac-progress-fill' style='width:{progress_pct}%;'></div></div>
+                <div class='ac-status-pill'>Analysis in progress...</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_missing_card(missing: list[str]) -> None:
+    missing_text = " and ".join(missing)
+    st.markdown(
+        f"""
+        <div class='ac-card warning'>
+            <div class='ac-warning-icon'>{ICO_WARN}</div>
+            <div class='ac-card-title'>We Need a Little More to Continue</div>
+            <div class='ac-warning-list'>Please provide the {escape(missing_text)} before starting the analysis.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_success_card(site_name: str, image_text: str, score_text: str, result_text: str) -> None:
+    chips = "".join([
+        _summary_chip(ICO_LOC, "loc", "Selected Location", site_name),
+        _summary_chip(ICO_IMG, "img", "Uploaded Image", image_text),
+        _summary_chip("%", "score", "Final Score", score_text, "score"),
+        _summary_chip(ICO_OK, "result", "Result", result_text, "result"),
+    ])
+    st.markdown(
+        f"""
+        <div class='ac-card'>
+            <div class='ac-icon-shell'><div class='ac-icon-ring'>{ICO_OK}</div></div>
+            <div class='ac-card-title'>Analysis Completed Successfully</div>
+            <div class='ac-card-copy'>Your selected site has been analysed successfully. You can now review the detailed final report or inspect the suitability heatmap.</div>
+            <div class='ac-summary-grid'>{chips}</div>
+            <div class='ac-note'><span class='icon'>{ICO_AI}</span><span>Detailed insights are available in the Final Report.</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ═══════════════════════════════════════════════════════════════
 # PAGE LAYOUT
 # ═══════════════════════════════════════════════════════════════
 render_top_home_button("pages/2_Home.py")
 
-st.markdown('<div class="wrap">', unsafe_allow_html=True)
-st.markdown('<div class="page-title">Selected Site Result</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="page-subtitle">Review the suitability result for your selected site</div>',
-    unsafe_allow_html=True,
-)
+st.markdown('<div class="analysis-wrap">', unsafe_allow_html=True)
 
 # ── session state ─────────────────────────────────────────────
 sel_loc = st.session_state.get("selected_location", {})
@@ -757,331 +798,223 @@ site_display_name = _display_location_name(location_name, lat, lon)
 coords_text = f"{lat:.4f}N, {lon:.4f}E" if has_loc else "Coordinates unavailable"
 
 image_count = _uploaded_image_count()
-img_main = f"{image_count} image uploaded" if image_count == 1 else (
-    f"{image_count} images uploaded" if has_img else "No image uploaded"
-)
-img_sub  = img_name if img_name else "Upload a site image to continue"
+img_main = (
+    f"{image_count} image" if image_count == 1 else f"{image_count} images"
+) if has_img else "No image"
+img_sub = img_name if img_name else "Upload a site image to continue"
 
-# ── top summary ───────────────────────────────────────────────
-st.markdown(
-    "<div class='summary-row'>"
-    f"<div class='summary-card'>"
-    f"<div class='summary-label'>{ICO_LOC} Selected Location</div>"
-    f"<div class='summary-main'>{escape(site_display_name)}</div>"
-    f"<div class='summary-sub'>{escape(coords_text)}</div>"
-    "</div>"
-    f"<div class='summary-card'>"
-    f"<div class='summary-label'>{ICO_IMG} Uploaded Image</div>"
-    f"<div class='summary-main'>{escape(img_main)}</div>"
-    f"<div class='summary-sub'>{escape(img_sub)}</div>"
-    "</div>"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-# ── run / results ─────────────────────────────────────────────
 run_result = st.session_state.get("analysis_run")
 all_ready = has_loc and has_img
 
-if run_result is None:
-    if not all_ready:
-        missing = []
-        if not has_loc:
-            missing.append("selected location")
-        if not has_img:
-            missing.append("uploaded image")
+left_spacer, card_col, right_spacer = st.columns([1.05, 1.7, 1.05], gap="small")
 
-        st.markdown(
-            "<div class='state-panel'>"
-            f"<div class='state-msg error'>{ICO_WARN} Please provide the {' and '.join(missing)} before continuing.</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+with card_col:
+    st.markdown('<div class="ac-center-col">', unsafe_allow_html=True)
 
-        c1, c2, _ = st.columns([1, 1, 3])
-        with c1:
-            if st.button("Back to Location", use_container_width=True):
-                st.switch_page("pages/3_Choose_Location.py")
-        with c2:
-            if st.button("Back to Upload", use_container_width=True):
-                st.switch_page("pages/4_Upload_Image.py")
+    if run_result is None:
+        if not all_ready:
+            _render_page_heading(
+                "Site Analysis",
+                "Complete the required inputs to start analysing your selected site.",
+            )
+            missing = []
+            if not has_loc:
+                missing.append("selected location")
+            if not has_img:
+                missing.append("uploaded image")
+            _render_missing_card(missing)
+            btn1, btn2 = st.columns(2, gap="small")
+            with btn1:
+                if st.button("Back to Location", use_container_width=True):
+                    st.switch_page("pages/3_Choose_Location.py")
+            with btn2:
+                if st.button("Back to Upload", use_container_width=True):
+                    st.switch_page("pages/4_Upload_Image.py")
+        else:
+            _render_page_heading(
+                "Site Analysis",
+                "We are preparing the suitability result for your selected site.",
+            )
+
+            card_slot = st.empty()
+            def _update_progress(pct: int, msg: str) -> None:
+                with card_slot.container():
+                    _render_processing_card(site_display_name, img_main, pct, msg)
+
+            _update_progress(5, "Initialising analysis...")
+            try:
+                from Wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
+                from Wahhaj.FeatureExtractor import FeatureExtractor, Dataset
+                from Wahhaj.AHPModel import AHPModel
+                from Wahhaj.AnalysisRun import AnalysisRun
+
+                now = datetime.now()
+
+                _update_progress(20, "Preparing site data...")
+                backend_images = _get_backend_images()
+
+                dataset = Dataset(
+                    name="wahhaj_selected_site_analysis",
+                    aoi=aoi,
+                    images=backend_images,
+                    start_date=st.session_state.get("analysis_start_date", now),
+                    end_date=st.session_state.get("analysis_end_date", now),
+                )
+                dataset_ref = set_dataset_state(
+                    dataset,
+                    status="processing",
+                    source="session",
+                    image_count=len(backend_images),
+                    aoi=aoi,
+                    name=dataset.name,
+                    created_at=now,
+                    updated_at=now,
+                )
+
+                _update_progress(40, "Loading analysis pipeline...")
+                adapter = ExternalDataSourceAdapter()
+                extractor = FeatureExtractor(adapter=adapter)
+                ahp = AHPModel()
+
+                run = AnalysisRun(
+                    ahp_model=ahp,
+                    feature_extractor=extractor,
+                    top_k_sites=10,
+                    min_site_score=0.0,
+                )
+                set_analysis_state(
+                    run,
+                    status="running",
+                    dataset_id=dataset_ref.get("dataset_id"),
+                    location_name=location_name,
+                    created_at=now,
+                    updated_at=now,
+                )
+
+                _update_progress(65, "Running site analysis...")
+                run.execute(dataset)
+
+                _update_progress(88, "Saving result...")
+                completed_at = datetime.now()
+                set_dataset_state(
+                    dataset,
+                    status="ready",
+                    source="session",
+                    image_count=len(backend_images),
+                    aoi=aoi,
+                    name=dataset.name,
+                    created_at=dataset_ref.get("created_at"),
+                    updated_at=completed_at,
+                )
+                st.session_state["extractor"] = extractor
+                set_analysis_state(
+                    run,
+                    status="completed",
+                    dataset_id=(st.session_state.get("dataset_ref") or {}).get("dataset_id"),
+                    location_name=location_name,
+                    created_at=now,
+                    updated_at=completed_at,
+                )
+
+                _update_progress(100, "✓ Analysis complete — preparing your next step...")
+                time.sleep(1.0)
+                st.rerun()
+
+            except Exception as exc:
+                failed_at = datetime.now()
+                set_analysis_state(
+                    st.session_state.get("_analysis_run_cache"),
+                    status="failed",
+                    dataset_id=(st.session_state.get("dataset_ref") or {}).get("dataset_id"),
+                    location_name=location_name,
+                    created_at=(st.session_state.get("analysis_ref") or {}).get("created_at"),
+                    updated_at=failed_at,
+                )
+                _render_page_heading("Site Analysis", "The analysis could not be completed.")
+                st.markdown(
+                    f"<div class='ac-card warning'><div class='ac-warning-icon'>{ICO_WARN}</div><div class='ac-card-title'>Analysis Failed</div><div class='ac-warning-list'>Please try again. You can review the error details below if needed.</div></div>",
+                    unsafe_allow_html=True,
+                )
+                with st.expander("Error details"):
+                    st.exception(exc)
+
     else:
-        st.markdown(
-            "<div class='state-panel'>"
-            f"<div class='state-msg'>{ICO_OK} Preparing your site result...</div>"
-            "</div>",
-            unsafe_allow_html=True,
+        run = run_result
+        extractor = st.session_state.get("extractor")
+
+        selected_score = None
+        selected_label = "—"
+        ai_assessment = "Pending AI model result"
+        factor_items = []
+        reason_items = []
+
+        if run and getattr(run, "suitability", None) is not None and has_loc:
+            suit = run.suitability
+            row, col = _point_to_grid_cell(lat, lon, aoi, suit.data.shape)
+            selected_score = float(suit.data[row, col])
+            selected_label, _badge_class = suitability_badge(selected_score)
+
+            if extractor and getattr(extractor, "layers", None):
+                factor_items = _build_selected_site_breakdown(extractor, row, col)
+                reason_items = _top_reason_items(factor_items, k=3)
+                ai_assessment = _get_ai_image_assessment(extractor, row, col)
+
+            _save_selected_site_analysis(
+                site_display_name=site_display_name,
+                location_name=location_name,
+                lat=lat,
+                lon=lon,
+                img_name=img_name,
+                score=selected_score,
+                label=selected_label,
+                ai_assessment=ai_assessment,
+                factor_items=factor_items,
+                reason_items=reason_items,
+                run_id=getattr(run, "runId", None),
+                analysis_id=(st.session_state.get("analysis_ref") or {}).get("analysis_id"),
+            )
+
+        _render_page_heading(
+            "Analysis Completed",
+            "Your selected site has been analysed successfully and is ready for review.",
+        )
+        _render_success_card(
+            site_display_name,
+            img_main,
+            _safe_pct(selected_score),
+            selected_label,
         )
 
-        # ── Custom HTML progress bar ──────────────────────────────────
-        st.markdown("""
-<style>
-@keyframes wShimmer {
-    0%   { background-position: 200% center; }
-    100% { background-position: -200% center; }
-}
-.wb-wrap {
-    width: 50%;
-    margin: 18px auto 10px auto;
-}
-.wb-track {
-    width: 100%;
-    height: 22px;
-    background: rgba(0,0,0,0.08);
-    border-radius: 99px;
-    overflow: hidden;
-    box-shadow: inset 0 2px 6px rgba(0,0,0,0.10);
-}
-.wb-fill {
-    height: 100%;
-    border-radius: 99px;
-    background: linear-gradient(
-        90deg,
-        #003caa 0%,
-        #0070FF 25%,
-        #38b6ff 50%,
-        #0070FF 75%,
-        #003caa 100%
-    );
-    background-size: 400% 100%;
-    animation: wShimmer 2s linear infinite;
-    box-shadow:
-        0 0 20px rgba(0,112,255,0.55),
-        0 3px 10px rgba(0,112,255,0.30);
-    transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.wb-label {
-    font-family: 'Capriola', sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    color: #444;
-    text-align: center;
-    margin-bottom: 6px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-        bar_slot   = st.empty()
-        label_slot = st.empty()
-
-        def _bar(pct: int, msg: str) -> None:
-            bar_slot.markdown(
-                f'<div class="wb-wrap"><div class="wb-track"><div class="wb-fill" style="width:{pct}%;"></div></div></div>',
-                unsafe_allow_html=True,
-            )
-            label_slot.markdown(
-                f'<div class="wb-label">{msg}</div>',
-                unsafe_allow_html=True,
-            )
-
-        _bar(5, "Initialising analysis...")
-        try:
-            from Wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
-            from Wahhaj.FeatureExtractor import FeatureExtractor, Dataset
-            from Wahhaj.AHPModel import AHPModel
-            from Wahhaj.AnalysisRun import AnalysisRun
-
-            now = datetime.now()
-
-            _bar(20, "Preparing site data...")
-            backend_images = _get_backend_images()
-
-            dataset = Dataset(
-                name="wahhaj_selected_site_analysis",
-                aoi=aoi,
-                images=backend_images,
-                start_date=st.session_state.get("analysis_start_date", now),
-                end_date=st.session_state.get("analysis_end_date", now),
-            )
-            dataset_ref = set_dataset_state(
-                dataset,
-                status="processing",
-                source="session",
-                image_count=len(backend_images),
-                aoi=aoi,
-                name=dataset.name,
-                created_at=now,
-                updated_at=now,
-            )
-
-            _bar(40, "Loading analysis pipeline...")
-            adapter   = ExternalDataSourceAdapter()
-            extractor = FeatureExtractor(adapter=adapter)
-            ahp       = AHPModel()
-
-            run = AnalysisRun(
-                ahp_model         = ahp,
-                feature_extractor = extractor,
-                top_k_sites       = 10,
-                min_site_score    = 0.0,
-            )
-            set_analysis_state(
-                run,
-                status="running",
-                dataset_id=dataset_ref.get("dataset_id"),
-                location_name=location_name,
-                created_at=now,
-                updated_at=now,
-            )
-
-            _bar(65, "Running site analysis...")
-            run.execute(dataset)
-
-            _bar(88, "Saving result...")
-            completed_at = datetime.now()
-            set_dataset_state(
-                dataset,
-                status="ready",
-                source="session",
-                image_count=len(backend_images),
-                aoi=aoi,
-                name=dataset.name,
-                created_at=dataset_ref.get("created_at"),
-                updated_at=completed_at,
-            )
-            st.session_state["extractor"] = extractor
-            set_analysis_state(
-                run,
-                status="completed",
-                dataset_id=(st.session_state.get("dataset_ref") or {}).get("dataset_id"),
-                location_name=location_name,
-                created_at=now,
-                updated_at=completed_at,
-            )
-
-            # ── Reach 100% visually before switching ──
-            _bar(100, "✓ Analysis complete — loading results...")
-            time.sleep(1.2)
-            st.rerun()
-
-        except Exception as exc:
-            bar_slot.empty()
-            label_slot.empty()
-            failed_at = datetime.now()
-            set_analysis_state(
-                st.session_state.get("_analysis_run_cache"),
-                status="failed",
-                dataset_id=(st.session_state.get("dataset_ref") or {}).get("dataset_id"),
-                location_name=location_name,
-                created_at=(st.session_state.get("analysis_ref") or {}).get("created_at"),
-                updated_at=failed_at,
-            )
-            st.markdown(
-                "<div class='state-panel'>"
-                f"<div class='state-msg error'>{ICO_WARN} Analysis failed. Please try again.</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
-            with st.expander("Error details"):
-                st.exception(exc)
-
-else:
-    run       = run_result
-    extractor = st.session_state.get("extractor")
-
-    selected_score  = None
-    selected_label  = "—"
-    badge_class     = ""
-    ai_assessment   = "Pending AI model result"
-    factor_items    = []
-    reason_items    = []
-
-    if run and getattr(run, "suitability", None) is not None and has_loc:
-        suit = run.suitability
-        row, col = _point_to_grid_cell(lat, lon, aoi, suit.data.shape)
-        selected_score = float(suit.data[row, col])
-        selected_label, badge_class = suitability_badge(selected_score)
-
-        if extractor and getattr(extractor, "layers", None):
-            factor_items  = _build_selected_site_breakdown(extractor, row, col)
-            reason_items  = _top_reason_items(factor_items, k=3)
-            ai_assessment = _get_ai_image_assessment(extractor, row, col)
-
-        _save_selected_site_analysis(
-            site_display_name = site_display_name,
-            location_name     = location_name,
-            lat               = lat,
-            lon               = lon,
-            img_name          = img_name,
-            score             = selected_score,
-            label             = selected_label,
-            ai_assessment     = ai_assessment,
-            factor_items      = factor_items,
-            reason_items      = reason_items,
-            run_id            = getattr(run, "runId", None),
-            analysis_id       = (st.session_state.get("analysis_ref") or {}).get("analysis_id"),
+        report_page = _find_existing_page(
+            candidates=[
+                "pages/8_Final_Report.py",
+                "pages/7_Final_Report.py",
+                "pages/7_Report.py",
+                "pages/7_Generate_Report.py",
+            ],
+            contains=["report"],
         )
 
-    # main result panel
-    result_html = (
-        "<div class='result-panel'>"
-        "<div class='result-grid'>"
-        "<div class='result-col left'>"
-        "<div class='result-label'>Final Result</div>"
-        f"<div class='score-value'>{escape(_safe_pct(selected_score))}</div>"
-        "<div class='score-sub'>Final Score</div>"
-        f"<span class='badge {badge_class}'>{escape(selected_label)}</span>"
-        "</div>"
-        "<div class='result-col right'>"
-        f"<div class='ai-label'>{ICO_AI} AI Image Assessment</div>"
-        f"<div class='ai-value'>{escape(ai_assessment)}</div>"
-        "</div>"
-        "</div>"
-        "</div>"
-    )
-    st.markdown(result_html, unsafe_allow_html=True)
+        btn1, btn2 = st.columns(2, gap="small")
 
-    # factors panel
-    if reason_items:
-        rows_html = ""
-        for item in reason_items:
-            rows_html += (
-                "<div class='reason-row'>"
-                f"<div class='reason-icon'>{item['icon']}</div>"
-                "<div class='reason-content'>"
-                f"<div class='reason-factor'>{escape(item['title'])}</div>"
-                f"<div class='reason-text'>{escape(_reason_text(item))}</div>"
-                "</div>"
-                "</div>"
-            )
-        factors_html = (
-            "<div class='factors-panel'>"
-            "<div class='panel-title'>Main Factors Behind This Score</div>"
-            f"<div class='reason-list'>{rows_html}</div>"
-            "</div>"
-        )
-        st.markdown(factors_html, unsafe_allow_html=True)
+        with btn1:
+            if st.button(
+                "View Final Report",
+                use_container_width=True,
+                disabled=report_page is None,
+                key="view_final_report_btn",
+            ):
+                if report_page:
+                    st.switch_page(report_page)
 
-    # ── actions ───────────────────────────────────────────────
-    # FIX: candidate list now includes pages/8_Final_Report.py as first entry.
-    # Old list only contained pages/7_Final_Report.py etc. — none of which exist.
-    # The fallback contains=["report"] also finds it if path lookup fails.
-    report_page = _find_existing_page(
-        candidates=[
-            "pages/8_Final_Report.py",
-            "pages/7_Final_Report.py",
-            "pages/7_Report.py",
-            "pages/7_Generate_Report.py",
-        ],
-        contains=["report"],
-    )
+        with btn2:
+            if st.button(
+                "Open Suitability Heatmap",
+                use_container_width=True,
+                key="open_suitability_heatmap_btn",
+            ):
+                st.switch_page("pages/6_Suitability_Heatmap.py")
 
-    st.markdown("<div class='cta-wrap'></div>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-
-    with c1:
-        if st.button("View Suitability Map", use_container_width=True):
-            st.switch_page("pages/6_Suitability_Heatmap.py")
-
-    with c2:
-        if st.button(
-            "Generate Final Report",
-            use_container_width=True,
-            disabled=report_page is None,
-        ):
-            if report_page:
-                st.switch_page(report_page)
-
-st.markdown("</div>", unsafe_allow_html=True)
-render_footer()
+st.markdown('</div>', unsafe_allow_html=True)

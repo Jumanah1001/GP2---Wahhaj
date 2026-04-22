@@ -422,118 +422,13 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
 .fr-ai-shell {
     min-height: 548px;
     display: flex;
-<<<<<<< HEAD
     flex-direction: column;
-=======
-    align-items: center;
-    gap: 7px;
-}
-.rpt-meta-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 15px;
-    font-family: 'Capriola', sans-serif;
-}
-.rpt-meta-table td { padding: 9px 10px; vertical-align: middle; }
-.rpt-meta-table tr:nth-child(odd) { background: #f8fafc; }
-.rpt-meta-table .label {
-    color: #64748b; font-weight: 600; white-space: nowrap; width: 130px;
-}
-.rpt-meta-table .value { color: #1a1a1a; font-weight: 600; }
-.rpt-meta-table .value.done { color: #166534; }
-.rpt-meta-table .value.mono {
-    font-family: monospace; font-size: 13px; color: #475569;
-}
-.rpt-exec-summary {
-    background: #1F3864; color: #dce8ff; border-radius: 10px;
-    padding: 18px 22px; font-family: 'Capriola', sans-serif;
-    font-size: 16px; line-height: 1.8;
-}
-.rpt-top-site {
-    display: flex; align-items: center; gap: 18px;
-    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
-    border: 1.5px solid rgba(31,56,100,0.14); border-radius: 12px;
-    padding: 20px 22px; margin-bottom: 18px;
-}
-.rpt-top-site-icon {
-    width: 58px; height: 58px; background: #1F3864; border-radius: 12px;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.rpt-top-site-score { margin-left: auto; text-align: right; }
-.rpt-top-site-score .big {
-    font-size: 40px; font-weight: 800; line-height: 1;
-    font-family: 'Capriola', sans-serif;
-}
-.rpt-top-site-score .lbl {
-    font-size: 14px; color: #78716c; margin-top: 4px;
-    font-family: 'Capriola', sans-serif;
-}
-.ahp-row {
-    display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
-    font-family: 'Capriola', sans-serif;
-}
-.ahp-name { font-size: 15px; font-weight: 700; color: #1a1a1a; min-width: 220px; }
-.ahp-bar-bg { flex: 1; background: #f1f5f9; border-radius: 5px; height: 12px; overflow: hidden; }
-.ahp-bar-fill { height: 100%; border-radius: 5px; }
-.ahp-pct { font-size: 14px; font-weight: 700; color: #475569; min-width: 52px; text-align: right; }
-.ahp-dir { font-size: 13px; color: #94a3b8; min-width: 120px; text-align: right; }
-.ahp-cr {
-    background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 8px;
-    padding: 10px 16px; font-size: 14px; font-weight: 700; color: #166534;
-    margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;
-    font-family: 'Capriola', sans-serif;
-}
-.rpt-status-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #dcfce7; color: #166534; border-radius: 8px;
-    padding: 7px 14px; font-size: 14px; font-weight: 700;
-    font-family: 'Capriola', sans-serif; margin-bottom: 6px;
-}
-.rpt-page-header {
-    position: relative;
-    z-index: 2;
-    text-align: center;
-    margin: 6px 0 22px 0;
-}
-.rpt-page-title {
-    font-family: 'Capriola', sans-serif;
-    font-size: clamp(34px, 3vw, 44px);
-    color: #1a1a1a;
-    line-height: 1;
-    margin: 0 0 8px 0;
-    text-align: center;
-}
-.rpt-page-subtitle {
-    font-family: 'Capriola', sans-serif;
-    font-size: 14px;
-    color: #5E5B5B;
-    text-align: center;
-    margin: 0 0 12px 0;
-}
-.rpt-actions-wrap {
-    position: relative;
-    z-index: 2;
-    margin-top: 12px;
-}
-.rpt-actions-wrap div.stButton > button {
-    min-height: 62px !important;
-    height: auto !important;
-    font-size: 17px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.03em !important;
-    padding-top: 18px !important;
-    padding-bottom: 18px !important;
-    padding-left: 32px !important;
-    padding-right: 32px !important;
-    border-radius: 14px !important;
->>>>>>> fa5def9f557db6f07a78e6d5802217f1ea05c482
 }
 
 .fr-ai-shell .fr-ai-hero {
     margin-bottom: 0.9rem;
 }
 
-<<<<<<< HEAD
 .fr-ai-shell .fr-list {
     gap: 0.55rem;
 }
@@ -607,35 +502,6 @@ div.stButton > button {
     font-size: 0.9rem !important;
     box-shadow: 0 5px 12px rgba(0,0,0,0.08) !important;
     transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-=======
-/* Download buttons */
-div[data-testid="stDownloadButton"] button,
-div[data-testid="stDownloadButton"] button:focus {
-    min-height: 62px !important;
-    height: auto !important;
-    border-radius: 14px !important;
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 17px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.03em !important;
-    padding-top: 18px !important;
-    padding-bottom: 18px !important;
-    padding-left: 32px !important;
-    padding-right: 32px !important;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
-    transition: transform 0.12s ease, box-shadow 0.18s ease !important;
-    line-height: 1.4 !important;
-}
-div[data-testid="stDownloadButton"] button > div,
-div[data-testid="stDownloadButton"] button p {
-    font-weight:700 !important;
-    font-size:17px !important;
-    padding:0 !important; margin:0 !important;
-}
-div[data-testid="stDownloadButton"] button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.16) !important;
->>>>>>> fa5def9f557db6f07a78e6d5802217f1ea05c482
 }
 
 div[data-testid="stDownloadButton"] > button:hover,
@@ -1263,7 +1129,7 @@ if selected_score is not None:
     rpt.summary = (
         f"Solar site analysis for {loc.get('location_name', 'the selected site')} completed on "
         f"{datetime.now().strftime('%Y-%m-%d')}. "
-        f"The analyzed location achieved a suitability score of {selected_score_text} "
+        f"The analysed location achieved a suitability score of {selected_score_text} "
         f"and was classified as {selected_label}."
     )
 
