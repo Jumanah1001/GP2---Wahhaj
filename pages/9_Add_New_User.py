@@ -167,16 +167,42 @@ div.stTextInput input {
 div.stTextInput input::placeholder { color:#999 !important; }
 
 /* ── Buttons ── */
-div.stButton > button {
-    background:#0070FF; color:white; border:none; border-radius:10px;
-    min-height:46px; font-family:'Capriola',sans-serif; font-size:15px;
-    box-shadow:4px 5px 4px rgba(0,0,0,.14);
+div.stButton > button,
+div.stButton > button:focus {
+    background:#0070FF !important; color:white !important; border:none !important;
+    border-radius:14px !important;
+    min-height:62px !important;
+    height:auto !important;
+    padding-top:18px !important;
+    padding-bottom:18px !important;
+    padding-left:32px !important;
+    padding-right:32px !important;
+    font-family:'Capriola',sans-serif !important; font-size:17px !important;
+    font-weight:700 !important; letter-spacing:0.03em !important;
+    box-shadow: 0 4px 16px rgba(0,112,255,0.38), 0 2px 6px rgba(0,0,0,0.10) !important;
+    transition: background 0.18s ease, transform 0.12s ease !important;
+    line-height:1.4 !important;
+    white-space:normal !important;
 }
-div.stButton > button:hover { background:#005fe0; color:white; }
+div.stButton > button > div,
+div.stButton > button p {
+    font-weight:700 !important;
+    font-size:17px !important;
+    padding:0 !important; margin:0 !important;
+}
+div.stButton > button:hover {
+    background:#005fe0 !important; color:white !important;
+    box-shadow: 0 6px 22px rgba(0,112,255,0.50) !important;
+    transform: translateY(-1px) !important;
+}
 div.stButton > button[kind="primary"] {
     background:#0070FF !important; color:white !important;
-    border-radius:10px !important; min-height:46px !important;
+    border-radius:14px !important;
+    min-height:62px !important;
     font-family:'Capriola',sans-serif !important;
+    font-weight:700 !important;
+    padding-top:18px !important;
+    padding-bottom:18px !important;
 }
 </style>
 """, unsafe_allow_html=True)

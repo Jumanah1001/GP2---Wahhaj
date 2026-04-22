@@ -53,14 +53,34 @@ div[data-testid="stTextInput"] input {
 }
 div[data-testid="stTextInput"] label { display:none !important; }
 
-div[data-testid="stFormSubmitButton"] button {
+div[data-testid="stFormSubmitButton"] button,
+div[data-testid="stFormSubmitButton"] button:focus {
     background:#0070FF !important; color:white !important; border:none !important;
-    border-radius:4px !important; min-height:52px !important;
-    font-family:'Capriola',sans-serif !important; font-size:18px !important;
-    box-shadow:5px 6px 4px rgba(0,0,0,0.18) !important;
+    border-radius:14px !important;
+    min-height:62px !important;
+    height:auto !important;
+    padding-top:18px !important;
+    padding-bottom:18px !important;
+    padding-left:32px !important;
+    padding-right:32px !important;
+    font-family:'Capriola',sans-serif !important;
+    font-size:18px !important;
+    font-weight:700 !important; letter-spacing:0.03em !important;
+    box-shadow: 0 4px 18px rgba(0,112,255,0.42), 0 2px 6px rgba(0,0,0,0.10) !important;
+    width:100% !important;
+    transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease !important;
+    line-height:1.4 !important;
+}
+div[data-testid="stFormSubmitButton"] button > div,
+div[data-testid="stFormSubmitButton"] button p {
+    font-weight:700 !important;
+    font-size:18px !important;
+    padding:0 !important; margin:0 !important;
 }
 div[data-testid="stFormSubmitButton"] button:hover {
     background:#005fe0 !important; color:white !important;
+    box-shadow: 0 6px 24px rgba(0,112,255,0.52) !important;
+    transform: translateY(-1px) !important;
 }
 
 .sun-wrap-fixed { position:relative; width:390px; height:390px; margin:120px auto 0 auto; }

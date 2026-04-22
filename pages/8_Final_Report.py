@@ -152,8 +152,16 @@ st.markdown("""
     margin-top: 12px;
 }
 .rpt-actions-wrap div.stButton > button {
-    min-height: 52px;
-    font-size: 18px;
+    min-height: 62px !important;
+    height: auto !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.03em !important;
+    padding-top: 18px !important;
+    padding-bottom: 18px !important;
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+    border-radius: 14px !important;
 }
 
 /* Home button: match other pages more closely */
@@ -165,12 +173,32 @@ st.markdown("""
 }
 
 /* Download buttons */
-div[data-testid="stDownloadButton"] button {
-    min-height: 52px !important;
-    border-radius: 10px !important;
+div[data-testid="stDownloadButton"] button,
+div[data-testid="stDownloadButton"] button:focus {
+    min-height: 62px !important;
+    height: auto !important;
+    border-radius: 14px !important;
     font-family: 'Capriola', sans-serif !important;
-    font-size: 18px !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.10) !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.03em !important;
+    padding-top: 18px !important;
+    padding-bottom: 18px !important;
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
+    transition: transform 0.12s ease, box-shadow 0.18s ease !important;
+    line-height: 1.4 !important;
+}
+div[data-testid="stDownloadButton"] button > div,
+div[data-testid="stDownloadButton"] button p {
+    font-weight:700 !important;
+    font-size:17px !important;
+    padding:0 !important; margin:0 !important;
+}
+div[data-testid="stDownloadButton"] button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.16) !important;
 }
 div[data-testid="stDownloadButton"]:first-of-type button {
     background: #1F3864 !important;
@@ -534,7 +562,7 @@ if selected_score is not None:
     rpt.summary = (
         f"Solar site analysis for {loc.get('location_name', 'the selected site')} completed on "
         f"{datetime.now().strftime('%Y-%m-%d')}. "
-        f"The analysed location achieved a suitability score of {selected_score_text} "
+        f"The analyzed location achieved a suitability score of {selected_score_text} "
         f"and was classified as {selected_label}."
     )
 

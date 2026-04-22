@@ -409,7 +409,6 @@ _LOCATION_UI_DEFAULTS = {
     "loc_candidate_lon": None,
     "loc_candidate_name": "",
     "loc_search_input": "",
-    "loc_search_txt": "",
     "loc_map_lat": 24.7136,
     "loc_map_lon": 46.6753,
     "loc_candidate_aoi": None,
@@ -419,16 +418,24 @@ _LOCATION_UI_DEFAULTS = {
     "manual_name": "",
 }
 
+# Widget keys that Streamlit owns — must be deleted, not assigned
+_LOCATION_WIDGET_KEYS = (
+    "loc_search_txt",
+    "loc_main_map",
+    "loc_search_btn",
+    "use_manual_btn",
+    "save_loc_btn",
+    "clear_loc_btn",
+    "next_loc_btn",
+)
+
 
 def reset_location_ui_state() -> None:
     for key, value in _LOCATION_UI_DEFAULTS.items():
         st.session_state[key] = value
 
-    for transient_key in (
-        "loc_main_map", "loc_search_btn", "use_manual_btn",
-        "save_loc_btn", "clear_loc_btn", "next_loc_btn",
-    ):
-        st.session_state.pop(transient_key, None)
+    for widget_key in _LOCATION_WIDGET_KEYS:
+        st.session_state.pop(widget_key, None)
 
 
 def reset_active_analysis_state(*, clear_location: bool = True) -> None:
@@ -767,9 +774,9 @@ def apply_global_style() -> None:
             line-height: 1.7;
         }
 
-        h1 { font-size: clamp(46px, 3.8vw, 60px) !important; color: #1a1a1a !important; }
-        h2 { font-size: clamp(37px, 3.0vw, 48px) !important; color: #1a1a1a !important; }
-        h3 { font-size: clamp(30px, 2.4vw, 40px) !important; color: #1a1a1a !important; }
+        h1 { font-size: clamp(34px, 2.8vw, 46px) !important; color: #1a1a1a !important; }
+        h2 { font-size: clamp(28px, 2.2vw, 38px) !important; color: #1a1a1a !important; }
+        h3 { font-size: clamp(22px, 1.8vw, 30px) !important; color: #1a1a1a !important; }
 
         div[data-testid="stNumberInput"] input,
         div[data-testid="stTextArea"] textarea,
@@ -824,13 +831,49 @@ def apply_global_style() -> None:
         }
         div[data-testid="stTextInput"] label { display:none !important; }
 
-        div.stButton > button {
-            background:#0070FF; color:white; border:none; border-radius:4px;
-            min-height:56px; font-family:'Capriola',sans-serif; font-size:20px;
-            box-shadow:5px 6px 4px rgba(0,0,0,0.18);
-        }
-        div.stButton > button:hover { background:#005fe0; color:white; }
 
+        /* ══════ WAHHAJ BUTTONS — FORCED LARGE ══════ */
+        div.stButton > button,
+        div.stButton > button:focus,
+        section[data-testid="stSidebar"] div.stButton > button,
+        .main div.stButton > button {
+            background:#0070FF !important;
+            color:white !important;
+            border:none !important;
+            border-radius:14px !important;
+            min-height:62px !important;
+            height:auto !important;
+            padding-top:18px !important;
+            padding-bottom:18px !important;
+            padding-left:32px !important;
+            padding-right:32px !important;
+            font-family:'Capriola',sans-serif !important;
+            font-size:17px !important;
+            font-weight:700 !important;
+            letter-spacing:0.03em !important;
+            box-shadow: 0 4px 16px rgba(0,112,255,0.38), 0 2px 6px rgba(0,0,0,0.10) !important;
+            transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease !important;
+            line-height: 1.4 !important;
+            white-space: normal !important;
+        }
+        div.stButton > button > div,
+        div.stButton > button p {
+            font-weight:700 !important;
+            font-size:17px !important;
+            padding:0 !important;
+            margin:0 !important;
+            line-height:1.4 !important;
+        }
+        div.stButton > button:hover {
+            background:#005fe0 !important;
+            color:white !important;
+            box-shadow: 0 6px 22px rgba(0,112,255,0.50), 0 2px 8px rgba(0,0,0,0.12) !important;
+            transform: translateY(-1px) !important;
+        }
+        div.stButton > button:active {
+            transform: translateY(0px) !important;
+            box-shadow: 0 2px 8px rgba(0,112,255,0.30) !important;
+        }
         div.stButton > button:disabled,
         div.stButton > button[disabled] {
             background:#d0d0d0 !important;
@@ -839,7 +882,27 @@ def apply_global_style() -> None:
             box-shadow:none !important;
             cursor:not-allowed !important;
             opacity:1 !important;
+            transform:none !important;
         }
+
+        div[data-testid="stDownloadButton"] button {
+            font-weight:700 !important;
+            letter-spacing:0.03em !important;
+            padding-top:18px !important;
+            padding-bottom:18px !important;
+            padding-left:32px !important;
+            padding-right:32px !important;
+            border-radius:14px !important;
+            min-height:62px !important;
+            height:auto !important;
+            font-size:17px !important;
+        }
+        div[data-testid="stDownloadButton"] button p {
+            font-weight:700 !important;
+            font-size:17px !important;
+        }
+
+
 
         .sun-wrap-fixed { position:relative; width:390px; height:390px; margin:90px auto 0 auto; }
         .sun-glow {
@@ -867,7 +930,11 @@ def apply_global_style() -> None:
         .ray.r8{left:42px;top:48px;transform:rotate(-45deg)}
 
         .top-home-btn { width:84px; margin-left:auto; }
-        .top-home-btn div.stButton > button { min-height:48px; font-size:22px; border-radius:12px; box-shadow:none; }
+        .top-home-btn div.stButton > button {
+            min-height:50px; font-size:20px; border-radius:12px;
+            box-shadow: 0 4px 14px rgba(0,112,255,0.30);
+            padding: 12px 16px !important;
+        }
 
         @media(max-width:900px){
             .sun-wrap-fixed{display:none}
