@@ -427,6 +427,8 @@ def _save_selected_site_analysis(
                 "title": item["title"],
                 "raw_label": item["raw_label"],
                 "contribution_pct": round(item["contribution_pct"], 2),
+                "weight_pct": round(item["weight"] * 100, 2),
+                "suitability_component": round(item["suitability_component"], 4),
             }
             for item in factor_items
         ],

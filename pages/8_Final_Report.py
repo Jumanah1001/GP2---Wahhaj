@@ -1,19 +1,22 @@
 """
 pages/8_Final_Report.py
 ========================
-Final report focused on the selected analysed site.
+One-screen landscape final report for the selected analysed site.
 
-This version:
-- removes the alternative candidate section from the page UI
-- shows the same single-site map used in page 6
-- keeps PDF/TXT export working as before
-- keeps the rest of the report layout intact
+Goals
+-----
+- keep the page visible in a single wide screen as much as possible
+- make the selected-site map the visual focus
+- keep PDF/TXT export working
+- use the existing session data without changing the report pipeline
 """
 
-import io
+from __future__ import annotations
+
 import json
 from datetime import datetime
 from uuid import uuid4
+from html import escape
 
 import numpy as np
 import streamlit as st
@@ -25,7 +28,6 @@ from ui_helpers import (
     render_bg,
     require_login,
     render_top_home_button,
-    render_footer,
     reset_for_new_analysis,
     save_analysis_to_history,
 )
@@ -35,158 +37,643 @@ init_state()
 apply_global_style()
 render_bg()
 require_login()
-
-# ── top-right home button ──────────────────────────────────────────────────
 render_top_home_button("pages/2_Home.py")
 
-# ── page-level CSS ─────────────────────────────────────────────────────────
-st.markdown("""
+
+# ── page-level CSS ──────────────────────────────────────────────────────────
+st.markdown(
+    """
 <style>
- .rpt-card {
-    background: rgba(255,255,255,0.96);
-    border: 1px solid #dbe3ef;
-    border-radius: 16px;
-    padding: 26px 30px;
-    margin-bottom: 18px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+:root {
+    --wah-primary: #1F3864;
+    --wah-border: #D9E3F1;
+    --wah-surface: rgba(255,255,255,0.96);
+    --wah-muted: #64748B;
+    --wah-text: #162033;
+    --wah-soft: #F6F9FD;
+}
+
+.stApp [data-testid="stAppViewContainer"] {
+    background: transparent;
+}
+
+.main .block-container {
+    max-width: 1480px !important;
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.35rem !important;
+}
+
+#MainMenu, footer {visibility: hidden;}
+
+div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
+    margin-bottom: 0.2rem;
+}
+
+.fr-header-shell {
     position: relative;
     z-index: 2;
+    margin: 0 0 0.4rem 0;
 }
-.rpt-section-title {
+
+.fr-header {
+    background: linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(246,249,253,0.98) 100%);
+    border: 1px solid var(--wah-border);
+    border-radius: 18px;
+    padding: 0.9rem 1rem;
+    box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
+}
+
+.fr-title {
     font-family: 'Capriola', sans-serif;
-    font-size: 16px;
+    color: var(--wah-text);
+    font-size: clamp(1.55rem, 2vw, 2.1rem);
+    line-height: 1.05;
+    margin: 0;
+}
+
+.fr-subtitle {
+    font-family: 'Capriola', sans-serif;
+    color: var(--wah-muted);
+    font-size: 0.84rem;
+    margin-top: 0.28rem;
+}
+
+.fr-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.72rem;
+}
+
+.fr-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.36rem 0.62rem;
+    border-radius: 999px;
+    background: #EEF4FB;
+    border: 1px solid #D6E3F3;
+    color: #365277;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.77rem;
+    white-space: nowrap;
+}
+
+.fr-card {
+    position: relative;
+    z-index: 2;
+    background: var(--wah-surface);
+    border: 1px solid var(--wah-border);
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(16, 24, 40, 0.05);
+    padding: 0.9rem 1rem;
+    height: 100%;
+}
+
+.fr-card-title {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.83rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--wah-muted);
+    margin-bottom: 0.7rem;
+}
+
+.fr-card-title.compact {
+    margin-bottom: 0.45rem;
+}
+
+.fr-big-score {
+    font-family: 'Capriola', sans-serif;
+    font-size: clamp(2rem, 3vw, 2.8rem);
+    line-height: 1;
+    margin: 0;
+}
+
+.fr-score-label {
+    margin-top: 0.28rem;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.92rem;
     font-weight: 700;
+}
+
+.fr-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.38rem 0.62rem;
+    border-radius: 999px;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 0.56rem;
+}
+
+.fr-progress {
+    margin-top: 0.72rem;
+    background: #E9EEF5;
+    border-radius: 999px;
+    height: 10px;
+    overflow: hidden;
+}
+
+.fr-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+}
+
+.fr-mini-note {
+    margin-top: 0.55rem;
+    color: var(--wah-muted);
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.fr-kv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem 0.8rem;
+}
+
+.fr-kv-item {
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 12px;
+    padding: 0.6rem 0.7rem;
+    min-height: 56px;
+}
+
+.fr-kv-label {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.72rem;
+    color: var(--wah-muted);
+    margin-bottom: 0.22rem;
+}
+
+.fr-kv-value {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.85rem;
+    color: var(--wah-text);
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.fr-list {
+    display: grid;
+    gap: 0.46rem;
+}
+
+.fr-list-item {
+    display: flex;
+    gap: 0.52rem;
+    align-items: flex-start;
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 12px;
+    padding: 0.55rem 0.68rem;
+    font-family: 'Capriola', sans-serif;
+    color: var(--wah-text);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.fr-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--wah-primary);
+    margin-top: 0.32rem;
+    flex-shrink: 0;
+}
+
+.fr-factor-rows {
+    display: grid;
+    gap: 0.48rem;
+}
+
+.fr-factor-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 70px;
+    gap: 0.65rem;
+    align-items: center;
+}
+
+.fr-factor-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.18rem;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.79rem;
+    color: var(--wah-text);
+}
+
+.fr-factor-sub {
+    color: var(--wah-muted);
+    font-size: 0.7rem;
+    font-family: 'Capriola', sans-serif;
+    margin-bottom: 0.3rem;
+}
+
+.fr-factor-bar {
+    width: 100%;
+    height: 9px;
+    border-radius: 999px;
+    background: #E9EEF5;
+    overflow: hidden;
+}
+
+.fr-factor-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+}
+
+.fr-factor-val {
+    text-align: right;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.79rem;
+    font-weight: 700;
+    color: #365277;
+}
+
+.fr-map-title {
+    position: relative;
+    z-index: 2;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #E5EEF8;
+    border-radius: 0;
+    padding: 0.85rem 1rem 0.6rem 1rem;
+    box-shadow: none;
+}
+
+.fr-map-caption {
+    font-family: 'Capriola', sans-serif;
+    color: var(--wah-muted);
+    font-size: 0.74rem;
+    margin-top: 0.18rem;
+}
+
+.fr-map-shell {
+    position: relative;
+    z-index: 2;
+    border: 1px solid var(--wah-border);
+    border-top: none;
+    border-radius: 0 0 18px 18px;
+    overflow: hidden;
+    box-shadow: 0 8px 22px rgba(16, 24, 40, 0.05);
+    background: rgba(255,255,255,0.96);
+}
+
+.fr-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.6rem;
+}
+
+.fr-mini-factor {
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 14px;
+    padding: 0.7rem 0.72rem;
+    min-height: 108px;
+}
+
+.fr-mini-factor h4 {
+    margin: 0 0 0.28rem 0;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.74rem;
+    color: var(--wah-text);
+    line-height: 1.35;
+}
+
+.fr-mini-raw {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.73rem;
+    color: var(--wah-muted);
+    line-height: 1.4;
+    min-height: 32px;
+}
+
+.fr-mini-pill {
+    display: inline-flex;
+    margin-top: 0.45rem;
+    padding: 0.26rem 0.48rem;
+    border-radius: 999px;
+    background: #EAF1FB;
+    color: #365277;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.fr-summary-grid {
+    display: grid;
+    gap: 0.52rem;
+}
+
+.fr-summary-item {
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 12px;
+    padding: 0.62rem 0.72rem;
+}
+
+.fr-summary-item .label {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.7rem;
+    color: var(--wah-muted);
+    margin-bottom: 0.2rem;
+}
+
+.fr-ai-hero {
+    background: linear-gradient(135deg, #F8FBFF 0%, #EEF4FB 100%);
+    border: 1px solid #D6E3F3;
+    border-radius: 14px;
+    padding: 0.8rem 0.9rem;
+    margin-bottom: 0.7rem;
+}
+.fr-ai-label {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #64748b;
-    margin-bottom: 14px;
+    color: var(--wah-muted);
+    margin-bottom: 0.35rem;
+}
+.fr-ai-value {
+    font-family: 'Capriola', sans-serif;
+    font-size: 1rem;
+    color: var(--wah-text);
+    font-weight: 700;
+    line-height: 1.35;
+}
+.fr-ai-note {
+    margin-top: 0.35rem;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.75rem;
+    color: var(--wah-muted);
+    line-height: 1.45;
+}
+
+.fr-ai-shell {
+    min-height: 548px;
     display: flex;
-    align-items: center;
-    gap: 7px;
-}
-.rpt-meta-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 15px;
-    font-family: 'Capriola', sans-serif;
-}
-.rpt-meta-table td { padding: 9px 10px; vertical-align: middle; }
-.rpt-meta-table tr:nth-child(odd) { background: #f8fafc; }
-.rpt-meta-table .label {
-    color: #64748b; font-weight: 600; white-space: nowrap; width: 130px;
-}
-.rpt-meta-table .value { color: #1a1a1a; font-weight: 600; }
-.rpt-meta-table .value.done { color: #166534; }
-.rpt-meta-table .value.mono {
-    font-family: monospace; font-size: 13px; color: #475569;
-}
-.rpt-exec-summary {
-    background: #1F3864; color: #dce8ff; border-radius: 10px;
-    padding: 18px 22px; font-family: 'Capriola', sans-serif;
-    font-size: 16px; line-height: 1.8;
-}
-.rpt-top-site {
-    display: flex; align-items: center; gap: 18px;
-    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
-    border: 1.5px solid rgba(31,56,100,0.14); border-radius: 12px;
-    padding: 20px 22px; margin-bottom: 18px;
-}
-.rpt-top-site-icon {
-    width: 58px; height: 58px; background: #1F3864; border-radius: 12px;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.rpt-top-site-score { margin-left: auto; text-align: right; }
-.rpt-top-site-score .big {
-    font-size: 40px; font-weight: 800; line-height: 1;
-    font-family: 'Capriola', sans-serif;
-}
-.rpt-top-site-score .lbl {
-    font-size: 14px; color: #78716c; margin-top: 4px;
-    font-family: 'Capriola', sans-serif;
-}
-.ahp-row {
-    display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
-    font-family: 'Capriola', sans-serif;
-}
-.ahp-name { font-size: 15px; font-weight: 700; color: #1a1a1a; min-width: 220px; }
-.ahp-bar-bg { flex: 1; background: #f1f5f9; border-radius: 5px; height: 12px; overflow: hidden; }
-.ahp-bar-fill { height: 100%; border-radius: 5px; }
-.ahp-pct { font-size: 14px; font-weight: 700; color: #475569; min-width: 52px; text-align: right; }
-.ahp-dir { font-size: 13px; color: #94a3b8; min-width: 120px; text-align: right; }
-.ahp-cr {
-    background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 8px;
-    padding: 10px 16px; font-size: 14px; font-weight: 700; color: #166534;
-    margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;
-    font-family: 'Capriola', sans-serif;
-}
-.rpt-status-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #dcfce7; color: #166534; border-radius: 8px;
-    padding: 7px 14px; font-size: 14px; font-weight: 700;
-    font-family: 'Capriola', sans-serif; margin-bottom: 6px;
-}
-.rpt-page-header {
-    position: relative;
-    z-index: 2;
-    text-align: center;
-    margin: 6px 0 22px 0;
-}
-.rpt-page-title {
-    font-family: 'Capriola', sans-serif;
-    font-size: clamp(34px, 3vw, 44px);
-    color: #1a1a1a;
-    line-height: 1;
-    margin: 0 0 8px 0;
-    text-align: center;
-}
-.rpt-page-subtitle {
-    font-family: 'Capriola', sans-serif;
-    font-size: 14px;
-    color: #5E5B5B;
-    text-align: center;
-    margin: 0 0 12px 0;
-}
-.rpt-actions-wrap {
-    position: relative;
-    z-index: 2;
-    margin-top: 12px;
-}
-.rpt-actions-wrap div.stButton > button {
-    min-height: 52px;
-    font-size: 18px;
+    flex-direction: column;
 }
 
-/* Home button: match other pages more closely */
-.main .block-container > div[data-testid="stVerticalBlock"] > div:first-child div[data-testid="stHorizontalBlock"] div[data-testid="column"]:last-child div.stButton > button {
-    min-height: 48px !important;
-    font-size: 22px !important;
-    border-radius: 12px !important;
-    box-shadow: none !important;
+.fr-ai-shell .fr-ai-hero {
+    margin-bottom: 0.9rem;
 }
 
-/* Download buttons */
-div[data-testid="stDownloadButton"] button {
-    min-height: 52px !important;
-    border-radius: 10px !important;
+.fr-ai-shell .fr-list {
+    gap: 0.55rem;
+}
+
+.fr-btn-row {
+    margin-top: 0.7rem;
+}
+
+.fr-action-stack {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.fr-donut-wrap {
+    display:flex;
+    align-items:center;
+    gap:0.9rem;
+    margin-top:0.2rem;
+}
+
+.fr-donut {
+    --pct: 64.2;
+    --accent: #4DA8DA;
+    width: 102px;
+    height: 102px;
+    border-radius: 50%;
+    background: conic-gradient(var(--accent) calc(var(--pct) * 1%), #E9EEF5 0);
+    position: relative;
+    flex-shrink:0;
+}
+
+.fr-donut::before {
+    content: '';
+    position: absolute;
+    inset: 14px;
+    border-radius: 50%;
+    background: white;
+    border: 1px solid #E5EEF8;
+}
+
+.fr-donut-center {
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    z-index:1;
+    font-family:'Capriola', sans-serif;
+    color: var(--wah-text);
+}
+
+.fr-donut-center strong {
+    font-size: 1rem;
+}
+
+.fr-donut-center span {
+    font-size: 0.66rem;
+    color: var(--wah-muted);
+}
+
+.fr-score-side {
+    flex:1;
+}
+
+div[data-testid="stDownloadButton"] > button,
+div.stButton > button {
+    min-height: 46px !important;
+    border-radius: 24px 18px 22px 20px / 16px 22px 18px 24px !important;
     font-family: 'Capriola', sans-serif !important;
-    font-size: 18px !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.10) !important;
+    font-size: 0.9rem !important;
+    box-shadow: 0 5px 12px rgba(0,0,0,0.08) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
 }
-div[data-testid="stDownloadButton"]:first-of-type button {
-    background: #1F3864 !important;
-    color: #ffffff !important;
-    border: none !important;
+
+div[data-testid="stDownloadButton"] > button:hover,
+div.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 7px 14px rgba(0,0,0,0.10) !important;
 }
-div[data-testid="stDownloadButton"]:last-of-type button {
-    background: #EAF1FB !important;
-    color: #1F3864 !important;
-    border: 1px solid #C7D5EA !important;
+
+div[data-testid="stDownloadButton"] > button {
+    background: #DDF3FF !important;
+    color: #2A5D79 !important;
+    border: 1px solid #B9E4F7 !important;
+}
+
+.fr-divider-space {
+    height: 0.2rem;
+}
+
+.fr-main-grid {
+    align-items: stretch;
+}
+
+.fr-main-grid > div[data-testid="column"] > div {
+    height: 100%;
+}
+
+
+
+
+
+.fr-center-actions-shell {
+    width: min(760px, 92%);
+    margin: 0.72rem auto 0 auto;
+    position: relative;
+    z-index: 2;
+}
+
+.fr-center-actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem 0.9rem;
+}
+
+.fr-center-actions-shell div[data-testid="stDownloadButton"] > button,
+.fr-center-actions-shell div.stButton > button {
+    width: 100%;
+    min-height: 48px !important;
+    border-radius: 18px 18px 15px 15px / 18px 18px 13px 13px !important;
+}
+
+.fr-weight-shell {
+    position: relative;
+    z-index: 2;
+    margin-top: 0.65rem;
+}
+
+.fr-weight-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.58rem 0.62rem;
+}
+
+.fr-weight-item {
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 16px;
+    padding: 0.62rem 0.74rem;
+    min-height: 94px;
+}
+
+.fr-weight-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-bottom: 0.32rem;
+}
+
+.fr-weight-name {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.79rem;
+    color: var(--wah-text);
+    line-height: 1.28;
+}
+
+.fr-weight-raw {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.74rem;
+    color: #365277;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.fr-weight-sub {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.67rem;
+    color: var(--wah-muted);
+    margin-bottom: 0.26rem;
+}
+
+.fr-weight-line {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: #E9EEF5;
+    overflow: hidden;
+}
+
+.fr-weight-line > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+}
+
+.fr-weight-meta {
+    margin-top: 0.42rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.fr-weight-badge {
+    display: inline-flex;
+    padding: 0.24rem 0.5rem;
+    border-radius: 999px;
+    background: #EAF1FB;
+    color: #365277;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+
+.fr-weight-pct {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.74rem;
+    color: #365277;
+    font-weight: 700;
+}
+
+@media (max-width: 1280px) {
+    .fr-center-actions-shell {
+        width: min(720px, 96%);
+    }
+    .fr-weight-grid {
+        grid-template-columns: 1fr;
+    }
+    .fr-ai-shell {
+        min-height: auto;
+    }
+}
+
+
+
+
+@media (max-width: 1280px) {
+    .main .block-container {
+        max-width: 1380px !important;
+    }
+    .fr-mini-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
+
 
 # ── SVG icon helpers ───────────────────────────────────────────────────────
-def _icon(path_d, size=15, color="currentColor", sw=2):
+def _icon(path_d, size=14, color="currentColor", sw=2):
     return (
         f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '
         f'stroke="{color}" stroke-width="{sw}" '
@@ -194,15 +681,13 @@ def _icon(path_d, size=15, color="currentColor", sw=2):
         f'{path_d}</svg>'
     )
 
-ICON_REPORT   = _icon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>')
-ICON_SUN      = _icon('<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>')
-ICON_MAP      = _icon('<polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>')
-ICON_SCALE    = _icon('<line x1="12" y1="3" x2="12" y2="21"/><path d="M3 6l3 12"/><path d="M21 6l-3 12"/><path d="M3 6h18"/><path d="M6 18h12"/>')
-ICON_DOWNLOAD = _icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')
-ICON_CHECK    = _icon('<polyline points="20 6 9 17 4 12"/>', color="#166534")
-ICON_CLOCK    = _icon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>')
-ICON_PIN      = _icon('<path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/>')
-ICON_HASH     = _icon('<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>')
+
+ICON_PIN = _icon(
+    '<path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>'
+    '<circle cx="12" cy="10" r="3"/>'
+)
+ICON_CLOCK = _icon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>')
+ICON_HASH = _icon('<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>')
 
 
 def _selected_site_badge(score: float):
@@ -309,7 +794,10 @@ def _resolve_selected_site(run, location, aoi, selected_site):
         return selected_site
 
     label, _, _ = _selected_site_badge(score)
-    selected_site.setdefault("site_display_name", _display_location_name(location.get("location_name"), lat, lon))
+    selected_site.setdefault(
+        "site_display_name",
+        _display_location_name(location.get("location_name"), lat, lon),
+    )
     selected_site.setdefault("location_name", location.get("location_name"))
     selected_site["latitude"] = lat
     selected_site["longitude"] = lon
@@ -319,7 +807,7 @@ def _resolve_selected_site(run, location, aoi, selected_site):
     return selected_site
 
 
-def _build_map_html(aoi, site_info, height=720):
+def _build_map_html(aoi, site_info, height=430):
     map_id = f"wahhaj_map_{uuid4().hex}"
 
     lon_min, lat_min, lon_max, lat_max = aoi
@@ -342,28 +830,27 @@ def _build_map_html(aoi, site_info, height=720):
         #{map_id} {{
             width: 100%;
             height: {height}px;
-            border-radius: 20px;
+            border-radius: 0 0 18px 18px;
             overflow: hidden;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
         }}
         .leaflet-container {{ font-family: Arial, sans-serif; background: #eaeaea; }}
         .leaflet-control-attribution {{ font-size: 10px; }}
         .wahhaj-legend {{
             background: rgba(255,255,255,0.95);
-            border-radius: 14px;
-            padding: 12px 14px;
+            border-radius: 12px;
+            padding: 10px 12px;
             box-shadow: 0 4px 18px rgba(0,0,0,0.12);
             line-height: 1.35;
-            min-width: 230px;
+            min-width: 190px;
         }}
         .wahhaj-legend-title {{
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 700;
             color: #1f3864;
-            margin-bottom: 8px;
+            margin-bottom: 7px;
         }}
         .wahhaj-legend-bar {{
-            height: 12px;
+            height: 10px;
             border-radius: 999px;
             background: linear-gradient(90deg, #e74c3c, #f4b040, #f1c40f, #7fcc50, #22c55e);
             margin-bottom: 6px;
@@ -371,14 +858,14 @@ def _build_map_html(aoi, site_info, height=720):
         .wahhaj-legend-scale {{
             display: flex;
             justify-content: space-between;
-            font-size: 11px;
+            font-size: 10px;
             color: #666;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }}
         .wahhaj-legend-note {{
-            font-size: 11px;
+            font-size: 10px;
             color: #666;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }}
         .selected-label {{ background: transparent; border: none; }}
         .selected-label div {{
@@ -426,9 +913,9 @@ def _build_map_html(aoi, site_info, height=720):
 
         L.polygon(aoiOutline, {{
             color: "#0070FF",
-            weight: 2.8,
+            weight: 2.6,
             fillColor: selected.fillColor,
-            fillOpacity: 0.38
+            fillOpacity: 0.34
         }})
         .bindPopup(`
             <div class="wahhaj-popup-title">${{selected.name}}</div>
@@ -459,7 +946,7 @@ def _build_map_html(aoi, site_info, height=720):
         .addTo(map);
 
         L.marker([selected.lat, selected.lon], {{ icon: selectedIcon }}).addTo(map);
-        map.fitBounds(bounds, {{ padding: [28, 28] }});
+        map.fitBounds(bounds, {{ padding: [24, 24] }});
 
         const legend = L.control({{ position: "bottomleft" }});
         legend.onAdd = function() {{
@@ -469,8 +956,7 @@ def _build_map_html(aoi, site_info, height=720):
                 <div class="wahhaj-legend-bar"></div>
                 <div class="wahhaj-legend-scale"><span>Low</span><span>High</span></div>
                 <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
-                <div class="wahhaj-legend-note">Filled area = overall site suitability</div>
-                <div class="wahhaj-legend-note">Blue marker = selected site center</div>
+                <div class="wahhaj-legend-note">Filled area = selected site suitability</div>
             `;
             return div;
         }};
@@ -481,24 +967,131 @@ def _build_map_html(aoi, site_info, height=720):
 """
 
 
+def _recommendation_text(label: str) -> str:
+    label_l = (label or "").lower()
+    if "high" in label_l:
+        return "Recommended for solar site consideration based on the current weighted environmental and geospatial assessment."
+    if "moderate" in label_l:
+        return "Conditionally recommended and may benefit from additional field validation before final adoption."
+    if "not" in label_l:
+        return "Not recommended at this stage based on the current suitability assessment."
+    return "Recommended for further review based on the current site analysis results."
+
+
+def _safe_text(value, default="—"):
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
+def _safe_html(value, default="—"):
+    return escape(_safe_text(value, default))
+
+
+def _factor_accent(index: int) -> str:
+    palette = ["#1F3864", "#2F6DB2", "#F59E0B", "#10B981", "#8B5CF6", "#EC4899"]
+    return palette[index % len(palette)]
+
+
+def _normalize_factor_bars(factors: list[dict]) -> list[dict]:
+    values = [max(0.0, float(item.get("contribution_pct", 0.0) or 0.0)) for item in factors]
+    max_val = max(values) if values else 1.0
+    max_val = max(max_val, 1.0)
+    out = []
+    for idx, item in enumerate(factors):
+        value = max(0.0, float(item.get("contribution_pct", 0.0) or 0.0))
+        out.append(
+            {
+                **item,
+                "bar_pct": max(14.0, min(100.0, (value / max_val) * 100.0 if max_val else 0.0)),
+                "accent": _factor_accent(idx),
+            }
+        )
+    return out
+
+
+def _factor_snapshot_html(factors: list[dict]) -> str:
+    cards = []
+    for idx, item in enumerate(factors[:5]):
+        title = _safe_html(item.get("title", item.get("name", "Factor")))
+        raw_label = _safe_html(item.get("raw_label"))
+        score = float(item.get("contribution_pct", 0.0) or 0.0)
+        accent = _factor_accent(idx)
+        cards.append(
+            '<div class="fr-mini-factor">'
+            f'<h4>{title}</h4>'
+            f'<div class="fr-mini-raw">{raw_label}</div>'
+            f'<div class="fr-mini-pill" style="background:{accent}18;color:{accent};">Weighted impact {score:.1f}%</div>'
+            '</div>'
+        )
+    return '<div class="fr-mini-grid">' + "".join(cards) + "</div>"
+
+
+def _reason_list_html(reasons: list[dict]) -> str:
+    if not reasons:
+        reasons = [{"reason": "Selected site interpretation will appear here after the analysis is completed."}]
+    rows = []
+    for item in reasons[:4]:
+        text = _safe_html(item.get("reason") or item.get("title") or item.get("name"))
+        rows.append(f'<div class="fr-list-item"><span class="fr-dot"></span><span>{text}</span></div>')
+    return '<div class="fr-list">' + "".join(rows) + "</div>"
+
+
+def _weight_panel_html(factors: list[dict]) -> str:
+    if not factors:
+        return '<div class="fr-mini-note" style="margin-top:0;">No factor contribution data available.</div>'
+    cards = []
+    for idx, item in enumerate(_normalize_factor_bars(factors)):
+        title = _safe_html(item.get("title") or item.get("name") or f"Factor {idx + 1}")
+        raw_label = _safe_html(item.get("raw_label"), "No value")
+        contribution = float(item.get("contribution_pct", 0.0) or 0.0)
+        bar_pct = float(item.get("bar_pct", 0.0) or 0.0)
+        accent = item.get("accent", _factor_accent(idx))
+        weight_pct = item.get("weight_pct")
+        badge_text = f"Weight {float(weight_pct):.1f}%" if isinstance(weight_pct, (int, float)) else "Weighted factor"
+        cards.append(
+            '<div class="fr-weight-item">'
+            '<div class="fr-weight-top">'
+            f'<div class="fr-weight-name">{title}</div>'
+            f'<div class="fr-weight-raw">{raw_label}</div>'
+            '</div>'
+            '<div class="fr-weight-sub">Contribution to the selected-site result</div>'
+            f'<div class="fr-weight-line"><span style="width:{bar_pct:.1f}%;background:{accent};"></span></div>'
+            '<div class="fr-weight-meta">'
+            f'<span class="fr-weight-badge">{escape(badge_text)}</span>'
+            f'<span class="fr-weight-pct">{contribution:.1f}%</span>'
+            '</div>'
+            '</div>'
+        )
+    return '<div class="fr-weight-grid">' + ''.join(cards) + '</div>'
+
+def _summary_item(label: str, value: str) -> str:
+    return (
+        '<div class="fr-summary-item">'
+        f'<div class="label">{escape(label)}</div>'
+        f'<div class="value">{escape(value)}</div>'
+        '</div>'
+    )
+
+
 # ── guard: need a completed run ────────────────────────────────────────────
 run = st.session_state.get("analysis_run")
 if run is None:
-    st.markdown('<div class="rpt-card">', unsafe_allow_html=True)
+    st.markdown('<div class="fr-card">', unsafe_allow_html=True)
     st.warning("No analysis found. Complete the pipeline first.")
     if st.button("Back to Analysis"):
-
         st.switch_page("pages/5_Analysis.py")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 from Wahhaj.SiteCandidate import SiteCandidate
 from Wahhaj.report import Report
 
-loc     = st.session_state.get("selected_location", {})
-ranked  = SiteCandidate.rank_all(list(run.candidates)) if run.candidates else []
+loc = st.session_state.get("selected_location", {})
+ranked = SiteCandidate.rank_all(list(run.candidates)) if getattr(run, "candidates", None) else []
 summary = run.summary()
-aoi     = st.session_state.get("aoi", (0, 0, 0, 0))
+aoi = st.session_state.get("aoi", (0, 0, 0, 0))
 selected_site = _resolve_selected_site(
     run,
     loc,
@@ -506,9 +1099,12 @@ selected_site = _resolve_selected_site(
     st.session_state.get("selected_site_analysis", {}),
 )
 st.session_state["selected_site_analysis"] = selected_site
+
 selected_score = selected_site.get("score")
 selected_label = selected_site.get("label") or "—"
-selected_score_text = selected_site.get("score_text") or (f"{float(selected_score) * 100:.1f}%" if selected_score is not None else "—")
+selected_score_text = selected_site.get("score_text") or (
+    f"{float(selected_score) * 100:.1f}%" if selected_score is not None else "—"
+)
 selected_display_name = selected_site.get("site_display_name") or loc.get("location_name") or "Selected Site"
 selected_lat = selected_site.get("latitude", loc.get("latitude"))
 selected_lon = selected_site.get("longitude", loc.get("longitude"))
@@ -518,11 +1114,10 @@ selected_coords = (
     else "—"
 )
 selected_color = "#1a1a1a"
+selected_bg = "#EEF4FB"
 if selected_score is not None:
-    _, selected_color, _ = _selected_site_badge(float(selected_score))
-now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    _, selected_color, selected_bg = _selected_site_badge(float(selected_score))
 
-# ── generate report object (once per run) ─────────────────────────────────
 if "report_obj" not in st.session_state or st.session_state["report_obj"] is None:
     rpt = Report()
     rpt.generate(run, ranked, location=loc, selected_site=selected_site)
@@ -540,199 +1135,214 @@ if selected_score is not None:
 
 save_analysis_to_history(run, ranked, loc)
 
-lat_val   = loc.get("latitude")
-lon_val   = loc.get("longitude")
-coord_str = (
-    f"{lat_val:.4f}°N, {lon_val:.4f}°E"
-    if lat_val is not None and lon_val is not None
-    else "—"
+now = datetime.now().strftime("%d %b %Y • %H:%M")
+report_id_short = f"{str(rpt.report_id)[:8]}..." if getattr(rpt, "report_id", None) else "—"
+run_id_short = f"{str(run.runId)[:8]}..." if getattr(run, "runId", None) else "—"
+duration_text = f"{summary.get('durationSec', '—')} sec"
+status_text = _safe_text(summary.get("status"), "Completed")
+image_name = _safe_text(selected_site.get("image_name"), "Uploaded image")
+ai_assessment = _safe_text(selected_site.get("ai_assessment"), "Pending AI model result")
+recommendation = _recommendation_text(selected_label)
+factors = list(selected_site.get("factors") or [])
+reasons = list(selected_site.get("reasons") or [])
+
+if not factors:
+    factors = [
+        {"title": "Solar Irradiance", "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Sunshine Hours", "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Terrain Slope", "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Obstacle Density", "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Elevation", "raw_label": "No factor data", "contribution_pct": 0.0},
+    ]
+
+st.markdown(
+    f"""
+<div class="fr-header-shell">
+  <div class="fr-header">
+    <div class="fr-title">Final Site Suitability Report</div>
+    <div class="fr-subtitle">Single-screen summary for the selected analysed site with the map, decision cues, and export controls visible together.</div>
+    <div class="fr-chip-row">
+      <span class="fr-chip">{ICON_PIN}<span>{_safe_html(loc.get('location_name') or selected_display_name)}</span></span>
+      <span class="fr-chip">{ICON_CLOCK}<span>{escape(now)}</span></span>
+      <span class="fr-chip">{ICON_HASH}<span>Report {escape(report_id_short)}</span></span>
+      <span class="fr-chip">{ICON_HASH}<span>Run {escape(run_id_short)}</span></span>
+    </div>
+  </div>
+</div>
+""",
+    unsafe_allow_html=True,
 )
-loc_name = loc.get("location_name", "—")
 
-st.markdown("""
-<div class="rpt-page-header">
-  <div class="rpt-page-title">Final Report</div>
-</div>
-""", unsafe_allow_html=True)
+pdf_bytes = rpt.build_pdf_bytes(
+    run,
+    ranked,
+    location=loc,
+    suitability=run.suitability if run else None,
+    aoi=aoi if aoi and len(aoi) == 4 else None,
+    selected_site=selected_site,
+)
+report_text = rpt._generate_report_content(run, ranked)
 
-st.markdown(f"""
-<div class="rpt-card">
-  <div class="rpt-section-title">{ICON_HASH} &nbsp;Report Details</div>
-  <table class="rpt-meta-table">
-    <tr>
-      <td class="label">{ICON_PIN}&nbsp; Location</td>
-      <td class="value">{loc_name}</td>
-      <td class="label">{ICON_CLOCK}&nbsp; Generated</td>
-      <td class="value">{now}</td>
-    </tr>
-    <tr>
-      <td class="label">Status</td>
-      <td class="value done">{summary.get('status','—')}</td>
-      <td class="label">Duration</td>
-      <td class="value">{summary.get('durationSec','—')} seconds</td>
-    </tr>
-    <tr>
-      <td class="label">Coordinates</td>
-      <td class="value mono">{coord_str}</td>
-      <td class="label">Selected Site Score</td>
-      <td class="value">{selected_score_text}</td>
-    </tr>
-    <tr>
-      <td class="label">Report ID</td>
-      <td class="value mono">{str(rpt.report_id)[:16]}…</td>
-      <td class="label">Run ID</td>
-      <td class="value mono">{run.runId[:16]}…</td>
-    </tr>
-  </table>
-</div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="fr-divider-space"></div>', unsafe_allow_html=True)
 
-st.markdown(f"""
-<div class="rpt-card">
-  <div class="rpt-section-title">{ICON_SUN} &nbsp;Executive Summary</div>
-  <div class="rpt-exec-summary">{rpt.summary}</div>
-</div>
-""", unsafe_allow_html=True)
+left_col, center_col, right_col = st.columns([1.00, 1.78, 1.20], gap="small")
 
-st.markdown(f"""
-<div class="rpt-top-site">
-  <div class="rpt-top-site-icon">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-      <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"></path>
-      <circle cx="12" cy="10" r="3"></circle>
-    </svg>
-  </div>
-  <div style="font-family:'Capriola',sans-serif;">
-    <div style="font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">
-      Selected Site Assessment
-    </div>
-    <div style="font-size:15px;color:#78716c; line-height:1.7;">
-      {selected_display_name} &nbsp;&middot;&nbsp; {selected_coords}
-      &nbsp;&middot;&nbsp; Official result for the analysed location
-    </div>
-  </div>
-  <div class="rpt-top-site-score">
-    <div class="big" style="color:{selected_color};">{selected_score_text}</div>
-    <div class="lbl">{selected_label}</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-if run.suitability is not None and aoi and len(aoi) == 4 and selected_lat is not None and selected_lon is not None and selected_score is not None:
-    fill_color = _rgb_to_hex(_score_color_rgb(float(selected_score)))
-    site_info = {
-        "name": selected_display_name,
-        "score_text": selected_score_text,
-        "suitability": selected_label,
-        "lat": selected_lat,
-        "lon": selected_lon,
-        "fillColor": fill_color,
-    }
-
-    st.markdown(f"""
-    <div class="rpt-card" style="padding-bottom:8px;">
-      <div class="rpt-section-title">{ICON_MAP} &nbsp;Suitability Heatmap</div>
-    </div>
-    """, unsafe_allow_html=True)
-    components.html(
-        _build_map_html(aoi=aoi, site_info=site_info, height=720),
-        height=740,
-        scrolling=False,
+with left_col:
+    score_bar_width = float(selected_score or 0.0) * 100.0
+    st.markdown(
+        f"""
+        <div class="fr-card">
+            <div class="fr-card-title">Overall Suitability Score</div>
+            <div class="fr-badge" style="background:{selected_bg};color:{selected_color};">{_safe_html(selected_label)}</div>
+            <div class="fr-donut-wrap">
+                <div class="fr-donut" style="--pct:{score_bar_width:.1f};--accent:{selected_color};">
+                    <div class="fr-donut-center"><strong>{_safe_html(selected_score_text)}</strong><span>Score</span></div>
+                </div>
+                <div class="fr-score-side">
+                    <div class="fr-score-label">Selected site result</div>
+                    <div class="fr-progress"><span style="width:{score_bar_width:.1f}%;background:{selected_color};"></span></div>
+                    <div class="fr-mini-note">This score represents the consolidated suitability estimate for the chosen site based on the currently processed layers.</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.markdown("<div style='position:relative;z-index:2;font-family:Capriola,sans-serif;color:#64748b;font-size:15px;margin-top:6px;'>This is the same single-site map shown in the Suitability Heatmap page.</div>", unsafe_allow_html=True)
 
-AHP_WEIGHTS = [
-    ("Solar Irradiance (GHI)",    0.30, "Higher = Better", "#F59E0B"),
-    ("Terrain Slope",             0.22, "Lower = Better",  "#3B82F6"),
-    ("Sunshine Hours",            0.18, "Higher = Better", "#EF4444"),
-    ("Obstacle Density",          0.13, "Lower = Better",  "#8B5CF6"),
-    ("Surface Temperature (LST)", 0.10, "Lower = Better",  "#EC4899"),
-    ("Elevation",                 0.07, "Moderate = Best", "#10B981"),
-]
-
-rows_html = "".join(
-    f"""<div class="ahp-row">
-      <div class="ahp-name">{name}</div>
-      <div class="ahp-bar-bg">
-        <div class="ahp-bar-fill" style="width:{w*100:.0f}%;background:{color};"></div>
-      </div>
-      <div class="ahp-pct">{w:.0%}</div>
-      <div class="ahp-dir">{direction}</div>
-    </div>"""
-    for name, w, direction, color in AHP_WEIGHTS
-)
-
-check_svg = (
-    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#166534" '
-    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-    '<polyline points="20 6 9 17 4 12"/></svg>'
-)
-
-st.markdown(f"""
-<div class="rpt-card">
-  <div class="rpt-section-title">{ICON_SCALE} &nbsp;AHP Criteria Weights</div>
-  {rows_html}
-  <div class="ahp-cr">
-    {check_svg} &nbsp;Consistency Ratio (CR) = 0.015 — Consistent (CR &lt; 0.10)
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown(f"""
-<div class="rpt-card" style="padding-bottom:10px;">
-  <div class="rpt-section-title">{ICON_DOWNLOAD} &nbsp;Export Report</div>
-</div>
-""", unsafe_allow_html=True)
-
-col_pdf, col_txt = st.columns(2)
-
-with col_pdf:
-    pdf_bytes = rpt.build_pdf_bytes(
-        run,
-        ranked,
-        location=loc,
-        suitability=run.suitability if run else None,
-        aoi=aoi if aoi and len(aoi) == 4 else None,
-        selected_site=selected_site,
+    st.markdown(
+        f"""
+        <div class="fr-card">
+            <div class="fr-card-title compact">Recommendation</div>
+            <div class="fr-mini-note" style="margin-top:0;color:#162033;font-size:0.82rem;">{escape(recommendation)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+    st.markdown(
+        f"""
+        <div class="fr-card">
+            <div class="fr-card-title compact">Site Information</div>
+            <div class="fr-kv-grid">
+                <div class="fr-kv-item">
+                    <div class="fr-kv-label">Display Name</div>
+                    <div class="fr-kv-value">{_safe_html(selected_display_name)}</div>
+                </div>
+                <div class="fr-kv-item">
+                    <div class="fr-kv-label">Coordinates</div>
+                    <div class="fr-kv-value">{_safe_html(selected_coords)}</div>
+                </div>
+                <div class="fr-kv-item">
+                    <div class="fr-kv-label">Image Source</div>
+                    <div class="fr-kv-value">{_safe_html(image_name)}</div>
+                </div>
+                <div class="fr-kv-item">
+                    <div class="fr-kv-label">Run Status</div>
+                    <div class="fr-kv-value">{_safe_html(status_text)}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+with center_col:
+    st.markdown(
+        """
+        <div class="fr-card" style="padding:0;overflow:hidden;">
+            <div class="fr-map-title">
+                <div class="fr-card-title compact">Selected Site Suitability Map</div>
+                <div class="fr-map-caption">Satellite view of the selected AOI with the analysed site marker and suitability overlay.</div>
+            </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if run.suitability is not None and aoi and len(aoi) == 4 and selected_lat is not None and selected_lon is not None and selected_score is not None:
+        fill_color = _rgb_to_hex(_score_color_rgb(float(selected_score)))
+        site_info = {
+            "name": selected_display_name,
+            "score_text": selected_score_text,
+            "suitability": selected_label,
+            "lat": selected_lat,
+            "lon": selected_lon,
+            "fillColor": fill_color,
+        }
+        st.markdown('<div class="fr-map-shell">', unsafe_allow_html=True)
+        components.html(_build_map_html(aoi=aoi, site_info=site_info, height=430), height=432, scrolling=False)
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(
+            """
+            <div class="fr-card" style="min-height:432px;display:flex;align-items:center;justify-content:center;">
+                <div class="fr-mini-note" style="margin-top:0;text-align:center;max-width:420px;">
+                    The selected-site map will appear here once suitability, AOI bounds, and site coordinates are available.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with right_col:
+    st.markdown(
+        f"""
+        <div class="fr-card fr-ai-shell">
+            <div class="fr-card-title">AI Assessment</div>
+            <div class="fr-ai-hero">
+                <div class="fr-ai-label">AI image assessment</div>
+                <div class="fr-ai-value">{_safe_html(ai_assessment)}</div>
+                <div class="fr-ai-note">This result is shown here deliberately as a primary decision cue, not as a secondary footer item.</div>
+            </div>
+            <div class="fr-card-title compact">Key Drivers Behind This Score</div>
+            {_reason_list_html(reasons)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown(
+    f"""
+    <div class="fr-card fr-weight-shell">
+        <div class="fr-card-title">Weighted Factor Contribution</div>
+        {_weight_panel_html(factors)}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="fr-center-actions-shell">', unsafe_allow_html=True)
+action_top_left, action_top_right = st.columns(2, gap="small")
+with action_top_left:
     if pdf_bytes:
         st.download_button(
-            "Download Report (PDF)",
+            "Export PDF",
             data=pdf_bytes,
             file_name=f"wahhaj_report_{run.runId[:8]}.pdf",
             mime="application/pdf",
             use_container_width=True,
-            type="primary",
         )
     else:
-        st.info(
-            "PDF export requires `pip install reportlab matplotlib`.  \n"
-            "Use the .txt download below in the meantime."
-        )
+        st.button("PDF unavailable", disabled=True, use_container_width=True)
 
-with col_txt:
-    report_text = rpt._generate_report_content(run, ranked)
+with action_top_right:
     st.download_button(
-        "Download Report (.txt)",
+        "Export TXT",
         data=report_text.encode(),
         file_name=f"wahhaj_report_{run.runId[:8]}.txt",
         mime="text/plain",
         use_container_width=True,
     )
 
-st.markdown("<div class='rpt-actions-wrap'>", unsafe_allow_html=True)
-st.markdown("---")
-
-col_new, col_back = st.columns(2)
-with col_new:
-    if st.button("Start New Analysis", use_container_width=True):
+action_bottom_left, action_bottom_right = st.columns(2, gap="small")
+with action_bottom_left:
+    if st.button("New Analysis", use_container_width=True):
         reset_for_new_analysis()
         st.switch_page("pages/3_Choose_Location.py")
 
-with col_back:
-    if st.button("Back to Suitability Map", use_container_width=True):
+with action_bottom_right:
+    if st.button("Back to Map", use_container_width=True):
         st.switch_page("pages/6_Suitability_Heatmap.py")
+st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
-render_footer()
