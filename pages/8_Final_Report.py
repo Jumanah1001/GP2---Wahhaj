@@ -533,23 +533,45 @@ div[data-testid="stDownloadButton"] > button {
 
 
 .fr-center-actions-shell {
-    width: min(760px, 92%);
-    margin: 0.72rem auto 0 auto;
+    width: 100%;
+    margin: 0.72rem 0 0 0;
     position: relative;
     z-index: 2;
 }
 
-.fr-center-actions-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.7rem 0.9rem;
+.fr-center-actions-shell div[data-testid="stDownloadButton"] > button,
+.fr-center-actions-shell div[data-testid="stButton"] > button,
+.fr-center-actions-shell div.stButton > button {
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 7px 14px !important;
+    border-radius: 12px !important;
+    font-family: 'Capriola', sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    line-height: 1.1 !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
 }
 
-.fr-center-actions-shell div[data-testid="stDownloadButton"] > button,
+.fr-center-actions-shell div[data-testid="stDownloadButton"] > button:hover,
+.fr-center-actions-shell div[data-testid="stButton"] > button:hover,
+.fr-center-actions-shell div.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.10) !important;
+}
+
+.fr-center-actions-shell div[data-testid="stDownloadButton"] > button {
+    background: #DDF3FF !important;
+    color: #2A5D79 !important;
+    border: 1px solid #B9E4F7 !important;
+}
+
+.fr-center-actions-shell div[data-testid="stButton"] > button,
 .fr-center-actions-shell div.stButton > button {
-    width: 100%;
-    min-height: 48px !important;
-    border-radius: 18px 18px 15px 15px / 18px 18px 13px 13px !important;
+    background: #0070FF !important;
+    color: #FFFFFF !important;
+    border: none !important;
 }
 
 .fr-weight-shell {
@@ -645,7 +667,7 @@ div[data-testid="stDownloadButton"] > button {
 
 @media (max-width: 1280px) {
     .fr-center-actions-shell {
-        width: min(720px, 96%);
+        width: min(600px, 92%);
     }
     .fr-weight-grid {
         grid-template-columns: 1fr;
@@ -1313,8 +1335,8 @@ st.markdown(
 )
 
 st.markdown('<div class="fr-center-actions-shell">', unsafe_allow_html=True)
-action_top_left, action_top_right = st.columns(2, gap="small")
-with action_top_left:
+pdf_sp_left, pdf_col, pdf_sp_right = st.columns([1.75, 2.50, 1.75], gap="small")
+with pdf_col:
     if pdf_bytes:
         st.download_button(
             "Export PDF",
@@ -1325,23 +1347,14 @@ with action_top_left:
         )
     else:
         st.button("PDF unavailable", disabled=True, use_container_width=True)
-
-with action_top_right:
-    st.download_button(
-        "Export TXT",
-        data=report_text.encode(),
-        file_name=f"wahhaj_report_{run.runId[:8]}.txt",
-        mime="text/plain",
-        use_container_width=True,
-    )
-
-action_bottom_left, action_bottom_right = st.columns(2, gap="small")
-with action_bottom_left:
+st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
+btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
+with btn_left:
     if st.button("New Analysis", use_container_width=True):
         reset_for_new_analysis()
         st.switch_page("pages/3_Choose_Location.py")
 
-with action_bottom_right:
+with btn_right:
     if st.button("Back to Map", use_container_width=True):
         st.switch_page("pages/6_Suitability_Heatmap.py")
 st.markdown('</div>', unsafe_allow_html=True)
