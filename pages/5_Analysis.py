@@ -656,21 +656,43 @@ st.markdown(
     color:#991B1B;
 }
 
-div.stButton>button{
-    background:#0070FF;
-    color:white;
-    border:none;
-    border-radius:10px;
-    min-height:48px;
-    font-family:'Capriola',sans-serif;
-    font-size:15px;
-    box-shadow:4px 5px 4px rgba(0,0,0,.14);
+div.stButton>button,
+div.stButton>button:focus {
+    background:#0070FF !important;
+    color:white !important;
+    border:none !important;
+    border-radius:14px !important;
+    min-height:62px !important;
+    height:auto !important;
+    padding-top:18px !important;
+    padding-bottom:18px !important;
+    padding-left:32px !important;
+    padding-right:32px !important;
+    font-family:'Capriola',sans-serif !important;
+    font-size:17px !important;
+    font-weight:700 !important;
+    letter-spacing:0.03em !important;
+    box-shadow: 0 4px 16px rgba(0,112,255,0.38), 0 2px 6px rgba(0,0,0,0.10) !important;
+    transition: background 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease !important;
+    line-height: 1.4 !important;
+    white-space: normal !important;
+}
+div.stButton>button > div,
+div.stButton>button p {
+    font-weight:700 !important;
+    font-size:17px !important;
+    padding:0 !important; margin:0 !important;
 }
 div.stButton>button:hover{
-    background:#005fe0;
+    background:#005fe0 !important;
+    box-shadow: 0 6px 22px rgba(0,112,255,0.50) !important;
+    transform: translateY(-1px) !important;
 }
-div.stButton>button:disabled{
-    opacity:.55;
+div.stButton>button:disabled,
+div.stButton>button[disabled]{
+    opacity:.55 !important;
+    transform: none !important;
+    box-shadow:none !important;
 }
 div[data-testid="stVerticalBlock"]{
     gap:.35rem;
@@ -791,9 +813,69 @@ if run_result is None:
             unsafe_allow_html=True,
         )
 
-        progress = st.progress(0)
+        # ── Custom HTML progress bar ──────────────────────────────────
+        st.markdown("""
+<style>
+@keyframes wShimmer {
+    0%   { background-position: 200% center; }
+    100% { background-position: -200% center; }
+}
+.wb-wrap {
+    width: 50%;
+    margin: 18px auto 10px auto;
+}
+.wb-track {
+    width: 100%;
+    height: 22px;
+    background: rgba(0,0,0,0.08);
+    border-radius: 99px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.10);
+}
+.wb-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(
+        90deg,
+        #003caa 0%,
+        #0070FF 25%,
+        #38b6ff 50%,
+        #0070FF 75%,
+        #003caa 100%
+    );
+    background-size: 400% 100%;
+    animation: wShimmer 2s linear infinite;
+    box-shadow:
+        0 0 20px rgba(0,112,255,0.55),
+        0 3px 10px rgba(0,112,255,0.30);
+    transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.wb-label {
+    font-family: 'Capriola', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #444;
+    text-align: center;
+    margin-bottom: 6px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+        bar_slot   = st.empty()
+        label_slot = st.empty()
+
+        def _bar(pct: int, msg: str) -> None:
+            bar_slot.markdown(
+                f'<div class="wb-wrap"><div class="wb-track"><div class="wb-fill" style="width:{pct}%;"></div></div></div>',
+                unsafe_allow_html=True,
+            )
+            label_slot.markdown(
+                f'<div class="wb-label">{msg}</div>',
+                unsafe_allow_html=True,
+            )
+
+        _bar(5, "Initialising analysis...")
         try:
-            progress.progress(8, "Initialising analysis...")
             from Wahhaj.ExternalDataSourceAdapter import ExternalDataSourceAdapter
             from Wahhaj.FeatureExtractor import FeatureExtractor, Dataset
             from Wahhaj.AHPModel import AHPModel
@@ -801,7 +883,7 @@ if run_result is None:
 
             now = datetime.now()
 
-            progress.progress(22, "Preparing site data...")
+            _bar(20, "Preparing site data...")
             backend_images = _get_backend_images()
 
             dataset = Dataset(
@@ -822,14 +904,11 @@ if run_result is None:
                 updated_at=now,
             )
 
-            progress.progress(40, "Loading analysis pipeline...")
+            _bar(40, "Loading analysis pipeline...")
             adapter   = ExternalDataSourceAdapter()
             extractor = FeatureExtractor(adapter=adapter)
             ahp       = AHPModel()
 
-            # FIX: was top_k_sites=0, min_site_score=1.0 — guaranteed zero candidates.
-            # Scores are in [0, 1]; min_site_score=1.0 means nothing qualifies.
-            # Now uses top_k_sites=10, min_site_score=0.0 to collect all top candidates.
             run = AnalysisRun(
                 ahp_model         = ahp,
                 feature_extractor = extractor,
@@ -845,10 +924,10 @@ if run_result is None:
                 updated_at=now,
             )
 
-            progress.progress(68, "Running site analysis...")
+            _bar(65, "Running site analysis...")
             run.execute(dataset)
 
-            progress.progress(92, "Saving result...")
+            _bar(88, "Saving result...")
             completed_at = datetime.now()
             set_dataset_state(
                 dataset,
@@ -870,12 +949,14 @@ if run_result is None:
                 updated_at=completed_at,
             )
 
-            progress.progress(100, "Done")
-            time.sleep(0.35)
+            # ── Reach 100% visually before switching ──
+            _bar(100, "✓ Analysis complete — loading results...")
+            time.sleep(1.2)
             st.rerun()
 
         except Exception as exc:
-            progress.empty()
+            bar_slot.empty()
+            label_slot.empty()
             failed_at = datetime.now()
             set_analysis_state(
                 st.session_state.get("_analysis_run_cache"),

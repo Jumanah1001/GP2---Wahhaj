@@ -319,18 +319,26 @@ top_l, top_mid, top_r = st.columns([5, 3, 2])
 
 with top_r:
     if is_admin:
-        btn_a, btn_b = st.columns([1, 1])
+        btn_a, btn_b, btn_c = st.columns([1, 1, 1])
         with btn_a:
             if st.button(":material/group: Admin", use_container_width=True):
                 st.switch_page("pages/9_Add_New_User.py")
         with btn_b:
+            if st.button(":material/bar_chart: Ranked", use_container_width=True):
+                st.switch_page("pages/7_Ranked_Results.py")
+        with btn_c:
             if st.button(":material/logout: Logout", use_container_width=True):
                 logout_user()
                 st.switch_page("pages/1_Login.py")
     else:
-        if st.button(":material/logout: Logout", use_container_width=True):
-            logout_user()
-            st.switch_page("pages/1_Login.py")
+        btn_a, btn_b = st.columns([1, 1])
+        with btn_a:
+            if st.button(":material/bar_chart: Ranked Sites", use_container_width=True):
+                st.switch_page("pages/7_Ranked_Results.py")
+        with btn_b:
+            if st.button(":material/logout: Logout", use_container_width=True):
+                logout_user()
+                st.switch_page("pages/1_Login.py")
 
 _, logo_col, _ = st.columns([2.5, 1.0, 2.5])
 with logo_col:
@@ -397,17 +405,6 @@ with stat_col:
         ),
         unsafe_allow_html=True,
     )
-
-    st.write("")
-    if has_run:
-        if st.button("Continue to Results →", use_container_width=True):
-            st.switch_page("pages/7_Ranked_Results.py")
-    elif has_location or has_image:
-        if st.button("Continue Pipeline →", use_container_width=True):
-            if has_image:
-                st.switch_page("pages/5_Analysis.py")
-            else:
-                st.switch_page("pages/4_Upload_Image.py")
 
 st.write("")
 
