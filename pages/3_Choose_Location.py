@@ -371,7 +371,7 @@ render_top_home_button("pages/2_Home.py")
 st.markdown('<div class="location-page">', unsafe_allow_html=True)
 st.markdown('<div class="page-title">Choose Location</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="page-subtitle">Search the site, then draw the analysis boundary on the map.</div>',
+    '<div class="page-subtitle">Draw the analysis boundary on the map or Search the site</div>',
     unsafe_allow_html=True,
 )
 
@@ -498,7 +498,7 @@ with st.container(key="choose_shell"):
                 location_is_saved = st.session_state.get("location_saved", False)
                 if not location_is_saved:
                     st.button(
-                        "Next →",
+                        "Next",
                         use_container_width=True,
                         key="next_loc_btn",
                         disabled=True,
@@ -508,7 +508,7 @@ with st.container(key="choose_shell"):
                         unsafe_allow_html=True,
                     )
                 else:
-                    if st.button("Next →", use_container_width=True, key="next_loc_btn"):
+                    if st.button("Next", use_container_width=True, key="next_loc_btn"):
                         st.switch_page("pages/4_Upload_Image.py")
 
             saved_loc = st.session_state.get("selected_location", {})
@@ -636,10 +636,7 @@ with st.container(key="choose_shell"):
                             })
                             st.rerun()
 
-                st.markdown(
-                    '<div class="map-caption">Search the area, then use the rectangle tool on the map to define the analysis boundary.</div>',
-                    unsafe_allow_html=True,
-                )
+               
 
 st.markdown('</div>', unsafe_allow_html=True)
 render_footer()

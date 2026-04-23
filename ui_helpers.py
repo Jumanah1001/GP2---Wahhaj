@@ -91,9 +91,13 @@ def save_analysis_to_history(run, ranked: list, location: dict) -> None:
     if "analysis_history" not in st.session_state:
         st.session_state["analysis_history"] = []
 
-    existing_ids = {e.get("run_id") for e in st.session_state["analysis_history"]}
-    if run.runId in existing_ids:
-        return
+    # Keep one entry per run_id, but allow the same analysis to be refreshed.
+    # This is important for Final Report/PDF because the rank must reflect the
+    # latest selected-site score and recommendation, not an older cached entry.
+    st.session_state["analysis_history"] = [
+        e for e in st.session_state["analysis_history"]
+        if e.get("run_id") != run.runId
+    ]
 
     summary = run.summary()
     suit = summary.get("suitability", {})
@@ -166,6 +170,96 @@ def save_analysis_to_history(run, ranked: list, location: dict) -> None:
 def get_analysis_history() -> list:
     return st.session_state.get("analysis_history", [])
 
+
+
+def _coerce_history_score(value) -> float:
+    try:
+        score = float(value)
+    except Exception:
+        return 0.0
+    return max(0.0, min(1.0, score))
+
+
+def _coerce_history_aoi(value):
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        try:
+            lon_min, lat_min, lon_max, lat_max = [float(v) for v in value]
+            if lon_min < lon_max and lat_min < lat_max:
+                return (lon_min, lat_min, lon_max, lat_max)
+        except Exception:
+            return None
+    return None
+
+
+def _clean_ranked_history_entry(entry: dict, fallback_rank: int) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+
+    lat = entry.get("lat")
+    lon = entry.get("lon")
+    try:
+        lat = float(lat) if lat is not None else None
+        lon = float(lon) if lon is not None else None
+    except Exception:
+        lat, lon = None, None
+
+    aoi = _coerce_history_aoi(entry.get("aoi"))
+    if lat is None and lon is None and aoi is None:
+        return None
+
+    if (lat is None or lon is None) and aoi is not None:
+        lon_min, lat_min, lon_max, lat_max = aoi
+        lat = (lat_min + lat_max) / 2
+        lon = (lon_min + lon_max) / 2
+
+    score = _coerce_history_score(entry.get("selected_score", entry.get("top_score", 0.0)))
+    label = str(entry.get("selected_label") or entry.get("recommendation") or "Review Required").strip()
+    location_name = str(entry.get("location_name") or "Unnamed Site").strip() or "Unnamed Site"
+    analysed_at = str(entry.get("analysed_at") or "—")
+
+    return {
+        "rank": fallback_rank,
+        "run_id": entry.get("run_id"),
+        "location_name": location_name,
+        "lat": lat,
+        "lon": lon,
+        "aoi": aoi,
+        "score": score,
+        "score_pct": f"{score * 100:.1f}%",
+        "label": label,
+        "recommendation": label,
+        "analysed_at": analysed_at,
+        "entry": entry,
+    }
+
+
+def get_ranked_history() -> list:
+    """Return saved analysed sites sorted by final selected-site score.
+
+    This is the single source of truth for Ranked Results, Final Report, and
+    PDF export. It intentionally ranks saved site analyses, not internal
+    candidate pixels from the heatmap.
+    """
+    raw_history = get_analysis_history() or []
+    prepared = []
+    for idx, entry in enumerate(raw_history, start=1):
+        cleaned = _clean_ranked_history_entry(entry, idx)
+        if cleaned is not None:
+            prepared.append(cleaned)
+
+    prepared.sort(key=lambda item: item["score"], reverse=True)
+    for idx, item in enumerate(prepared, start=1):
+        item["rank"] = idx
+    return prepared
+
+
+def get_global_rank_for_run(run_id) -> tuple[int | None, int]:
+    ranked = get_ranked_history()
+    run_id = str(run_id) if run_id is not None else None
+    for item in ranked:
+        if str(item.get("run_id")) == run_id:
+            return item.get("rank"), len(ranked)
+    return None, len(ranked)
 
 def restore_analysis_history_entry(entry: dict) -> bool:
     if not isinstance(entry, dict):

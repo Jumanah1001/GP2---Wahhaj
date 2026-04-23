@@ -30,6 +30,8 @@ from ui_helpers import (
     render_top_home_button,
     reset_for_new_analysis,
     save_analysis_to_history,
+    get_ranked_history,
+    get_global_rank_for_run,
 )
 
 st.set_page_config(page_title="Final Report", layout="wide")
@@ -1111,6 +1113,8 @@ from Wahhaj.SiteCandidate import SiteCandidate
 from Wahhaj.report import Report
 
 loc = st.session_state.get("selected_location", {})
+# Local candidate ranking is still used for the selected AOI/heatmap details.
+# The user-facing/global rank comes from analysis_history via get_ranked_history().
 ranked = SiteCandidate.rank_all(list(run.candidates)) if getattr(run, "candidates", None) else []
 summary = run.summary()
 aoi = st.session_state.get("aoi", (0, 0, 0, 0))
@@ -1156,6 +1160,13 @@ if selected_score is not None:
     )
 
 save_analysis_to_history(run, ranked, loc)
+global_ranked_sites = get_ranked_history()
+current_global_rank, total_ranked_sites = get_global_rank_for_run(getattr(run, "runId", None))
+global_rank_text = (
+    f"#{current_global_rank} out of {total_ranked_sites} saved site{'s' if total_ranked_sites != 1 else ''}"
+    if current_global_rank else
+    "Not ranked yet"
+)
 
 now = datetime.now().strftime("%d %b %Y • %H:%M")
 report_id_short = f"{str(rpt.report_id)[:8]}..." if getattr(rpt, "report_id", None) else "—"
@@ -1202,6 +1213,7 @@ pdf_bytes = rpt.build_pdf_bytes(
     suitability=run.suitability if run else None,
     aoi=aoi if aoi and len(aoi) == 4 else None,
     selected_site=selected_site,
+    global_ranked_sites=global_ranked_sites,
 )
 report_text = rpt._generate_report_content(run, ranked)
 
@@ -1236,6 +1248,7 @@ with left_col:
         <div class="fr-card">
             <div class="fr-card-title compact">Recommendation</div>
             <div class="fr-mini-note" style="margin-top:0;color:#162033;font-size:0.82rem;">{escape(recommendation)}</div>
+            <div class="fr-mini-note" style="margin-top:0.55rem;color:#475569;font-size:0.78rem;"><b>Global Rank:</b> {_safe_html(global_rank_text)}</div>
         </div>
         """,
         unsafe_allow_html=True,

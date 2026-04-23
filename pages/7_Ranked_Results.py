@@ -22,7 +22,7 @@ from ui_helpers import (
     render_bg,
     render_footer,
     render_top_home_button,
-    get_analysis_history,
+    get_ranked_history,
     restore_analysis_history_entry,
 )
 
@@ -303,20 +303,9 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
 """
 
 
-raw_history = get_analysis_history() or []
-prepared = []
-for idx, entry in enumerate(raw_history, start=1):
-    cleaned = _clean_entry(entry, idx)
-    if cleaned is not None:
-        prepared.append(cleaned)
-
-prepared.sort(key=lambda item: item["score"], reverse=True)
-for idx, item in enumerate(prepared, start=1):
-    item["rank"] = idx
-
+prepared = get_ranked_history()
 site_count = len(prepared)
 latest_location = prepared[0]["location_name"] if prepared else "—"
-
 
 st.markdown(
     """
