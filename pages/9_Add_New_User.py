@@ -43,7 +43,6 @@ def _current_admin() -> User | None:
         found = User.find_by_email(email)
         if found:
             return found
-
     for user in User._user_registry.values():
         if user.role == UserRole.ADMIN:
             return user
@@ -65,7 +64,7 @@ def _open_edit_panel(user: User) -> None:
     st.session_state["edit_user_id"] = user.userId
     st.session_state["edit_name"] = user.name
     st.session_state["edit_email"] = user._email
-    st.session_state["edit_role"] = user.role.value
+    st.session_state["edit_role"] = "Admin" if user.role == UserRole.ADMIN else "Analyst"
     st.session_state["edit_status"] = "Active" if user.is_active else "Inactive"
 
 
@@ -78,18 +77,15 @@ def _matching_users(users: list[User], query: str) -> list[User]:
     q = query.strip().lower()
     if not q:
         return users
-
     filtered = []
     for user in users:
-        haystack = " ".join(
-            [
-                user.name.lower(),
-                user._email.lower(),
-                user.role.value.lower(),
-                ("active" if user.is_active else "inactive"),
-                user.userId.lower(),
-            ]
-        )
+        haystack = " ".join([
+            user.name.lower(),
+            user._email.lower(),
+            user.role.value.lower(),
+            ("active" if user.is_active else "inactive"),
+            user.userId.lower(),
+        ])
         if q in haystack:
             filtered.append(user)
     return filtered
@@ -106,16 +102,82 @@ def _role_badge(role: UserRole) -> str:
     return f'<span class="role-badge {badge_cls}">{role.value}</span>'
 
 
+def _styled_toggle(widget_key: str, label_off: str, label_on: str, default: bool = False, title: str = "") -> bool:
+    """
+    Horizontal st.radio rendered as a clean segmented control.
+    Text color is forced black via a page-level <style> tag that
+    beats Streamlit emotion CSS by targeting the element directly.
+    Returns bool: False = label_off, True = label_on.
+    """
+    raw = st.session_state.get(widget_key)
+    if raw is None:
+        val = default
+    elif isinstance(raw, bool):
+        val = raw
+    else:
+        val = (str(raw) == label_on)
+
+    selected = st.radio(
+        label=title if title else f"{label_off} / {label_on}",
+        options=[label_off, label_on],
+        index=1 if val else 0,
+        key=widget_key,
+        horizontal=True,
+    )
+
+    return selected == label_on
+
+
 _ensure_admin_page_state()
 User.seed_default_users()
 
-st.markdown(
-    """
+st.markdown("""
 <style>
-.page-shell {
-    position: relative;
-    z-index: 2;
+/* ── Radio label text: always black, readable ── */
+[data-testid="stRadio"] label p {
+    color: #1c1c1c !important;
+    font-family: 'Capriola', sans-serif !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
 }
+[data-testid="stRadio"] label {
+    color: #1c1c1c !important;
+}
+/* ── Radio field title: "Role" / "Account Status" ── */
+[data-testid="stRadio"] > label {
+    font-family: 'Capriola', sans-serif !important;
+    font-size: 18px !important;
+    color: #4d4d4d !important;
+    font-weight: 400 !important;
+    margin-bottom: 4px !important;
+}
+/* ── Toggle status badge ── */
+.toggle-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Capriola', sans-serif;
+    font-size: 13px;
+    color: #555567;
+    margin-top: 4px;
+    margin-bottom: 8px;
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.7);
+    border: 1px solid rgba(0,0,0,0.07);
+    border-radius: 8px;
+}
+.tsb-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+.tsb-dot-blue  { background: #0070FF; }
+.tsb-dot-green { background: #23935b; }
+.tsb-dot-grey  { background: #aaaabc; }
+
+.page-shell { position: relative; z-index: 2; }
 
 .main .block-container {
     max-width: 1440px;
@@ -123,13 +185,8 @@ st.markdown(
     padding-bottom: 1.6rem;
 }
 
-.page-top-space {
-    height: 10px;
-}
-
-.top-nav-wrap {
-    margin-bottom: 18px;
-}
+.page-top-space { height: 10px; }
+.top-nav-wrap { margin-bottom: 18px; }
 
 .top-nav-wrap div.stButton > button {
     min-height: 44px;
@@ -167,10 +224,6 @@ section.main div[data-testid="stVerticalBlockBorderWrapper"] {
 
 section.main div[data-testid="stVerticalBlockBorderWrapper"] > div {
     background: transparent !important;
-}
-
-.card-gap {
-    height: 18px;
 }
 
 .section-title {
@@ -224,9 +277,7 @@ div[data-testid="stTextArea"] textarea:focus {
 }
 
 div[data-testid="stTextInput"] label,
-div[data-testid="stTextArea"] label {
-    display: none !important;
-}
+div[data-testid="stTextArea"] label { display: none !important; }
 
 div.stButton > button {
     background: #0070FF;
@@ -240,10 +291,7 @@ div.stButton > button {
     width: 100%;
 }
 
-div.stButton > button:hover {
-    background: #005fe0;
-    color: white;
-}
+div.stButton > button:hover { background: #005fe0; color: white; }
 
 .feedback-banner {
     border-radius: 12px;
@@ -254,20 +302,18 @@ div.stButton > button:hover {
 }
 
 .feedback-success {
-    background: rgba(80, 200, 120, 0.12);
-    border: 1px solid rgba(80, 160, 100, 0.30);
+    background: rgba(80,200,120,0.12);
+    border: 1px solid rgba(80,160,100,0.30);
     color: #2c7a4b;
 }
 
 .feedback-error {
-    background: rgba(255, 90, 90, 0.10);
-    border: 1px solid rgba(210, 70, 70, 0.24);
+    background: rgba(255,90,90,0.10);
+    border: 1px solid rgba(210,70,70,0.24);
     color: #b42318;
 }
 
-.search-wrap {
-    padding-top: 4px;
-}
+.search-wrap { padding-top: 4px; }
 
 .stat-chip {
     background: rgba(255,255,255,0.86);
@@ -280,30 +326,11 @@ div.stButton > button:hover {
     gap: 10px;
 }
 
-.stat-icon {
-    font-size: 22px;
-    line-height: 1;
-}
+.stat-meta { font-family: 'Capriola', sans-serif; line-height: 1.2; }
+.stat-label { color: #7a7a7a; font-size: 12px; }
+.stat-value { color: #303149; font-size: 24px; margin-top: 4px; }
 
-.stat-meta {
-    font-family: 'Capriola', sans-serif;
-    line-height: 1.2;
-}
-
-.stat-label {
-    color: #7a7a7a;
-    font-size: 12px;
-}
-
-.stat-value {
-    color: #303149;
-    font-size: 24px;
-    margin-top: 4px;
-}
-
-.table-head, .table-cell {
-    font-family: 'Capriola', sans-serif;
-}
+.table-head, .table-cell { font-family: 'Capriola', sans-serif; }
 
 .table-head {
     color: #4a4a5a;
@@ -325,25 +352,11 @@ div.stButton > button:hover {
     line-height: 1.4;
 }
 
-.table-first {
-    border-left: 1px solid rgba(0,0,0,0.08) !important;
-}
+.table-first { border-left: 1px solid rgba(0,0,0,0.08) !important; }
+.table-last  { border-right: 1px solid rgba(0,0,0,0.08) !important; }
 
-.table-last {
-    border-right: 1px solid rgba(0,0,0,0.08) !important;
-}
-
-.table-outline-top .table-head {
-    border-top: 1px solid rgba(0,0,0,0.08);
-}
-
-div[data-testid^="tbl_edit_"] button,
-div[data-testid^="tbl_toggle_"] button,
-div[data-testid^="tbl_delete_"] button,
-div[data-testid^="stButton"]:has(button[kind="secondary"][data-testid^="tbl_"]) button,
 .action-btn-wrap div.stButton > button,
-.action-btn-wrap div.stButton > button:focus,
-.action-btn-wrap div.stButton > button:active {
+.stApp .action-btn-wrap div.stButton > button {
     background: rgba(235,235,240,0.95) !important;
     color: #555567 !important;
     border: 1px solid rgba(0,0,0,0.10) !important;
@@ -352,10 +365,10 @@ div[data-testid^="stButton"]:has(button[kind="secondary"][data-testid^="tbl_"]) 
     min-height: 34px !important;
     border-radius: 8px !important;
     font-weight: 500 !important;
-    transition: background 0.15s ease, color 0.15s ease !important;
 }
 
-.action-btn-wrap div.stButton > button:hover {
+.action-btn-wrap div.stButton > button:hover,
+.stApp .action-btn-wrap div.stButton > button:hover {
     background: rgba(218,218,226,0.98) !important;
     color: #303149 !important;
     border-color: rgba(0,0,0,0.16) !important;
@@ -373,29 +386,10 @@ div[data-testid^="stButton"]:has(button[kind="secondary"][data-testid^="tbl_"]) 
     white-space: nowrap;
 }
 
-.role-admin {
-    background: rgba(255,152,0,0.14);
-    color: #e67817;
-    border: 1px solid rgba(255,152,0,0.32);
-}
-
-.role-analyst {
-    background: rgba(0,112,255,0.10);
-    color: #0070FF;
-    border: 1px solid rgba(0,112,255,0.24);
-}
-
-.status-active {
-    background: rgba(66, 200, 122, 0.12);
-    color: #23935b;
-    border: 1px solid rgba(66, 200, 122, 0.28);
-}
-
-.status-inactive {
-    background: rgba(120, 120, 120, 0.10);
-    color: #767676;
-    border: 1px solid rgba(120, 120, 120, 0.20);
-}
+.role-admin   { background: rgba(255,152,0,0.14);   color: #e67817; border: 1px solid rgba(255,152,0,0.32); }
+.role-analyst { background: rgba(0,112,255,0.10);   color: #0070FF; border: 1px solid rgba(0,112,255,0.24); }
+.status-active   { background: rgba(66,200,122,0.12);  color: #23935b; border: 1px solid rgba(66,200,122,0.28); }
+.status-inactive { background: rgba(120,120,120,0.10); color: #767676; border: 1px solid rgba(120,120,120,0.20); }
 
 .empty-state {
     text-align: center;
@@ -427,17 +421,9 @@ div[data-testid^="stButton"]:has(button[kind="secondary"][data-testid^="tbl_"]) 
     margin-top: 4px;
 }
 
-.footer-space {
-    height: 8px;
-}
-
-.existing-users-gap {
-    height: 52px;
-}
+.footer-space { height: 8px; }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 st.markdown('<div class="page-shell">', unsafe_allow_html=True)
 st.markdown('<div class="page-top-space"></div>', unsafe_allow_html=True)
@@ -457,6 +443,25 @@ st.markdown(
     '<div class="page-subtitle">Create and manage analyst accounts for the WAHHAJ platform</div>',
     unsafe_allow_html=True,
 )
+
+# ── Account status change notification (top of page) ──────────────────
+status_change_msg = st.session_state.pop("status_change_msg", None)
+if status_change_msg:
+    st.markdown(
+        f'''<div style="
+            max-width: 600px;
+            margin: 0 auto 18px auto;
+            background: rgba(0,112,255,0.08);
+            border: 1px solid rgba(0,112,255,0.25);
+            border-radius: 12px;
+            padding: 12px 20px;
+            font-family: 'Capriola', sans-serif;
+            font-size: 14px;
+            color: #0050bb;
+            text-align: center;
+        ">💡 {status_change_msg}</div>''',
+        unsafe_allow_html=True,
+    )
 
 page_left, center, page_right = st.columns([1.8, 6.4, 1.8])
 
@@ -489,57 +494,22 @@ with center:
 
             st.markdown('<div class="field-label">Password</div>', unsafe_allow_html=True)
             new_password = st.text_input("Password", type="password", label_visibility="collapsed", key="inp_pw")
-            if new_password:
-                strength = "Weak"
-                if len(new_password) >= 10 and any(ch.isdigit() for ch in new_password) and any(not ch.isalnum() for ch in new_password):
-                    strength = "Strong"
-                elif len(new_password) >= 8:
-                    strength = "Medium"
-                st.markdown(f'<div class="field-help">Password strength: {strength}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="field-help">Use at least 8 characters.</div>', unsafe_allow_html=True)
+
 
             st.markdown('<div class="field-label">Confirm Password</div>', unsafe_allow_html=True)
             confirm_password = st.text_input("Confirm Password", type="password", label_visibility="collapsed", key="inp_pw2")
-            st.markdown('<div class="field-help">Re-enter the same password.</div>', unsafe_allow_html=True)
 
-            st.markdown('<div class="field-label">Role</div>', unsafe_allow_html=True)
-            r1, r2 = st.columns(2, gap="small")
-            with r1:
-                if st.button("Analyst", key="btn_role_analyst", use_container_width=True):
-                    st.session_state["inp_role"] = "Analyst"
-                    st.rerun()
-            with r2:
-                if st.button("Admin", key="btn_role_admin", use_container_width=True):
-                    st.session_state["inp_role"] = "Admin"
-                    st.rerun()
-            role_choice = st.session_state.get("inp_role", "Analyst")
-            st.markdown(f"""
-            <style>
-            button[kind="secondary"][data-testid="btn_role_analyst"] {{ background: {"rgba(0,112,255,0.11)" if role_choice == "Analyst" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if role_choice == "Analyst" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if role_choice == "Analyst" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if role_choice == "Analyst" else "500"} !important; }}
-            button[kind="secondary"][data-testid="btn_role_admin"] {{ background: {"rgba(0,112,255,0.11)" if role_choice == "Admin" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if role_choice == "Admin" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if role_choice == "Admin" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if role_choice == "Admin" else "500"} !important; }}
-            </style>
-            """, unsafe_allow_html=True)
 
-            st.markdown('<div class="field-label">Account Status</div>', unsafe_allow_html=True)
-            s1, s2 = st.columns(2, gap="small")
-            with s1:
-                if st.button("Active", key="btn_status_active", use_container_width=True):
-                    st.session_state["inp_status"] = "Active"
-                    st.rerun()
-            with s2:
-                if st.button("Inactive", key="btn_status_inactive", use_container_width=True):
-                    st.session_state["inp_status"] = "Inactive"
-                    st.rerun()
-            account_status = st.session_state.get("inp_status", "Active")
-            st.markdown(f"""
-            <style>
-            button[kind="secondary"][data-testid="btn_status_active"] {{ background: {"rgba(0,112,255,0.11)" if account_status == "Active" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if account_status == "Active" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if account_status == "Active" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if account_status == "Active" else "500"} !important; }}
-            button[kind="secondary"][data-testid="btn_status_inactive"] {{ background: {"rgba(0,112,255,0.11)" if account_status == "Inactive" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if account_status == "Inactive" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if account_status == "Inactive" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if account_status == "Inactive" else "500"} !important; }}
-            </style>
-            """, unsafe_allow_html=True)
+            # ── Role ───────────────────
+            role_is_admin = _styled_toggle("inp_role", "Analyst", "Admin", default=False, title="Role")
+            role_choice = "Admin" if role_is_admin else "Analyst"
 
-            st.markdown('<div class="small-note">New accounts are added to the in-memory registry used across the current app session.</div>', unsafe_allow_html=True)
+
+            # ── Account Status ───────────────────
+            status_is_active = _styled_toggle("inp_status", "Active", "Inactive", default=True, title="Account Status")
+            account_status = "Active" if status_is_active else "Inactive"
+
+
             st.write("")
 
             b1, b2 = st.columns(2, gap="large")
@@ -574,13 +544,13 @@ with center:
             _set_feedback("A user with this email already exists.", "error")
         else:
             try:
-                role = UserRole.ADMIN if role_choice == "Admin" else UserRole.ANALYST
+                role = UserRole.ADMIN if role_is_admin else UserRole.ANALYST
                 new_user = User(
                     name=new_name.strip(),
                     email=email_candidate,
                     role=role,
                     hashed_password=new_password,
-                    is_active=(account_status == "Active"),
+                    is_active=status_is_active,
                 )
                 admin_user = _current_admin()
                 if admin_user and admin_user.role == UserRole.ADMIN:
@@ -589,7 +559,8 @@ with center:
                     User._user_registry[new_user.userId] = new_user
 
                 _set_feedback(
-                    f"<strong>{new_name.strip()}</strong> created successfully as <strong>{role_choice}</strong> with status <strong>{account_status}</strong>."
+                    f"<strong>{new_name.strip()}</strong> created successfully as "
+                    f"<strong>{role_choice}</strong> with status <strong>{account_status}</strong>."
                 )
 
                 for key in ["inp_name", "inp_username", "inp_email", "inp_pw", "inp_pw2"]:
@@ -629,36 +600,10 @@ with center:
                 e3, e4 = st.columns(2, gap="large")
                 with e3:
                     st.markdown('<div class="field-label">Role</div>', unsafe_allow_html=True)
-                    er1, er2 = st.columns(2, gap="small")
-                    with er1:
-                        if st.button("Analyst", key="btn_edit_role_analyst", use_container_width=True):
-                            st.session_state["edit_role"] = "Analyst"
-                            st.rerun()
-                    with er2:
-                        if st.button("Admin", key="btn_edit_role_admin", use_container_width=True):
-                            st.session_state["edit_role"] = "Admin"
-                            st.rerun()
-                    edit_role_val = st.session_state.get("edit_role", "Analyst")
-                    st.markdown(f"""<style>
-                    button[data-testid="btn_edit_role_analyst"] {{ background: {"rgba(0,112,255,0.11)" if edit_role_val=="Analyst" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if edit_role_val=="Analyst" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if edit_role_val=="Analyst" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if edit_role_val=="Analyst" else "500"} !important; }}
-                    button[data-testid="btn_edit_role_admin"] {{ background: {"rgba(0,112,255,0.11)" if edit_role_val=="Admin" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if edit_role_val=="Admin" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if edit_role_val=="Admin" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if edit_role_val=="Admin" else "500"} !important; }}
-                    </style>""", unsafe_allow_html=True)
+                    _styled_toggle("edit_role", "Analyst", "Admin", default=False, title="Role")
                 with e4:
                     st.markdown('<div class="field-label">Account Status</div>', unsafe_allow_html=True)
-                    es1, es2 = st.columns(2, gap="small")
-                    with es1:
-                        if st.button("Active", key="btn_edit_status_active", use_container_width=True):
-                            st.session_state["edit_status"] = "Active"
-                            st.rerun()
-                    with es2:
-                        if st.button("Inactive", key="btn_edit_status_inactive", use_container_width=True):
-                            st.session_state["edit_status"] = "Inactive"
-                            st.rerun()
-                    edit_status_val = st.session_state.get("edit_status", "Active")
-                    st.markdown(f"""<style>
-                    button[data-testid="btn_edit_status_active"] {{ background: {"rgba(0,112,255,0.11)" if edit_status_val=="Active" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if edit_status_val=="Active" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if edit_status_val=="Active" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if edit_status_val=="Active" else "500"} !important; }}
-                    button[data-testid="btn_edit_status_inactive"] {{ background: {"rgba(0,112,255,0.11)" if edit_status_val=="Inactive" else "rgba(240,240,243,0.92)"} !important; color: {"#0070FF" if edit_status_val=="Inactive" else "#555567"} !important; border: {"1.4px solid rgba(0,112,255,0.42)" if edit_status_val=="Inactive" else "1px solid rgba(0,0,0,0.10)"} !important; font-weight: {"600" if edit_status_val=="Inactive" else "500"} !important; }}
-                    </style>""", unsafe_allow_html=True)
+                    _styled_toggle("edit_status", "Active", "Inactive", default=True, title="Account Status")
 
                 save_col, cancel_col = st.columns(2, gap="large")
                 with save_col:
@@ -692,7 +637,7 @@ with center:
                             target.name = st.session_state["edit_name"].strip()
                             target._email = normalized_email
                             target.role = UserRole.ADMIN if st.session_state["edit_role"] == "Admin" else UserRole.ANALYST
-                            target.is_active = st.session_state["edit_status"] == "Active"
+                            target.is_active = (st.session_state["edit_status"] == "Active")
                             _set_feedback(f"Changes saved for <strong>{target.name}</strong>.")
                             _close_edit_panel()
                     st.rerun()
@@ -707,21 +652,42 @@ with center:
                 st.text_input("Search users", key="add_user_search", label_visibility="collapsed")
                 st.markdown('</div>', unsafe_allow_html=True)
 
+            st.markdown("""
+<style>
+.stApp .action-btn-wrap div.stButton > button {
+    background: rgba(235,235,240,0.95) !important;
+    color: #555567 !important;
+    border: 1px solid rgba(0,0,0,0.10) !important;
+    box-shadow: none !important;
+    font-size: 13px !important;
+    min-height: 34px !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+}
+.stApp .action-btn-wrap div.stButton > button:hover {
+    background: rgba(218,218,226,0.98) !important;
+    color: #303149 !important;
+    border-color: rgba(0,0,0,0.16) !important;
+    box-shadow: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
             with utility_right:
                 s1, s2, s3 = st.columns(3, gap="small")
                 with s1:
                     st.markdown(
-                        f'''<div class="stat-chip"><div class="stat-meta"><div class="stat-label">Total Users</div><div class="stat-value">{total_users}</div></div></div>''',
+                        f'<div class="stat-chip"><div class="stat-meta"><div class="stat-label">Total Users</div><div class="stat-value">{total_users}</div></div></div>',
                         unsafe_allow_html=True,
                     )
                 with s2:
                     st.markdown(
-                        f'''<div class="stat-chip"><div class="stat-meta"><div class="stat-label">Active</div><div class="stat-value">{active_users}</div></div></div>''',
+                        f'<div class="stat-chip"><div class="stat-meta"><div class="stat-label">Active</div><div class="stat-value">{active_users}</div></div></div>',
                         unsafe_allow_html=True,
                     )
                 with s3:
                     st.markdown(
-                        f'''<div class="stat-chip"><div class="stat-meta"><div class="stat-label">Admins</div><div class="stat-value">{admin_count}</div></div></div>''',
+                        f'<div class="stat-chip"><div class="stat-meta"><div class="stat-label">Admins</div><div class="stat-value">{admin_count}</div></div></div>',
                         unsafe_allow_html=True,
                     )
 
