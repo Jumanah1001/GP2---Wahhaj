@@ -616,11 +616,12 @@ def require_login(redirect: str = "pages/1_Login.py") -> None:
 
 
 def render_top_home_button(target_page: str = "pages/2_Home.py") -> None:
-    left, center, right = st.columns([10.2, 0.8, 1.0])
+    left, center, right = st.columns([9.6, 0.6, 1.4])
     with right:
-        if st.button(":material/home:", use_container_width=True,
-                     key=f"home_btn_{target_page}"):
+        st.markdown('<div class="top-home-btn">', unsafe_allow_html=True)
+        if st.button("Home", use_container_width=True, key=f"home_btn_{target_page}"):
             st.switch_page(target_page)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def render_footer() -> None:
@@ -929,11 +930,11 @@ def apply_global_style() -> None:
         .ray.r7{left:0px;top:156px;transform:rotate(90deg)}
         .ray.r8{left:42px;top:48px;transform:rotate(-45deg)}
 
-        .top-home-btn { width:84px; margin-left:auto; }
+        .top-home-btn { width:120px; margin-left:auto; }
         .top-home-btn div.stButton > button {
-            min-height:50px; font-size:20px; border-radius:12px;
+            min-height:50px; font-size:18px; border-radius:12px;
             box-shadow: 0 4px 14px rgba(0,112,255,0.30);
-            padding: 12px 16px !important;
+            padding: 12px 18px !important;
         }
 
         @media(max-width:900px){
