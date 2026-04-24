@@ -273,13 +273,13 @@ class TestUser:
 
     # login
     def test_login_success(self, analyst):
-        session = analyst.login("danah@wahhaj.sa", "anypassword")
+        session = analyst.login("admin@wahhaj.sa", "admin123")
         assert session is not None
         assert session.user_id == analyst.userId
 
     def test_login_wrong_email_raises(self, analyst):
         with pytest.raises(ValueError):
-            analyst.login("wrong@email.com", "pass")
+            analyst.login("analyst@wahhaj.sa", "anypassword")
 
     def test_login_returns_session(self, analyst):
         session = analyst.login("danah@wahhaj.sa", "pass")
