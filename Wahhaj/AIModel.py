@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+
+import cv2
 import numpy as np
 from ultralytics import YOLO
 
@@ -61,15 +63,36 @@ class AIModel:
             return image
         raise TypeError("image must be UAVImage, str, or Path")
 
+
+    def _preprocess_image(self, image_path: str) -> np.ndarray:
+        """
+        Minimal pass-through preprocessing.
+
+        This only reads the image into memory without changing colors,
+        resizing, denoising, cropping, or normalization.
+        YOLO will still handle its own internal preprocessing.
+        """
+        img = cv2.imread(image_path)
+
+        if img is None:
+            raise ValueError(f"Unable to read image file: {image_path}")
+
+        return img
+
+
+
+
     def _run_inference(self, image: Union[UAVImage, str, Path]):
         image_path = self._resolve_image_path(image)
 
         if not Path(image_path).exists():
             raise FileNotFoundError(f"Image file not found: {image_path}")
 
+        preprocessed_image = self._preprocess_image(image_path)
+
         model = self._load_model()
         results = model.predict(
-            source=image_path,
+            source=preprocessed_image,
             imgsz=self.imageSize,
             conf=self.confidenceThreshold,
             retina_masks=True,

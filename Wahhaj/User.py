@@ -101,33 +101,22 @@ class User:
     # ── UML methods ───────────────────────────────────────────────────────────
 
     def login(self, email: str, pw: str) -> Session:
-        """
-        Validate credentials and create a new Session.
-
-        Raises ValueError on bad email, wrong password, or inactive account.
-
-        NOTE: passwords are stored as plain text in Phase 1.
-        To upgrade to bcrypt:
-            import bcrypt
-            if not bcrypt.checkpw(pw.encode(), self._hashed_password.encode()):
-                raise ValueError("Invalid password")
-        """
         if email.strip().lower() != self._email:
             raise ValueError("Invalid email")
 
-        # Phase 1: skip password validation for testing
-        # (password check can be added later with hashing)
+        if pw != self._hashed_password:
+            raise ValueError("Invalid password")
 
         if not self.is_active:
             raise ValueError("Account is inactive")
 
         session = Session(
-            user_id    = self.userId,
-            created_at = datetime.now(timezone.utc),
-            expires_at = datetime.now(timezone.utc) + timedelta(minutes=15),
+            user_id=self.userId,
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         )
-        self.sessionId  = session.session_id
-        self.expiresAt  = session.expires_at
+        self.sessionId = session.session_id
+        self.expiresAt = session.expires_at
         return session
 
     def uploadDataFiles(self, files: list) -> "JobStatus":
