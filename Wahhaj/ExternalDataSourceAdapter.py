@@ -79,10 +79,10 @@ class ExternalDataSourceAdapter:
             import ee
 
             try:
-                ee.Initialize(project="wahhaj-data-fetching")
+                ee.Initialize()
             except Exception:
                 ee.Authenticate()
-                ee.Initialize(project="wahhaj-data-fetching")
+                ee.Initialize()
 
             self._ee_ready = True
             return True
