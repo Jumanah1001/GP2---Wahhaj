@@ -74,6 +74,7 @@ def init_state() -> None:
         "selected_site_analysis": None,
         "uploaded_images":        [],
         "analysis_history": [],
+        "history_loaded": False,
         "users": None,
     }
     for key, value in defaults.items():
@@ -91,9 +92,6 @@ def save_analysis_to_history(run, ranked: list, location: dict) -> None:
     if "analysis_history" not in st.session_state:
         st.session_state["analysis_history"] = []
 
-    # Keep one entry per run_id, but allow the same analysis to be refreshed.
-    # This is important for Final Report/PDF because the rank must reflect the
-    # latest selected-site score and recommendation, not an older cached entry.
     st.session_state["analysis_history"] = [
         e for e in st.session_state["analysis_history"]
         if e.get("run_id") != run.runId
@@ -165,10 +163,105 @@ def save_analysis_to_history(run, ranked: list, location: dict) -> None:
     }
 
     st.session_state["analysis_history"].insert(0, entry)
+    st.session_state["history_loaded"] = True
+
+    # Persist a lightweight copy in Supabase/PostgreSQL.
+    # Objects such as analysis_run/report_obj stay only in session_state.
+    try:
+        from Wahhaj.db_connection import get_db
+        import json
+
+        with get_db() as cur:
+            cur.execute(
+                """INSERT INTO analysis_history
+                (run_id, user_email, location_name, lat, lon,
+                 top_score, recommendation, candidate_count,
+                 analysed_at, ranked_json)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+                ON CONFLICT (run_id) DO UPDATE SET
+                    user_email = EXCLUDED.user_email,
+                    location_name = EXCLUDED.location_name,
+                    lat = EXCLUDED.lat,
+                    lon = EXCLUDED.lon,
+                    top_score = EXCLUDED.top_score,
+                    recommendation = EXCLUDED.recommendation,
+                    candidate_count = EXCLUDED.candidate_count,
+                    analysed_at = EXCLUDED.analysed_at,
+                    ranked_json = EXCLUDED.ranked_json
+                """,
+                (
+                    entry["run_id"],
+                    st.session_state.get("user_email", ""),
+                    entry["location_name"],
+                    entry["lat"],
+                    entry["lon"],
+                    entry["top_score"],
+                    entry["recommendation"],
+                    entry["candidate_count"],
+                    entry["analysed_at"],
+                    json.dumps(entry["ranked"]),
+                ),
+            )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("DB save failed: %s", exc)
 
 
 def get_analysis_history() -> list:
-    return st.session_state.get("analysis_history", [])
+    if st.session_state.get("history_loaded"):
+        return st.session_state.get("analysis_history", [])
+
+    email = st.session_state.get("user_email", "").strip().lower()
+    if not email:
+        return st.session_state.get("analysis_history", [])
+
+    try:
+        from Wahhaj.db_connection import get_db
+        import json
+
+        with get_db() as cur:
+            cur.execute(
+                """SELECT run_id, location_name, lat, lon, top_score,
+                          recommendation, candidate_count, analysed_at, ranked_json
+                   FROM analysis_history
+                   WHERE user_email = %s
+                   ORDER BY created_at DESC
+                   LIMIT 50""",
+                (email,),
+            )
+            rows = cur.fetchall()
+
+        history = []
+        for r in rows:
+            ranked = r[8]
+            if isinstance(ranked, str):
+                ranked = json.loads(ranked) if ranked else []
+            elif ranked is None:
+                ranked = []
+
+            history.append({
+                "run_id": r[0],
+                "location_name": r[1],
+                "lat": r[2],
+                "lon": r[3],
+                "top_score": r[4],
+                "selected_score": r[4],
+                "recommendation": r[5],
+                "selected_label": r[5],
+                "candidate_count": r[6],
+                "analysed_at": r[7],
+                "ranked": ranked,
+                "state_snapshot": {},
+            })
+
+        st.session_state["analysis_history"] = history
+        st.session_state["history_loaded"] = True
+        return history
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("DB load failed: %s", exc)
+        return st.session_state.get("analysis_history", [])
 
 
 
@@ -622,13 +715,50 @@ def login_user(email: str, password: str) -> bool:
     if not password:
         return False
 
+    normalized_email = email.strip().lower()
+
+    # Primary path: Supabase/PostgreSQL users table.
+    try:
+        from Wahhaj.db_connection import get_db
+
+        with get_db() as cur:
+            cur.execute(
+                """SELECT user_id, name, role
+                   FROM users
+                   WHERE email = %s
+                     AND pwd_hash = %s
+                     AND is_active = TRUE""",
+                (normalized_email, password),
+            )
+            row = cur.fetchone()
+
+        if not row:
+            return False
+
+        st.session_state.update({
+            "logged_in": True,
+            "user_id": row[0],
+            "username": row[1],
+            "user_role": row[2],
+            "user_email": normalized_email,
+            "session_id": "db-session",
+            "session_expires": "",
+            "history_loaded": False,
+        })
+        return True
+
+    except Exception as exc:
+        # Local fallback keeps the app usable before secrets/Supabase are configured.
+        import logging
+        logging.getLogger(__name__).warning("DB login failed; using local registry fallback: %s", exc)
+
     User.seed_default_users()
-    user = User.find_by_email(email)
+    user = User.find_by_email(normalized_email)
     if user is None:
         return False
 
     try:
-        session = user.login(email, password)
+        session = user.login(normalized_email, password)
     except ValueError:
         return False
 
@@ -639,6 +769,7 @@ def login_user(email: str, password: str) -> bool:
     st.session_state["user_id"]         = user.userId
     st.session_state["session_id"]      = session.session_id
     st.session_state["session_expires"] = session.expires_at.isoformat()
+    st.session_state["history_loaded"]  = False
     return True
 
 

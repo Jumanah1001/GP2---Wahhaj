@@ -566,6 +566,30 @@ with center:
                 else:
                     User._user_registry[new_user.userId] = new_user
 
+                # Persist the new user in Supabase/PostgreSQL too.
+                try:
+                    from Wahhaj.db_connection import get_db
+                    with get_db() as cur:
+                        cur.execute(
+                            """INSERT INTO users (user_id, name, email, role, pwd_hash, is_active)
+                               VALUES (%s, %s, %s, %s, %s, %s)
+                               ON CONFLICT (email) DO UPDATE SET
+                                   name = EXCLUDED.name,
+                                   role = EXCLUDED.role,
+                                   pwd_hash = EXCLUDED.pwd_hash,
+                                   is_active = EXCLUDED.is_active""",
+                            (
+                                new_user.userId,
+                                new_user.name,
+                                new_user._email,
+                                new_user.role.value,
+                                new_password,
+                                new_user.is_active,
+                            ),
+                        )
+                except Exception as exc:
+                    st.warning(f"DB sync warning: {exc}")
+
                 _set_feedback(
                     f"<strong>{new_name.strip()}</strong> created successfully as "
                     f"<strong>{role_choice}</strong> with status <strong>{account_status}</strong>."
