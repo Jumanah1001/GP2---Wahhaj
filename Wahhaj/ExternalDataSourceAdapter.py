@@ -167,13 +167,71 @@ class ExternalDataSourceAdapter:
         time: datetime,
         variable: str,
     ) -> List[float]:
+        """
+        Fetch a daily meteorological variable from Open-Meteo for a 5×5 grid.
 
+        Tries multiple real historical windows before failing.
+        This avoids stopping when the most recent archive data is unavailable.
+        """
         points = self._build_grid_points(aoi)
 
-        end_date = time.strftime("%Y-%m-%d")
-        start_date = (time - timedelta(days=7)).strftime("%Y-%m-%d")
+        candidate_windows = [
+            7,
+            14,
+            30,
+            60,
+        ]
 
-        values: List[float] = []
+        # Open-Meteo archive may not have very recent data immediately.
+        # So we shift the end date a few days back.
+        base_end_date = time.date() - timedelta(days=5)
+
+        last_error = None
+
+        for days in candidate_windows:
+            end_date = base_end_date.strftime("%Y-%m-%d")
+            start_date = (base_end_date - timedelta(days=days)).strftime("%Y-%m-%d")
+
+            values: List[float] = []
+
+            for lat, lon in points:
+                try:
+                    resp = requests.get(
+                        self.OPEN_METEO_ARCHIVE_URL,
+                        params={
+                            "latitude": lat,
+                            "longitude": lon,
+                            "start_date": start_date,
+                            "end_date": end_date,
+                            "daily": variable,
+                            "timezone": "auto",
+                        },
+                        timeout=15,
+                    )
+                    resp.raise_for_status()
+
+                    data = resp.json()
+                    daily_vals = data.get("daily", {}).get(variable, [])
+                    valid = [v for v in daily_vals if v is not None]
+
+                    values.append(float(np.mean(valid)) if valid else np.nan)
+
+                except Exception as exc:
+                    last_error = str(exc)
+                    values.append(np.nan)
+
+            valid_count = sum(1 for v in values if not np.isnan(v))
+
+            if valid_count > 0:
+                return values
+
+        # Try same period last year as a real-data backup.
+        previous_year_date = base_end_date.replace(year=base_end_date.year - 1)
+
+        end_date = previous_year_date.strftime("%Y-%m-%d")
+        start_date = (previous_year_date - timedelta(days=30)).strftime("%Y-%m-%d")
+
+        values = []
 
         for lat, lon in points:
             try:
@@ -187,27 +245,29 @@ class ExternalDataSourceAdapter:
                         "daily": variable,
                         "timezone": "auto",
                     },
-                    timeout=10,
+                    timeout=15,
                 )
                 resp.raise_for_status()
 
                 data = resp.json()
                 daily_vals = data.get("daily", {}).get(variable, [])
-
                 valid = [v for v in daily_vals if v is not None]
 
                 values.append(float(np.mean(valid)) if valid else np.nan)
 
-            except Exception:
+            except Exception as exc:
+                last_error = str(exc)
                 values.append(np.nan)
 
-        # ✅ بعد اللوب بالكامل
         valid_count = sum(1 for v in values if not np.isnan(v))
 
-        if valid_count == 0:
-            raise RuntimeError(
-                f"No real values returned from Open-Meteo for variable: {variable}"
-            )
+        if valid_count > 0:
+            return values
+
+        raise RuntimeError(
+            f"No real values returned from Open-Meteo for variable: {variable}. "
+            f"Last error: {last_error}"
+        )
 
         return values
 
