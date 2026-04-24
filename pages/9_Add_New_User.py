@@ -219,7 +219,7 @@ section.main div[data-testid="stVerticalBlockBorderWrapper"] {
     box-shadow: 0 10px 28px rgba(0,0,0,0.04) !important;
     backdrop-filter: blur(8px) !important;
     padding: 14px 28px 24px 28px !important;
-    overflow: hidden !important;
+    overflow: visible !important;
 }
 
 section.main div[data-testid="stVerticalBlockBorderWrapper"] > div {
@@ -315,15 +315,16 @@ div.stButton > button:hover { background: #005fe0; color: white; }
 
 .search-wrap { padding-top: 4px; }
 
+
+
 .stat-chip {
-    background: rgba(255,255,255,0.86);
-    border: 1px solid rgba(0,0,0,0.07);
-    border-radius: 14px;
-    padding: 10px 14px;
-    min-height: 66px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    background: rgba(240,242,248,0.92) !important;
+    border: 1px solid rgba(0,0,0,0.10) !important;
+    border-radius: 14px !important;
+    padding: 10px 14px !important;
+    min-height: 66px !important;
+    display: block !important;
+    overflow: visible !important;
 }
 
 .stat-meta { font-family: 'Capriola', sans-serif; line-height: 1.2; }
@@ -355,20 +356,27 @@ div.stButton > button:hover { background: #005fe0; color: white; }
 .table-first { border-left: 1px solid rgba(0,0,0,0.08) !important; }
 .table-last  { border-right: 1px solid rgba(0,0,0,0.08) !important; }
 
-.action-btn-wrap div.stButton > button,
-.stApp .action-btn-wrap div.stButton > button {
+div.stButton > button[aria-label="Edit"],
+div.stButton > button[aria-label="Delete"],
+div.stButton > button[aria-label="Activate"],
+div.stButton > button[aria-label="Deactivate"] {
     background: rgba(235,235,240,0.95) !important;
     color: #555567 !important;
     border: 1px solid rgba(0,0,0,0.10) !important;
     box-shadow: none !important;
     font-size: 13px !important;
     min-height: 34px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
     border-radius: 8px !important;
     font-weight: 500 !important;
 }
-
-.action-btn-wrap div.stButton > button:hover,
-.stApp .action-btn-wrap div.stButton > button:hover {
+div.stButton > button[aria-label="Edit"]:hover,
+div.stButton > button[aria-label="Delete"]:hover,
+div.stButton > button[aria-label="Activate"]:hover,
+div.stButton > button[aria-label="Deactivate"]:hover {
     background: rgba(218,218,226,0.98) !important;
     color: #303149 !important;
     border-color: rgba(0,0,0,0.16) !important;
@@ -652,26 +660,6 @@ with center:
                 st.text_input("Search users", key="add_user_search", label_visibility="collapsed")
                 st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown("""
-<style>
-.stApp .action-btn-wrap div.stButton > button {
-    background: rgba(235,235,240,0.95) !important;
-    color: #555567 !important;
-    border: 1px solid rgba(0,0,0,0.10) !important;
-    box-shadow: none !important;
-    font-size: 13px !important;
-    min-height: 34px !important;
-    border-radius: 8px !important;
-    font-weight: 500 !important;
-}
-.stApp .action-btn-wrap div.stButton > button:hover {
-    background: rgba(218,218,226,0.98) !important;
-    color: #303149 !important;
-    border-color: rgba(0,0,0,0.16) !important;
-    box-shadow: none !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
             with utility_right:
                 s1, s2, s3 = st.columns(3, gap="small")
@@ -720,7 +708,7 @@ with center:
                     with c5:
                         st.markdown(f'<div class="table-cell" style="color:#8c8c8c;">{short_id}</div>', unsafe_allow_html=True)
                     with c6:
-                        st.markdown('<div class="table-cell table-last action-btn-wrap">', unsafe_allow_html=True)
+
                         action_cols = st.columns([1.0, 1.4, 1.0], gap="small")
                         with action_cols[0]:
                             if st.button("Edit", key=f"tbl_edit_{user.userId}", use_container_width=True):
@@ -747,7 +735,7 @@ with center:
                                 except Exception as exc:
                                     _set_feedback(f"Could not delete user: {exc}", "error")
                                 st.rerun()
-                        st.markdown('</div>', unsafe_allow_html=True)
+                        
 
     st.markdown('<div class="footer-space"></div>', unsafe_allow_html=True)
     render_footer()

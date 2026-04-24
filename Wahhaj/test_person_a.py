@@ -12,9 +12,15 @@ try:
     from .models import Raster, Point, FileRef, BoundingBox, SiteInfo
 except ImportError:
     from Wahhaj.models import Raster, Point, FileRef, BoundingBox, SiteInfo
-from storage_service import StorageService
-from User import User, UserRole, Session
-from device import Device
+
+try:
+    from .storage_service import StorageService
+    from .User import User, UserRole, Session
+    from .device import Device
+except ImportError:
+    from Wahhaj.storage_service import StorageService
+    from Wahhaj.User import User, UserRole, Session
+    from Wahhaj.device import Device
 
 
 # ============================================================

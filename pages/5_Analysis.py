@@ -237,12 +237,12 @@ def _uploaded_image_count() -> int:
     return len(uploaded_items or [])
 
 
-def _build_selected_site_breakdown(extractor, row, col):
+def _build_selected_site_breakdown(feature_extractor, row, col):
     items = []
     order = ["ghi", "sunshine", "slope", "obstacle", "lst", "elevation"]
 
     for name in order:
-        raster = extractor.layers.get(name)
+        raster = feature_extractor.layers.get(name)
         if raster is None:
             continue
 
@@ -360,11 +360,11 @@ def _find_existing_page(candidates=None, contains=None):
     return None
 
 
-def _get_ai_image_assessment(extractor, row, col):
-    if not extractor or not getattr(extractor, "layers", None):
+def _get_ai_image_assessment(feature_extractor, row, col):
+    if not feature_extractor or not getattr(feature_extractor, "layers", None):
         return "Pending AI model result"
 
-    obstacle = extractor.layers.get("obstacle")
+    obstacle = feature_extractor.layers.get("obstacle")
     if obstacle is None:
         return "Pending AI model result"
 
@@ -761,7 +761,6 @@ def _render_success_card(site_name: str, image_text: str, score_text: str, resul
             <div class='ac-card-title'>Analysis Completed Successfully</div>
             <div class='ac-card-copy'>Your selected site has been analysed successfully. You can now review the detailed final report or inspect the suitability heatmap.</div>
             <div class='ac-summary-grid'>{chips}</div>
-            <div class='ac-note'><span class='icon'>{ICO_AI}</span><span>Detailed insights are available in the Final Report.</span></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -786,11 +785,9 @@ has_loc = lat is not None and lon is not None
 has_img = _get_backend_image_ready()
 
 saved_aoi = st.session_state.get("aoi")
+
 if _is_valid_aoi(saved_aoi):
     aoi = tuple(saved_aoi)
-elif has_loc:
-    aoi = _aoi_from_selected_location(lat, lon)
-    st.session_state["aoi"] = aoi
 else:
     aoi = None
 
@@ -804,7 +801,8 @@ img_main = (
 img_sub = img_name if img_name else "Upload a site image to continue"
 
 run_result = st.session_state.get("analysis_run")
-all_ready = has_loc and has_img
+has_aoi = aoi is not None
+all_ready = has_loc and has_img and has_aoi
 
 left_spacer, card_col, right_spacer = st.columns([1.05, 1.7, 1.05], gap="small")
 
@@ -820,8 +818,11 @@ with card_col:
             missing = []
             if not has_loc:
                 missing.append("selected location")
+            if not has_aoi:
+                missing.append("drawn analysis boundary")
             if not has_img:
                 missing.append("uploaded image")
+                
             _render_missing_card(missing)
             btn1, btn2 = st.columns(2, gap="small")
             with btn1:
@@ -873,15 +874,20 @@ with card_col:
 
                 _update_progress(40, "Loading analysis pipeline...")
                 adapter = ExternalDataSourceAdapter()
-                extractor = FeatureExtractor(adapter=adapter)
+
+                gee_ready = adapter.initialize_earth_engine()
+                st.session_state["gee_ready"] = gee_ready
+
+                feature_extractor = FeatureExtractor(adapter=adapter)
                 ahp = AHPModel()
 
                 run = AnalysisRun(
                     ahp_model=ahp,
-                    feature_extractor=extractor,
+                    feature_extractor=feature_extractor,
                     top_k_sites=10,
                     min_site_score=0.0,
                 )
+
                 set_analysis_state(
                     run,
                     status="running",
@@ -893,6 +899,19 @@ with card_col:
 
                 _update_progress(65, "Running site analysis...")
                 run.execute(dataset)
+
+                fallback_layers = []
+
+                for layer_name, raster in feature_extractor.layers.items():
+                    metadata = raster.metadata or {}
+                    source = str(metadata.get("source", "")).lower()
+                    data_quality = str(metadata.get("data_quality", "")).lower()
+
+                    if source in ["synthetic", "mock", "fallback"] or data_quality == "fallback":
+                        fallback_layers.append(layer_name)
+
+                st.session_state["fallback_layers"] = fallback_layers
+                st.session_state["used_fallback_data"] = len(fallback_layers) > 0
 
                 _update_progress(88, "Saving result...")
                 completed_at = datetime.now()
@@ -906,7 +925,7 @@ with card_col:
                     created_at=dataset_ref.get("created_at"),
                     updated_at=completed_at,
                 )
-                st.session_state["extractor"] = extractor
+                st.session_state["extractor"] = feature_extractor
                 set_analysis_state(
                     run,
                     status="completed",
@@ -940,7 +959,7 @@ with card_col:
 
     else:
         run = run_result
-        extractor = st.session_state.get("extractor")
+        feature_extractor = st.session_state.get("extractor")
 
         selected_score = None
         selected_label = "—"
@@ -954,10 +973,10 @@ with card_col:
             selected_score = float(suit.data[row, col])
             selected_label, _badge_class = suitability_badge(selected_score)
 
-            if extractor and getattr(extractor, "layers", None):
-                factor_items = _build_selected_site_breakdown(extractor, row, col)
+            if feature_extractor and getattr(feature_extractor, "layers", None):
+                factor_items = _build_selected_site_breakdown(feature_extractor, row, col)
                 reason_items = _top_reason_items(factor_items, k=3)
-                ai_assessment = _get_ai_image_assessment(extractor, row, col)
+                ai_assessment = _get_ai_image_assessment(feature_extractor, row, col)
 
             _save_selected_site_analysis(
                 site_display_name=site_display_name,
@@ -984,6 +1003,19 @@ with card_col:
             _safe_pct(selected_score),
             selected_label,
         )
+
+        if st.session_state.get("used_fallback_data") and feature_extractor:
+            with st.expander("Fallback details"):
+                for layer_name, raster in feature_extractor.layers.items():
+                    metadata = raster.metadata or {}
+                    if (
+                        str(metadata.get("data_quality", "")).lower() == "fallback"
+                        or str(metadata.get("source", "")).lower() in ["synthetic", "mock", "fallback"]
+                    ):
+                        st.write(f"**{layer_name}**")
+                        st.write("Reason:", metadata.get("fallback_reason", "Unknown"))
+        elif not st.session_state.get("used_fallback_data"):
+            st.success("Analysis used real environmental data sources.")
 
         report_page = _find_existing_page(
             candidates=[

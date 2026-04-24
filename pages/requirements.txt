@@ -1,0 +1,14 @@
+streamlit
+numpy
+requests
+pillow
+folium
+streamlit-folium
+matplotlib
+pandas
+reportlab
+earthengine-api
+pytest
+
+ultralytics
+opencv-python

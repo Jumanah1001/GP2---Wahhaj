@@ -59,25 +59,40 @@ class ExternalDataSourceAdapter:
 
     # ── GEE lazy init ────────────────────────────────────────────────────────
 
+    def initialize_earth_engine(self) -> bool:
+        """
+        Public method to initialize Google Earth Engine.
+        Returns True if Earth Engine is ready, False otherwise.
+        """
+        return self._ensure_ee()
+
+
     def _ensure_ee(self) -> bool:
         """
-        Attempt to initialise Google Earth Engine lazily.
-        Returns True if successful, False otherwise.
-        Callers fall back to synthetic data when this returns False.
+        Try to initialize Google Earth Engine.
+        Returns True only when Earth Engine is actually ready.
         """
         if self._ee_ready:
             return True
+
         try:
-            import ee  # noqa: F401
+            import ee
+
             try:
                 ee.Initialize(project="wahhaj-data-fetching")
             except Exception:
                 ee.Authenticate()
                 ee.Initialize(project="wahhaj-data-fetching")
+
             self._ee_ready = True
             return True
-        except Exception:
+
+        except Exception as exc:
+            self._ee_ready = False
+            self._last_ee_error = str(exc)
             return False
+        
+   
 
     # ── Grid helpers ─────────────────────────────────────────────────────────
 
@@ -88,28 +103,76 @@ class ExternalDataSourceAdapter:
         lons = np.linspace(lon_min, lon_max, self.grid_cols)
         return [(float(lat), float(lon)) for lat in lats for lon in lons]
 
-    def _reshape_to_grid(self, values: List[float]) -> np.ndarray:
-        return np.array(values, dtype=np.float32).reshape(
-            (self.grid_rows, self.grid_cols)
+    def _reshape_to_grid(self, values):
+        arr = np.array(values, dtype=np.float32).flatten()
+
+        expected_size = self.grid_rows * self.grid_cols
+
+        if arr.size == expected_size:
+            return arr.reshape((self.grid_rows, self.grid_cols))
+
+        if arr.size == 1:
+            return np.full(
+                (self.grid_rows, self.grid_cols),
+                float(arr[0]),
+                dtype=np.float32,
+            )
+
+        raise ValueError(
+            f"Expected {expected_size} values for a "
+            f"{self.grid_rows}x{self.grid_cols} grid, but got {arr.size}."
         )
+
+    #--------------------------------------------------------
+
+    def _is_valid_real_raster(self, raster: Raster) -> bool:
+        """
+        Validate that a fetched raster contains real usable values.
+        """
+        if raster is None:
+            return False
+
+        if raster.data is None:
+            return False
+
+        data = raster.data.astype(np.float32)
+
+        if data.size == 0:
+            return False
+
+        nodata = getattr(raster, "nodata", -9999.0)
+
+        valid_mask = (data != nodata) & ~np.isnan(data)
+
+        if not valid_mask.any():
+            return False
+
+        valid_values = data[valid_mask]
+
+        if valid_values.size == 0:
+            return False
+
+        # If all values are exactly zero, this is suspicious for environmental data.
+        if np.all(valid_values == 0):
+            return False
+
+        return True
+
 
     # ── Open-Meteo helper ────────────────────────────────────────────────────
 
     def _fetch_daily_grid_values(
         self,
-        aoi:      AOI,
-        time:     datetime,
+        aoi: AOI,
+        time: datetime,
         variable: str,
     ) -> List[float]:
-        """
-        Fetch a daily meteorological variable from Open-Meteo for a 5×5
-        grid of points covering the AOI, averaged over a 7-day window
-        ending on `time`.
-        Falls back to synthetic data on any network/parsing error.
-        """
-        points     = self._build_grid_points(aoi)
-        end_date   = time.strftime("%Y-%m-%d")
+
+        points = self._build_grid_points(aoi)
+
+        end_date = time.strftime("%Y-%m-%d")
         start_date = (time - timedelta(days=7)).strftime("%Y-%m-%d")
+
         values: List[float] = []
 
         for lat, lon in points:
@@ -117,22 +180,34 @@ class ExternalDataSourceAdapter:
                 resp = requests.get(
                     self.OPEN_METEO_ARCHIVE_URL,
                     params={
-                        "latitude":  lat,
+                        "latitude": lat,
                         "longitude": lon,
                         "start_date": start_date,
-                        "end_date":   end_date,
-                        "daily":      variable,
-                        "timezone":   "auto",
+                        "end_date": end_date,
+                        "daily": variable,
+                        "timezone": "auto",
                     },
                     timeout=10,
                 )
                 resp.raise_for_status()
+
                 data = resp.json()
                 daily_vals = data.get("daily", {}).get(variable, [])
+
                 valid = [v for v in daily_vals if v is not None]
-                values.append(float(np.mean(valid)) if valid else 0.0)
+
+                values.append(float(np.mean(valid)) if valid else np.nan)
+
             except Exception:
-                values.append(0.0)
+                values.append(np.nan)
+
+        # ✅ بعد اللوب بالكامل
+        valid_count = sum(1 for v in values if not np.isnan(v))
+
+        if valid_count == 0:
+            raise RuntimeError(
+                f"No real values returned from Open-Meteo for variable: {variable}"
+            )
 
         return values
 
@@ -184,43 +259,86 @@ class ExternalDataSourceAdapter:
     def fetchLST(self, aoi: AOI, time: datetime) -> Raster:
         """
         Fetch Land Surface Temperature.
-        Uses GEE if credentials are available; falls back to a
-        synthetic grid derived from latitude otherwise.
+        Tries real Earth Engine data first.
+        Uses fallback only if all real-data attempts fail.
         """
+        last_error = None
+
         if self._ensure_ee():
-            try:
-                return self._fetchLST_gee(aoi, time)
-            except Exception:
-                pass
-        return self._fetchLST_synthetic(aoi)
+            for attempt in range(3):
+                try:
+                    raster = self._fetchLST_gee(aoi, time)
+
+                    if self._is_valid_real_raster(raster):
+                        raster.metadata = {
+                            **(raster.metadata or {}),
+                            "layer": "lst",
+                            "source": "gee-modis",
+                            "data_quality": "real",
+                            "fetch_attempts": attempt + 1,
+                        }
+                        return raster
+
+                    last_error = "LST raster returned empty or invalid values."
+
+                except Exception as exc:
+                    last_error = str(exc)
+
+        fallback = self._fetchLST_synthetic(aoi)
+        fallback.metadata = {
+            **(fallback.metadata or {}),
+            "layer": "lst",
+            "source": "synthetic",
+            "data_quality": "fallback",
+            "fallback_reason": last_error or getattr(self, "_last_ee_error", "Earth Engine unavailable"),
+        }
+        return fallback
 
     def _fetchLST_gee(self, aoi: AOI, time: datetime) -> Raster:
-        import ee  # noqa: F401
-        lon_min, lat_min, lon_max, lat_max = aoi
-        region = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
-        end_ms   = int(time.timestamp() * 1000)
-        start_ms = end_ms - 30 * 24 * 3600 * 1000
+        import ee
+
+        points = self._build_grid_points(aoi)
+        values = []
+
+        end_date = time.strftime("%Y-%m-%d")
+        start_date = (time - timedelta(days=30)).strftime("%Y-%m-%d")
 
         collection = (
-            ee.ImageCollection("MODIS/006/MOD11A1")
-            .filterDate(ee.Date(start_ms), ee.Date(end_ms))
+            ee.ImageCollection("MODIS/061/MOD11A2")
+            .filterDate(start_date, end_date)
             .select("LST_Day_1km")
-            .mean()
         )
-        mean_img = collection.multiply(0.02).subtract(273.15)
-        sample = mean_img.sampleRectangle(region=region, defaultValue=35)
-        arr = np.array(sample.getInfo()["properties"]["LST_Day_1km"], dtype=np.float32)
-        # Resize to grid
-        from PIL import Image as _PILImage
-        resized = np.array(
-            _PILImage.fromarray(arr).resize(
-                (self.grid_cols, self.grid_rows), _PILImage.BILINEAR
-            ),
-            dtype=np.float32,
-        )
+
+        count = collection.size().getInfo()
+        if count == 0:
+            raise RuntimeError("No MODIS LST images found for the selected date range.")
+
+        image = collection.mean().multiply(0.02).subtract(273.15)
+
+        for lat, lon in points:
+            point = ee.Geometry.Point([lon, lat])
+
+            value = image.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=point,
+                scale=1000,
+                bestEffort=True,
+            ).get("LST_Day_1km")
+
+            result = value.getInfo()
+            values.append(float(result) if result is not None else np.nan)
+
+        grid = self._reshape_to_grid(values)
+
         return Raster(
-            data=resized, nodata=-9999.0,
-            metadata={"layer": "lst", "source": "gee-modis"},
+            data=grid,
+            nodata=-9999.0,
+            metadata={
+                "layer": "lst",
+                "source": "gee-modis",
+                "data_quality": "real",
+                "unit": "°C",
+            },
         )
 
     def _fetchLST_synthetic(self, aoi: AOI) -> Raster:
@@ -243,35 +361,74 @@ class ExternalDataSourceAdapter:
 
     def FetchElevation(self, aoi: AOI, time: datetime) -> Raster:
         """
-        Fetch terrain elevation (SRTM/GEE) or fall back to synthetic.
-        Capital F is intentional — matches FeatureExtractor contract.
+        Fetch terrain elevation.
+        Tries real SRTM data from Earth Engine first.
+        Uses fallback only if all real-data attempts fail.
         """
+        last_error = None
+
         if self._ensure_ee():
-            try:
-                return self._fetchElevation_gee(aoi)
-            except Exception:
-                pass
-        return self._fetchElevation_synthetic(aoi)
+            for attempt in range(3):
+                try:
+                    raster = self._fetchElevation_gee(aoi)
+
+                    if self._is_valid_real_raster(raster):
+                        raster.metadata = {
+                            **(raster.metadata or {}),
+                            "layer": "elevation",
+                            "source": "srtm",
+                            "data_quality": "real",
+                            "fetch_attempts": attempt + 1,
+                        }
+                        return raster
+
+                    last_error = "Elevation raster returned empty or invalid values."
+
+                except Exception as exc:
+                    last_error = str(exc)
+
+        fallback = self._fetchElevation_synthetic(aoi)
+        fallback.metadata = {
+            **(fallback.metadata or {}),
+            "layer": "elevation",
+            "source": "synthetic",
+            "data_quality": "fallback",
+            "fallback_reason": last_error or getattr(self, "_last_ee_error", "Earth Engine unavailable"),
+        }
+        return fallback
 
     def _fetchElevation_gee(self, aoi: AOI) -> Raster:
-        import ee  # noqa: F401
-        lon_min, lat_min, lon_max, lat_max = aoi
-        region = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
-        srtm   = ee.Image("USGS/SRTMGL1_003")
-        sample = srtm.sampleRectangle(region=region, defaultValue=300)
-        arr = np.array(
-            sample.getInfo()["properties"]["elevation"], dtype=np.float32
-        )
-        from PIL import Image as _PILImage
-        resized = np.array(
-            _PILImage.fromarray(arr).resize(
-                (self.grid_cols, self.grid_rows), _PILImage.BILINEAR
-            ),
-            dtype=np.float32,
-        )
+        import ee
+
+        points = self._build_grid_points(aoi)
+        values = []
+
+        srtm = ee.Image("USGS/SRTMGL1_003")
+
+        for lat, lon in points:
+            point = ee.Geometry.Point([lon, lat])
+
+            value = srtm.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=point,
+                scale=30,
+                bestEffort=True,
+            ).get("elevation")
+
+            result = value.getInfo()
+            values.append(float(result) if result is not None else np.nan)
+
+        grid = self._reshape_to_grid(values)
+
         return Raster(
-            data=resized, nodata=-9999.0,
-            metadata={"layer": "elevation", "source": "srtm"},
+            data=grid,
+            nodata=-9999.0,
+            metadata={
+                "layer": "elevation",
+                "source": "srtm",
+                "data_quality": "real",
+                "unit": "m",
+            },
         )
 
     def _fetchElevation_synthetic(self, aoi: AOI) -> Raster:
