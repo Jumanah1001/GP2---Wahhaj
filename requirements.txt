@@ -1,0 +1,15 @@
+streamlit>=1.32
+numpy
+requests
+psycopg2-binary
+supabase
+ultralytics
+reportlab
+Pillow
+folium
+streamlit-folium
+matplotlib
+pandas
+earthengine-api
+pytest
+opencv-python
