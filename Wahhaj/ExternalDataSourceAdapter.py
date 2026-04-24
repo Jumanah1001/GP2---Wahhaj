@@ -70,22 +70,42 @@ class ExternalDataSourceAdapter:
     def _ensure_ee(self) -> bool:
         """
         Try to initialize Google Earth Engine.
-        Returns True only when Earth Engine is actually ready.
+        First tries the user's default EE project.
+        If missing, tries the configured project ID.
         """
         if self._ee_ready:
             return True
 
         try:
+            import os
             import ee
+
+            project_id = (
+                os.getenv("EE_PROJECT_ID")
+                or getattr(self, "ee_project_id", None)
+                or "wahhaj-data-fetching"
+            )
 
             try:
                 ee.Initialize()
-            except Exception:
-                ee.Authenticate()
-                ee.Initialize()
+                self._ee_ready = True
+                self._last_ee_error = None
+                return True
 
-            self._ee_ready = True
-            return True
+            except Exception as first_error:
+                try:
+                    ee.Initialize(project=project_id)
+                    self._ee_ready = True
+                    self._last_ee_error = None
+                    return True
+
+                except Exception as second_error:
+                    self._ee_ready = False
+                    self._last_ee_error = (
+                        f"Default initialize failed: {first_error}. "
+                        f"Project initialize failed with project '{project_id}': {second_error}"
+                    )
+                    return False
 
         except Exception as exc:
             self._ee_ready = False
