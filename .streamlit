@@ -1,0 +1,4 @@
+[supabase]
+url = "https://ubowqiqvmjfnwumlllzv.supabase.co"
+key = "sb_publishable_wNorRItkoRBXiWvOlTlt3Q_WgkRs9mS"
+db_url = "postgresql://postgres:wahhaj12345W@@db.ubowqiqvmjfnwumlllzv.supabase.co:5432/postgres"
