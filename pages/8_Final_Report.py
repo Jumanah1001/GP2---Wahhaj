@@ -1363,12 +1363,12 @@ with pdf_col:
 st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
 btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
 with btn_left:
+    if st.button("Back to Map", use_container_width=True):
+        st.switch_page("pages/6_Suitability_Heatmap.py")
+
+with btn_right:
     if st.button("New Analysis", use_container_width=True):
         reset_for_new_analysis()
         st.switch_page("pages/3_Choose_Location.py")
-
-with btn_right:
-    if st.button("Back to Map", use_container_width=True):
-        st.switch_page("pages/6_Suitability_Heatmap.py")
 st.markdown('</div>', unsafe_allow_html=True)
 
