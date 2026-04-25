@@ -9,6 +9,8 @@ import re
 from html import escape
 
 import streamlit as st
+from Wahhaj.cloud_db import get_analysis_history_by_email
+
 
 from ui_helpers import (
     init_state,
@@ -45,7 +47,10 @@ has_run = (
 )
 has_location = st.session_state.get("location_saved", False)
 has_image = bool(st.session_state.get("uploaded_image_name", "")) or bool(image_records)
-history = get_analysis_history()
+try:
+    history = get_analysis_history_by_email(user_email)
+except Exception:
+    history = get_analysis_history()
 
 
 def _safe_location_name(raw: str, max_len: int = 72) -> str:
@@ -131,11 +136,13 @@ def _render_history_section(history_items) -> None:
                         key=f"hist_open_{idx}_{entry.get('run_id', idx)}",
                         use_container_width=True,
                     ):
-                        ok = restore_analysis_history_entry(entry)
-                        if ok:
+                        run_id = entry.get("run_id")
+
+                        if run_id:
+                            st.session_state["selected_run_id"] = run_id
                             st.switch_page("pages/8_Final_Report.py")
                         else:
-                            st.warning("This saved entry cannot be reopened in the current session yet.")
+                            st.error("This report has no run ID.")
 
 
 st.markdown(
