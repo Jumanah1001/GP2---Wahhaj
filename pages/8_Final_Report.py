@@ -32,6 +32,8 @@ from ui_helpers import (
     save_analysis_to_history,
     get_ranked_history,
     get_global_rank_for_run,
+    save_final_report_to_db,
+    load_final_report_from_db,
 )
 
 st.set_page_config(page_title="Final Report", layout="wide")
@@ -1099,6 +1101,310 @@ def _summary_item(label: str, value: str) -> str:
     )
 
 
+
+def _safe_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_aoi(value):
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        try:
+            lon_min, lat_min, lon_max, lat_max = [float(v) for v in value]
+            if lon_min < lon_max and lat_min < lat_max:
+                return (lon_min, lat_min, lon_max, lat_max)
+        except Exception:
+            return None
+    return None
+
+
+def _clean_ranked_for_storage(items: list) -> list[dict]:
+    clean = []
+    for idx, item in enumerate(items or [], start=1):
+        if not isinstance(item, dict):
+            continue
+        score = _safe_float(item.get("score"), 0.0)
+        clean.append({
+            "rank": item.get("rank", idx),
+            "report_id": item.get("report_id"),
+            "run_id": item.get("run_id"),
+            "location_name": item.get("location_name") or "Unnamed Site",
+            "lat": item.get("lat"),
+            "lon": item.get("lon"),
+            "score": score,
+            "score_pct": item.get("score_pct") or f"{score * 100:.1f}%",
+            "label": item.get("label") or item.get("recommendation") or "Review Required",
+            "analysed_at": item.get("analysed_at") or item.get("report_date") or "—",
+        })
+    return clean
+
+
+def _display_from_saved_report(report: dict) -> dict:
+    criteria = report.get("criteria_data") or {}
+    if isinstance(criteria, dict):
+        display = criteria.get("display") or criteria.get("report_data") or criteria
+    else:
+        display = {}
+
+    final_score = _safe_float(report.get("final_score"), _safe_float(display.get("selected_score"), 0.0))
+    final_label = report.get("final_label") or display.get("selected_label") or "—"
+    score_text = display.get("selected_score_text") or f"{final_score * 100:.1f}%"
+
+    lat = _safe_float(report.get("lat"), _safe_float(display.get("selected_lat")))
+    lon = _safe_float(report.get("lon"), _safe_float(display.get("selected_lon")))
+    coords = display.get("selected_coords") or (f"{lat:.4f}°N, {lon:.4f}°E" if lat is not None and lon is not None else "—")
+
+    selected_color = display.get("selected_color") or "#1a1a1a"
+    selected_bg = display.get("selected_bg") or "#EEF4FB"
+    if final_score is not None and not display.get("selected_color"):
+        _, selected_color, selected_bg = _selected_site_badge(float(final_score))
+
+    return {
+        "report_id": report.get("report_id") or "—",
+        "run_id": report.get("run_id") or "—",
+        "location_name": report.get("location_name") or display.get("location_name") or "Selected Site",
+        "selected_display_name": display.get("selected_display_name") or report.get("location_name") or "Selected Site",
+        "selected_score": final_score,
+        "selected_score_text": score_text,
+        "selected_label": final_label,
+        "selected_color": selected_color,
+        "selected_bg": selected_bg,
+        "selected_lat": lat,
+        "selected_lon": lon,
+        "selected_coords": coords,
+        "aoi": _safe_aoi(report.get("aoi") or display.get("aoi")),
+        "recommendation": report.get("recommendation") or display.get("recommendation") or _recommendation_text(final_label),
+        "report_date": report.get("report_date") or display.get("now") or "—",
+        "status_text": display.get("status_text") or "Completed",
+        "duration_text": display.get("duration_text") or "—",
+        "image_name": display.get("image_name") or "Uploaded image",
+        "ai_assessment": display.get("ai_assessment") or "Pending AI model result",
+        "reasons": display.get("reasons") or [],
+        "factors": report.get("factors_data") or display.get("factors") or [],
+        "ranked_sites": report.get("ranked_sites") or [],
+        "global_rank_text": display.get("global_rank_text") or "Saved report",
+        "pdf_bytes": report.get("pdf_file"),
+        "pdf_filename": report.get("pdf_filename") or f"wahhaj_report_{str(report.get('report_id') or 'saved')[:8]}.pdf",
+    }
+
+
+def _render_saved_final_report(report: dict) -> None:
+    data = _display_from_saved_report(report)
+
+    selected_score = data["selected_score"] or 0.0
+    selected_label = data["selected_label"]
+    selected_score_text = data["selected_score_text"]
+    selected_color = data["selected_color"]
+    selected_bg = data["selected_bg"]
+    selected_display_name = data["selected_display_name"]
+    selected_lat = data["selected_lat"]
+    selected_lon = data["selected_lon"]
+    selected_coords = data["selected_coords"]
+    aoi = data["aoi"]
+    factors = list(data["factors"] or [])
+    reasons = list(data["reasons"] or [])
+
+    if not factors:
+        factors = [
+            {"title": "Solar Irradiance", "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "Sunshine Hours", "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "Terrain Slope", "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "LST", "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "Elevation", "raw_label": "Saved report data", "contribution_pct": 0.0},
+        ]
+
+    report_id_short = f"{str(data['report_id'])[:8]}..." if data.get("report_id") else "—"
+    run_id_short = f"{str(data['run_id'])[:8]}..." if data.get("run_id") else "—"
+    now = str(data.get("report_date") or "—")
+
+    st.markdown(
+        f"""
+<div class="fr-header-shell">
+  <div class="fr-header">
+    <div class="fr-title">Final Site Suitability Report</div>
+    <div class="fr-subtitle">Saved report page loaded from the system database with its stored PDF file.</div>
+    <div class="fr-chip-row">
+      <span class="fr-chip">{ICON_PIN}<span>{_safe_html(data.get('location_name') or selected_display_name)}</span></span>
+      <span class="fr-chip">{ICON_CLOCK}<span>{escape(now)}</span></span>
+      <span class="fr-chip">{ICON_HASH}<span>Report {escape(report_id_short)}</span></span>
+      <span class="fr-chip">{ICON_HASH}<span>Run {escape(run_id_short)}</span></span>
+    </div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="fr-divider-space"></div>', unsafe_allow_html=True)
+    left_col, center_col, right_col = st.columns([1.00, 1.78, 1.20], gap="small")
+
+    with left_col:
+        score_bar_width = float(selected_score or 0.0) * 100.0
+        st.markdown(
+            f"""
+            <div class="fr-card">
+                <div class="fr-card-title">Overall Suitability Score</div>
+                <div class="fr-badge" style="background:{selected_bg};color:{selected_color};">{_safe_html(selected_label)}</div>
+                <div class="fr-donut-wrap">
+                    <div class="fr-donut" style="--pct:{score_bar_width:.1f};--accent:{selected_color};">
+                        <div class="fr-donut-center"><strong>{_safe_html(selected_score_text)}</strong><span>Score</span></div>
+                    </div>
+                    <div class="fr-score-side">
+                        <div class="fr-score-label">Selected site result</div>
+                        <div class="fr-progress"><span style="width:{score_bar_width:.1f}%;background:{selected_color};"></span></div>
+                        <div class="fr-mini-note">This saved score represents the stored final suitability result for this report.</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"""
+            <div class="fr-card">
+                <div class="fr-card-title compact">Recommendation</div>
+                <div class="fr-mini-note" style="margin-top:0;color:#162033;font-size:0.82rem;">{escape(data['recommendation'])}</div>
+                <div class="fr-mini-note" style="margin-top:0.55rem;color:#475569;font-size:0.78rem;"><b>Global Rank:</b> {_safe_html(data['global_rank_text'])}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"""
+            <div class="fr-card">
+                <div class="fr-card-title compact">Site Information</div>
+                <div class="fr-kv-grid">
+                    <div class="fr-kv-item"><div class="fr-kv-label">Display Name</div><div class="fr-kv-value">{_safe_html(selected_display_name)}</div></div>
+                    <div class="fr-kv-item"><div class="fr-kv-label">Coordinates</div><div class="fr-kv-value">{_safe_html(selected_coords)}</div></div>
+                    <div class="fr-kv-item"><div class="fr-kv-label">Image Source</div><div class="fr-kv-value">{_safe_html(data['image_name'])}</div></div>
+                    <div class="fr-kv-item"><div class="fr-kv-label">Run Status</div><div class="fr-kv-value">{_safe_html(data['status_text'])}</div></div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with center_col:
+        st.markdown(
+            """
+            <div class="fr-card" style="padding:0;overflow:hidden;">
+                <div class="fr-map-title">
+                    <div class="fr-card-title compact">Selected Site Suitability Map</div>
+                    <div class="fr-map-caption">Saved AOI view reconstructed from the stored report record.</div>
+                </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if aoi and selected_lat is not None and selected_lon is not None and selected_score is not None:
+            fill_color = _rgb_to_hex(_score_color_rgb(float(selected_score)))
+            site_info = {
+                "name": selected_display_name,
+                "score_text": selected_score_text,
+                "suitability": selected_label,
+                "lat": selected_lat,
+                "lon": selected_lon,
+                "fillColor": fill_color,
+            }
+            st.markdown('<div class="fr-map-shell">', unsafe_allow_html=True)
+            components.html(_build_map_html(aoi=aoi, site_info=site_info, height=430), height=432, scrolling=False)
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(
+                """
+                <div class="fr-card" style="min-height:432px;display:flex;align-items:center;justify-content:center;">
+                    <div class="fr-mini-note" style="margin-top:0;text-align:center;max-width:420px;">Saved map data is not available for this report.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with right_col:
+        st.markdown(
+            f"""
+            <div class="fr-card fr-ai-shell">
+                <div class="fr-card-title">AI Assessment</div>
+                <div class="fr-ai-hero">
+                    <div class="fr-ai-label">AI image assessment</div>
+                    <div class="fr-ai-value">{_safe_html(data['ai_assessment'])}</div>
+                    <div class="fr-ai-note">This saved assessment is loaded from the stored report record.</div>
+                </div>
+                <div class="fr-card-title compact">Key Drivers Behind This Score</div>
+                {_reason_list_html(reasons)}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        f"""
+        <div class="fr-card fr-weight-shell">
+            <div class="fr-card-title">Weighted Factor Contribution</div>
+            {_weight_panel_html(factors)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="fr-center-actions-shell">', unsafe_allow_html=True)
+    pdf_sp_left, pdf_col, pdf_sp_right = st.columns([1.75, 2.50, 1.75], gap="small")
+    with pdf_col:
+        if data.get("pdf_bytes"):
+            st.download_button(
+                "Export PDF",
+                data=data["pdf_bytes"],
+                file_name=data["pdf_filename"],
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        else:
+            st.button("Saved PDF unavailable", disabled=True, use_container_width=True)
+
+    st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
+    btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
+    with btn_left:
+        if st.button("Back Home", use_container_width=True):
+            st.switch_page("pages/2_Home.py")
+    with btn_right:
+        if st.button("New Analysis", use_container_width=True):
+            reset_for_new_analysis()
+            st.switch_page("pages/3_Choose_Location.py")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ── saved report mode: open real report records from the database ───────────
+_saved_report_id = st.session_state.get("current_report_id")
+_saved_report_requested = bool(
+    _saved_report_id
+    and (
+        st.session_state.get("saved_report_open_requested")
+        or st.session_state.get("analysis_run") is None
+    )
+)
+
+if _saved_report_requested:
+    saved_report = st.session_state.get("saved_report_data")
+    if not saved_report or str(saved_report.get("report_id")) != str(_saved_report_id):
+        saved_report = load_final_report_from_db(str(_saved_report_id))
+
+    if saved_report:
+        _render_saved_final_report(saved_report)
+        st.stop()
+
+    st.markdown('<div class="fr-card">', unsafe_allow_html=True)
+    st.error("The saved report could not be loaded from the database.")
+    if st.button("Back Home"):
+        st.switch_page("pages/2_Home.py")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+
 # ── guard: need a completed run ────────────────────────────────────────────
 run = st.session_state.get("analysis_run")
 if run is None:
@@ -1216,6 +1522,75 @@ pdf_bytes = rpt.build_pdf_bytes(
     global_ranked_sites=global_ranked_sites,
 )
 report_text = rpt._generate_report_content(run, ranked)
+
+# Save this Final Report as a real database record exactly once per run.
+# The PDF bytes stored here are reused later; old reports do not regenerate the PDF.
+_report_id_for_db = str(st.session_state.get("current_report_id") or f"report_{getattr(run, 'runId', uuid4().hex)}")
+_pdf_filename = f"wahhaj_report_{str(getattr(run, 'runId', _report_id_for_db))[:8]}.pdf"
+_saved_ranked_sites = _clean_ranked_for_storage(global_ranked_sites)
+_report_display_data = {
+    "report_id": _report_id_for_db,
+    "run_id": getattr(run, "runId", None),
+    "user_email": st.session_state.get("user_email", ""),
+    "location_name": loc.get("location_name") or selected_display_name,
+    "lat": selected_lat,
+    "lon": selected_lon,
+    "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
+    "final_score": float(selected_score) if selected_score is not None else None,
+    "final_label": selected_label,
+    "recommendation": recommendation,
+    "factors": factors,
+    "reasons": reasons,
+    "ranked_sites": _saved_ranked_sites,
+    "report_text": report_text,
+    "display": {
+        "location_name": loc.get("location_name") or selected_display_name,
+        "selected_display_name": selected_display_name,
+        "selected_score": float(selected_score) if selected_score is not None else None,
+        "selected_score_text": selected_score_text,
+        "selected_label": selected_label,
+        "selected_color": selected_color,
+        "selected_bg": selected_bg,
+        "selected_lat": selected_lat,
+        "selected_lon": selected_lon,
+        "selected_coords": selected_coords,
+        "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
+        "recommendation": recommendation,
+        "global_rank_text": global_rank_text,
+        "now": now,
+        "duration_text": duration_text,
+        "status_text": status_text,
+        "image_name": image_name,
+        "ai_assessment": ai_assessment,
+        "factors": factors,
+        "reasons": reasons,
+    },
+}
+
+_saved_report_id = save_final_report_to_db(
+    {
+        "report_id": _report_id_for_db,
+        "run_id": getattr(run, "runId", None),
+        "user_email": st.session_state.get("user_email", ""),
+        "location_name": loc.get("location_name") or selected_display_name,
+        "lat": selected_lat,
+        "lon": selected_lon,
+        "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
+        "final_score": float(selected_score) if selected_score is not None else None,
+        "final_label": selected_label,
+        "recommendation": recommendation,
+        "criteria_data": _report_display_data,
+        "factors_data": factors,
+        "ranked_sites": _saved_ranked_sites,
+        "report_date": datetime.now().isoformat(),
+    },
+    pdf_bytes,
+    pdf_filename=_pdf_filename,
+    report_id=_report_id_for_db,
+)
+
+if _saved_report_id:
+    st.session_state["current_report_id"] = _saved_report_id
 
 st.markdown('<div class="fr-divider-space"></div>', unsafe_allow_html=True)
 
@@ -1354,7 +1729,7 @@ with pdf_col:
         st.download_button(
             "Export PDF",
             data=pdf_bytes,
-            file_name=f"wahhaj_report_{run.runId[:8]}.pdf",
+            file_name=_pdf_filename,
             mime="application/pdf",
             use_container_width=True,
         )

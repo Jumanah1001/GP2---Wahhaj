@@ -590,10 +590,10 @@ with st.container(key="ranked_shell"):
 st.markdown('<div class="foot-nav-space"></div>', unsafe_allow_html=True)
 nav_left, nav_right = st.columns(2)
 with nav_left:
-    if st.button("← Back to Heatmap", use_container_width=True):
+    if st.button("Back to Heatmap", use_container_width=True):
         st.switch_page("pages/6_Suitability_Heatmap.py")
 with nav_right:
-    if st.button("Open Current Final Report →", type="primary", use_container_width=True):
+    if st.button("Open Current Final Report", type="primary", use_container_width=True):
         st.switch_page("pages/8_Final_Report.py")
 
 render_footer()

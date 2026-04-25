@@ -76,6 +76,12 @@ def init_state() -> None:
         "analysis_history": [],
         "history_loaded": False,
         "users": None,
+        # Saved report navigation/state
+        "current_report_id": None,
+        "saved_report_data": None,
+        "saved_report_pdf": None,
+        "saved_report_loaded": False,
+        "saved_report_open_requested": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -208,6 +214,12 @@ def save_analysis_to_history(run, ranked: list, location: dict) -> None:
 
 
 def get_analysis_history() -> list:
+    """Return the user's saved reports for Home/Ranked pages.
+
+    Preferred source: analysis_reports, which stores real saved Final Report
+    records and their PDF files. Falls back to the older lightweight
+    analysis_history table for backwards compatibility.
+    """
     if st.session_state.get("history_loaded"):
         return st.session_state.get("analysis_history", [])
 
@@ -215,6 +227,41 @@ def get_analysis_history() -> list:
     if not email:
         return st.session_state.get("analysis_history", [])
 
+    # New source of truth: saved report records.
+    try:
+        reports = get_saved_reports_for_user(email=email, limit=50, include_pdf=False)
+        if reports:
+            history = []
+            for report in reports:
+                ranked = report.get("ranked_sites") or []
+                history.append({
+                    "report_id": report.get("report_id"),
+                    "run_id": report.get("run_id"),
+                    "location_name": report.get("location_name"),
+                    "lat": report.get("lat"),
+                    "lon": report.get("lon"),
+                    "aoi": report.get("aoi"),
+                    "top_score": report.get("final_score"),
+                    "selected_score": report.get("final_score"),
+                    "recommendation": report.get("recommendation") or report.get("final_label"),
+                    "selected_label": report.get("final_label") or report.get("recommendation"),
+                    "candidate_count": len(ranked) if isinstance(ranked, list) else 0,
+                    "analysed_at": report.get("report_date") or report.get("created_at"),
+                    "ranked": ranked,
+                    "pdf_filename": report.get("pdf_filename"),
+                    "has_saved_report": True,
+                    "state_snapshot": {},
+                })
+
+            st.session_state["analysis_history"] = history
+            st.session_state["history_loaded"] = True
+            return history
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Saved reports load failed: %s", exc)
+
+    # Backwards-compatible fallback: old lightweight table.
     try:
         from Wahhaj.db_connection import get_db
         import json
@@ -251,6 +298,7 @@ def get_analysis_history() -> list:
                 "candidate_count": r[6],
                 "analysed_at": r[7],
                 "ranked": ranked,
+                "has_saved_report": False,
                 "state_snapshot": {},
             })
 
@@ -262,7 +310,6 @@ def get_analysis_history() -> list:
         import logging
         logging.getLogger(__name__).warning("DB load failed: %s", exc)
         return st.session_state.get("analysis_history", [])
-
 
 
 def _coerce_history_score(value) -> float:
@@ -355,8 +402,23 @@ def get_global_rank_for_run(run_id) -> tuple[int | None, int]:
     return None, len(ranked)
 
 def restore_analysis_history_entry(entry: dict) -> bool:
+    """Open a saved history entry.
+
+    New saved reports only need report_id. Final Report will load the record
+    and PDF from the database. Older session-only entries can still restore
+    from state_snapshot while the app is open.
+    """
     if not isinstance(entry, dict):
         return False
+
+    report_id = entry.get("report_id")
+    if report_id:
+        st.session_state["current_report_id"] = str(report_id)
+        st.session_state["saved_report_loaded"] = False
+        st.session_state["saved_report_data"] = None
+        st.session_state["saved_report_pdf"] = None
+        st.session_state["saved_report_open_requested"] = True
+        return True
 
     snapshot = entry.get("state_snapshot") or {}
     run = snapshot.get("analysis_run")
@@ -387,6 +449,352 @@ def restore_analysis_history_entry(entry: dict) -> bool:
     if analysis_ref:
         st.session_state["analysis_ref"] = dict(analysis_ref)
 
+    return True
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Saved Final Reports / PDF Storage
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _json_default(value):
+    """JSON serializer for common app values: tuples, datetimes, numpy scalars."""
+    try:
+        import numpy as np
+        if isinstance(value, (np.integer,)):
+            return int(value)
+        if isinstance(value, (np.floating,)):
+            return float(value)
+        if isinstance(value, (np.ndarray,)):
+            return value.tolist()
+    except Exception:
+        pass
+
+    if isinstance(value, (set, tuple)):
+        return list(value)
+
+    try:
+        return value.isoformat()
+    except Exception:
+        return str(value)
+
+
+def _to_jsonb(value):
+    import json
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=False, default=_json_default)
+
+
+def _from_jsonb(value, default=None):
+    import json
+    if value is None:
+        return [] if default is None else default
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", errors="ignore")
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return [] if default is None else default
+    return value
+
+
+def _to_pdf_bytes(value) -> bytes | None:
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, bytes):
+        return value
+    return None
+
+
+def _db_binary(value):
+    """Return a BYTEA-compatible value for psycopg2/psycopg."""
+    data = _to_pdf_bytes(value)
+    if data is None:
+        return None
+    try:
+        from psycopg2 import Binary
+        return Binary(data)
+    except Exception:
+        return data
+
+
+def _report_field(report_data: dict, *keys, default=None):
+    for key in keys:
+        if key in report_data and report_data.get(key) is not None:
+            return report_data.get(key)
+    return default
+
+
+def save_final_report_to_db(
+    report_data: dict,
+    pdf_bytes: bytes | bytearray | memoryview | None = None,
+    *,
+    pdf_filename: str | None = None,
+    report_id: str | None = None,
+) -> str | None:
+    """Save or update a real Final Report record in analysis_reports.
+
+    The saved record contains the report data used by the Final Report page
+    plus the exact PDF file bytes generated the first time.
+    """
+    if not isinstance(report_data, dict):
+        return None
+
+    from datetime import datetime
+    from uuid import uuid4
+
+    report_id = str(
+        report_id
+        or report_data.get("report_id")
+        or st.session_state.get("current_report_id")
+        or uuid4().hex
+    )
+
+    run = st.session_state.get("analysis_run")
+    location = st.session_state.get("selected_location") or {}
+    selected_site = st.session_state.get("selected_site_analysis") or {}
+
+    run_id = _report_field(report_data, "run_id", default=getattr(run, "runId", None) if run is not None else None)
+    user_email = _report_field(report_data, "user_email", default=st.session_state.get("user_email", "")).strip().lower()
+
+    location_name = _report_field(
+        report_data,
+        "location_name",
+        default=location.get("location_name") or selected_site.get("location_name") or "Unknown Location",
+    )
+    lat = _report_field(report_data, "lat", "latitude", default=location.get("latitude") or selected_site.get("latitude"))
+    lon = _report_field(report_data, "lon", "longitude", default=location.get("longitude") or selected_site.get("longitude"))
+    aoi = _report_field(report_data, "aoi", default=st.session_state.get("aoi"))
+
+    final_score = _report_field(report_data, "final_score", "selected_score", "score", default=selected_site.get("score"))
+    final_label = _report_field(report_data, "final_label", "selected_label", "label", default=selected_site.get("label"))
+    recommendation = _report_field(report_data, "recommendation", default=final_label)
+
+    criteria_data = _report_field(
+        report_data,
+        "criteria_data",
+        "criteria",
+        default={
+            "report_data": report_data,
+            "selected_site": selected_site,
+            "selected_location": location,
+        },
+    )
+    factors_data = _report_field(report_data, "factors_data", "factors", default=[])
+    ranked_sites = _report_field(report_data, "ranked_sites", "ranked", default=[])
+    report_date = _report_field(report_data, "report_date", "analysed_at", default=datetime.now().isoformat())
+
+    pdf_data = _to_pdf_bytes(pdf_bytes or report_data.get("pdf_file") or report_data.get("pdf_bytes"))
+    filename = pdf_filename or report_data.get("pdf_filename") or f"WAHHAJ_Final_Report_{report_id}.pdf"
+
+    try:
+        from Wahhaj.db_connection import get_db
+
+        with get_db() as cur:
+            cur.execute(
+                """INSERT INTO analysis_reports
+                (report_id, run_id, user_email,
+                 location_name, lat, lon, aoi,
+                 final_score, final_label, recommendation,
+                 criteria_data, factors_data, ranked_sites,
+                 report_date, pdf_file, pdf_filename, pdf_mime,
+                 updated_at)
+                VALUES
+                (%s, %s, %s,
+                 %s, %s, %s, %s::jsonb,
+                 %s, %s, %s,
+                 %s::jsonb, %s::jsonb, %s::jsonb,
+                 %s, %s, %s, %s,
+                 NOW())
+                ON CONFLICT (report_id) DO UPDATE SET
+                    run_id = EXCLUDED.run_id,
+                    user_email = EXCLUDED.user_email,
+                    location_name = EXCLUDED.location_name,
+                    lat = EXCLUDED.lat,
+                    lon = EXCLUDED.lon,
+                    aoi = EXCLUDED.aoi,
+                    final_score = EXCLUDED.final_score,
+                    final_label = EXCLUDED.final_label,
+                    recommendation = EXCLUDED.recommendation,
+                    criteria_data = EXCLUDED.criteria_data,
+                    factors_data = EXCLUDED.factors_data,
+                    ranked_sites = EXCLUDED.ranked_sites,
+                    report_date = EXCLUDED.report_date,
+                    pdf_file = COALESCE(EXCLUDED.pdf_file, analysis_reports.pdf_file),
+                    pdf_filename = COALESCE(EXCLUDED.pdf_filename, analysis_reports.pdf_filename),
+                    pdf_mime = EXCLUDED.pdf_mime,
+                    updated_at = NOW()
+                """,
+                (
+                    report_id,
+                    run_id,
+                    user_email,
+                    location_name,
+                    lat,
+                    lon,
+                    _to_jsonb(aoi),
+                    final_score,
+                    final_label,
+                    recommendation,
+                    _to_jsonb(criteria_data),
+                    _to_jsonb(factors_data),
+                    _to_jsonb(ranked_sites),
+                    report_date,
+                    _db_binary(pdf_data),
+                    filename,
+                    "application/pdf",
+                ),
+            )
+
+        st.session_state["current_report_id"] = report_id
+        st.session_state["history_loaded"] = False
+        st.session_state["saved_report_loaded"] = False
+        return report_id
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Final report DB save failed: %s", exc)
+        return None
+
+
+def load_final_report_from_db(report_id: str) -> dict | None:
+    """Load one saved report including its stored PDF bytes."""
+    if not report_id:
+        return None
+
+    try:
+        from Wahhaj.db_connection import get_db
+
+        with get_db() as cur:
+            cur.execute(
+                """SELECT report_id, run_id, user_email,
+                          location_name, lat, lon, aoi,
+                          final_score, final_label, recommendation,
+                          criteria_data, factors_data, ranked_sites,
+                          report_date, pdf_file, pdf_filename, pdf_mime,
+                          created_at, updated_at
+                   FROM analysis_reports
+                   WHERE report_id = %s
+                   LIMIT 1""",
+                (str(report_id),),
+            )
+            row = cur.fetchone()
+
+        if not row:
+            return None
+
+        report = {
+            "report_id": row[0],
+            "run_id": row[1],
+            "user_email": row[2],
+            "location_name": row[3],
+            "lat": row[4],
+            "lon": row[5],
+            "aoi": _from_jsonb(row[6], default=None),
+            "final_score": row[7],
+            "final_label": row[8],
+            "recommendation": row[9],
+            "criteria_data": _from_jsonb(row[10], default={}),
+            "factors_data": _from_jsonb(row[11], default=[]),
+            "ranked_sites": _from_jsonb(row[12], default=[]),
+            "report_date": row[13].isoformat() if hasattr(row[13], "isoformat") else row[13],
+            "pdf_file": _to_pdf_bytes(row[14]),
+            "pdf_filename": row[15] or f"WAHHAJ_Final_Report_{row[0]}.pdf",
+            "pdf_mime": row[16] or "application/pdf",
+            "created_at": row[17].isoformat() if hasattr(row[17], "isoformat") else row[17],
+            "updated_at": row[18].isoformat() if hasattr(row[18], "isoformat") else row[18],
+        }
+
+        st.session_state["current_report_id"] = str(report_id)
+        st.session_state["saved_report_data"] = report
+        st.session_state["saved_report_pdf"] = report.get("pdf_file")
+        st.session_state["saved_report_loaded"] = True
+        return report
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Final report DB load failed: %s", exc)
+        return None
+
+
+def get_saved_reports_for_user(email: str | None = None, limit: int = 50, include_pdf: bool = False) -> list[dict]:
+    """Return saved Final Reports for the logged-in user, newest first."""
+    email = (email or st.session_state.get("user_email", "")).strip().lower()
+    if not email:
+        return []
+
+    safe_limit = max(1, min(int(limit or 50), 200))
+
+    pdf_select = "pdf_file," if include_pdf else "NULL AS pdf_file,"
+
+    try:
+        from Wahhaj.db_connection import get_db
+
+        with get_db() as cur:
+            cur.execute(
+                f"""SELECT report_id, run_id, user_email,
+                           location_name, lat, lon, aoi,
+                           final_score, final_label, recommendation,
+                           criteria_data, factors_data, ranked_sites,
+                           report_date, {pdf_select} pdf_filename, pdf_mime,
+                           created_at, updated_at
+                    FROM analysis_reports
+                    WHERE user_email = %s
+                    ORDER BY report_date DESC, created_at DESC
+                    LIMIT %s""",
+                (email, safe_limit),
+            )
+            rows = cur.fetchall()
+
+        reports = []
+        for row in rows:
+            reports.append({
+                "report_id": row[0],
+                "run_id": row[1],
+                "user_email": row[2],
+                "location_name": row[3],
+                "lat": row[4],
+                "lon": row[5],
+                "aoi": _from_jsonb(row[6], default=None),
+                "final_score": row[7],
+                "final_label": row[8],
+                "recommendation": row[9],
+                "criteria_data": _from_jsonb(row[10], default={}),
+                "factors_data": _from_jsonb(row[11], default=[]),
+                "ranked_sites": _from_jsonb(row[12], default=[]),
+                "report_date": row[13].isoformat() if hasattr(row[13], "isoformat") else row[13],
+                "pdf_file": _to_pdf_bytes(row[14]) if include_pdf else None,
+                "pdf_filename": row[15],
+                "pdf_mime": row[16] or "application/pdf",
+                "created_at": row[17].isoformat() if hasattr(row[17], "isoformat") else row[17],
+                "updated_at": row[18].isoformat() if hasattr(row[18], "isoformat") else row[18],
+            })
+
+        return reports
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Saved reports list failed: %s", exc)
+        return []
+
+
+def open_saved_report(report_id: str) -> bool:
+    """Prepare navigation to a saved Final Report page."""
+    if not report_id:
+        return False
+    st.session_state["current_report_id"] = str(report_id)
+    st.session_state["saved_report_loaded"] = False
+    st.session_state["saved_report_data"] = None
+    st.session_state["saved_report_pdf"] = None
+    st.session_state["saved_report_open_requested"] = True
     return True
 
 
@@ -651,6 +1059,11 @@ def reset_active_analysis_state(*, clear_location: bool = True) -> None:
     st.session_state["analysis_ref"] = _blank_analysis_ref()
     st.session_state["report_obj"] = None
     st.session_state["selected_site_analysis"] = None
+    st.session_state["current_report_id"] = None
+    st.session_state["saved_report_data"] = None
+    st.session_state["saved_report_pdf"] = None
+    st.session_state["saved_report_loaded"] = False
+    st.session_state["saved_report_open_requested"] = False
     st.session_state.pop("analysis_start_date", None)
     st.session_state.pop("analysis_end_date", None)
 
