@@ -831,7 +831,7 @@ def _resolve_selected_site(run, location, aoi, selected_site):
     return selected_site
 
 
-def _build_map_html(aoi, site_info, height=430):
+def _build_map_html(aoi, site_info, suitability=None, height=430):
     map_id = f"wahhaj_map_{uuid4().hex}"
 
     lon_min, lat_min, lon_max, lat_max = aoi
@@ -841,6 +841,37 @@ def _build_map_html(aoi, site_info, height=430):
     selected_json = json.dumps(site_info, ensure_ascii=False)
     bounds_json = json.dumps(bounds)
     aoi_outline_json = json.dumps(aoi_outline)
+
+    grid_cells = []
+    if suitability is not None and getattr(suitability, "data", None) is not None:
+        data = np.asarray(suitability.data, dtype=float)
+        nodata = getattr(suitability, "nodata", -9999.0)
+
+        rows, cols = data.shape[:2]
+        lat_step = (lat_max - lat_min) / rows
+        lon_step = (lon_max - lon_min) / cols
+
+        for r in range(rows):
+            for c in range(cols):
+                score = float(data[r, c])
+                if not np.isfinite(score) or score == nodata:
+                    continue
+
+                score = max(0.0, min(1.0, score))
+                color = _rgb_to_hex(_score_color_rgb(score))
+
+                cell_lat_max = lat_max - (r * lat_step)
+                cell_lat_min = lat_max - ((r + 1) * lat_step)
+                cell_lon_min = lon_min + (c * lon_step)
+                cell_lon_max = lon_min + ((c + 1) * lon_step)
+
+                grid_cells.append({
+                    "bounds": [[cell_lat_min, cell_lon_min], [cell_lat_max, cell_lon_max]],
+                    "score_text": f"{score * 100:.1f}%",
+                    "fillColor": color,
+                })
+
+    grid_json = json.dumps(grid_cells, ensure_ascii=False)
 
     return f"""
 <!DOCTYPE html>
@@ -865,7 +896,7 @@ def _build_map_html(aoi, site_info, height=430):
             padding: 10px 12px;
             box-shadow: 0 4px 18px rgba(0,0,0,0.12);
             line-height: 1.35;
-            min-width: 190px;
+            min-width: 210px;
         }}
         .wahhaj-legend-title {{
             font-size: 12px;
@@ -921,32 +952,39 @@ def _build_map_html(aoi, site_info, height=430):
         const selected = {selected_json};
         const bounds = {bounds_json};
         const aoiOutline = {aoi_outline_json};
+        const gridCells = {grid_json};
 
         const map = L.map("{map_id}", {{ zoomControl: true, scrollWheelZoom: true, preferCanvas: true }});
 
         const satellite = L.tileLayer(
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}",
-            {{ attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and contributors", maxZoom: 19 }}
+            {{ attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics, and contributors", maxZoom: 19 }}
         );
         const streets = L.tileLayer(
             "https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
             {{ attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }}
         );
+
         satellite.addTo(map);
         L.control.layers({{"Satellite": satellite, "Streets": streets}}, null, {{ collapsed: true, position: "topright" }}).addTo(map);
 
+        gridCells.forEach(cell => {{
+            L.rectangle(cell.bounds, {{
+                color: "#4a8f2a",
+                weight: 0.55,
+                fill: true,
+                fillColor: cell.fillColor,
+                fillOpacity: 0.42
+            }})
+            .bindTooltip(`Suitability Score: ${{cell.score_text}}`)
+            .addTo(map);
+        }});
+
         L.polygon(aoiOutline, {{
             color: "#0070FF",
-            weight: 2.6,
-            fillColor: selected.fillColor,
-            fillOpacity: 0.34
-        }})
-        .bindPopup(`
-            <div class="wahhaj-popup-title">${{selected.name}}</div>
-            <div class="wahhaj-popup-line">Overall score: ${{selected.score_text}}</div>
-            <div class="wahhaj-popup-line">Suitability: ${{selected.suitability}}</div>
-        `)
-        .addTo(map);
+            weight: 2.8,
+            fill: false
+        }}).addTo(map);
 
         const selectedIcon = L.divIcon({{
             className: "selected-label",
@@ -976,11 +1014,12 @@ def _build_map_html(aoi, site_info, height=430):
         legend.onAdd = function() {{
             const div = L.DomUtil.create("div", "wahhaj-legend");
             div.innerHTML = `
-                <div class="wahhaj-legend-title">Site Suitability Scale</div>
+                <div class="wahhaj-legend-title">Selected Location Suitability Scale</div>
                 <div class="wahhaj-legend-bar"></div>
                 <div class="wahhaj-legend-scale"><span>Low</span><span>High</span></div>
                 <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
-                <div class="wahhaj-legend-note">Filled area = selected site suitability</div>
+                <div class="wahhaj-legend-note">Colored cells = AHP suitability scores</div>
+                <div class="wahhaj-legend-note">Blue marker = selected site center</div>
             `;
             return div;
         }};
@@ -1304,7 +1343,16 @@ with center_col:
             "fillColor": fill_color,
         }
         st.markdown('<div class="fr-map-shell">', unsafe_allow_html=True)
-        components.html(_build_map_html(aoi=aoi, site_info=site_info, height=430), height=432, scrolling=False)
+        components.html(
+            _build_map_html(
+                aoi=aoi,
+                site_info=site_info,
+                suitability=run.suitability,
+                height=430,
+            ),
+            height=432,
+            scrolling=False,
+        )
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.markdown(

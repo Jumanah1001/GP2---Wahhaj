@@ -791,7 +791,37 @@ class Report:
                 (lon_to_px(lon_max), lat_to_px(lat_min)),
                 (lon_to_px(lon_min), lat_to_px(lat_min)),
             ]
-            draw.polygon(poly, fill=fill_rgb + (105,))
+            data = suitability.data.astype(np.float32)
+            nodata = getattr(suitability, "nodata", -9999.0)
+            rows, cols = data.shape[:2]
+
+            for r in range(rows):
+                for c in range(cols):
+                    score = float(data[r, c])
+
+                    if not np.isfinite(score) or score == nodata:
+                        continue
+
+                    score = max(0.0, min(1.0, score))
+                    cell_rgb = _score_rgb(score)
+
+                    cell_lon_min = lon_min + (c / cols) * span_lon
+                    cell_lon_max = lon_min + ((c + 1) / cols) * span_lon
+                    cell_lat_max = lat_max - (r / rows) * span_lat
+                    cell_lat_min = lat_max - ((r + 1) / rows) * span_lat
+
+                    x0 = lon_to_px(cell_lon_min)
+                    y0 = lat_to_px(cell_lat_max)
+                    x1 = lon_to_px(cell_lon_max)
+                    y1 = lat_to_px(cell_lat_min)
+
+                    draw.rectangle(
+                        [x0, y0, x1, y1],
+                        fill=cell_rgb + (105,),
+                        outline=(74, 143, 42, 130),
+                        width=2,
+                    )
+
             draw.line(poly + [poly[0]], fill=(0, 112, 255, 255), width=6)
 
             if site_lat is not None and site_lon is not None:
