@@ -899,6 +899,8 @@ with card_col:
 
                 _update_progress(65, "Running site analysis...")
                 run.execute(dataset)
+                st.session_state["suitability_raster"] = run.suitability
+                st.session_state["analysis_aoi"] = dataset.aoi
 
                 fallback_layers = []
 

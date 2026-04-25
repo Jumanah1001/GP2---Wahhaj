@@ -1,20 +1,6 @@
-"""
-6_Suitability_Heatmap.py — WAHHAJ Site Suitability Map
-======================================================
-Single-site map page:
-- Shows ONE overall color for the selected AOI
-- No internal grid coloring
-- No multiple-site comparison here
-- Multiple colored sites should be handled later in Ranked Results
-"""
-
-import json
-from pathlib import Path
-from uuid import uuid4
-
 import numpy as np
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_folium import st_folium
 
 from ui_helpers import (
     init_state,
@@ -23,398 +9,30 @@ from ui_helpers import (
     render_footer,
     render_top_home_button,
 )
+from Wahhaj.models import Raster
+from Wahhaj.SuitabilityHeatmap import SuitabilityHeatmap
 
-st.set_page_config(page_title="Site Suitability Map - WAHHAJ", layout="wide")
+st.set_page_config(page_title="Suitability Heatmap", layout="wide")
 init_state()
 apply_global_style()
 render_bg()
 
-if not st.session_state.get("logged_in"):
+if not st.session_state.get("logged_in", False):
     st.switch_page("pages/1_Login.py")
 
-
-# ── icons ─────────────────────────────────────────────────────
-def _i(d, sz=15, c="currentColor", ep=""):
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{sz}" height="{sz}" '
-        f'viewBox="0 0 24 24" fill="none" stroke="{c}" stroke-width="2" '
-        f'stroke-linecap="round" stroke-linejoin="round" '
-        f'style="display:inline-block;vertical-align:middle;flex-shrink:0;">'
-        f'<path d="{d}"/>{ep}</svg>'
-    )
-
-
-ICO_MAP = _i(
-    "M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3z",
-    c="#0070FF",
-    ep='<line x1="9" y1="3" x2="9" y2="18" stroke="#0070FF" stroke-width="2"/><line x1="15" y1="6" x2="15" y2="21" stroke="#0070FF" stroke-width="2"/>',
-)
-ICO_WARN = _i(
-    "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z",
-    c="#E2534A",
-    ep='<line x1="12" y1="9" x2="12" y2="13" stroke="#E2534A" stroke-width="2"/><line x1="12" y1="17" x2="12.01" y2="17" stroke="#E2534A" stroke-width="2"/>',
-)
-
-
-# ── helpers ───────────────────────────────────────────────────
-def suitability_badge(score: float) -> str:
-    s = score * 100
-    if s >= 75:
-        return "Highly Suitable"
-    if s >= 55:
-        return "Suitable"
-    if s >= 35:
-        return "Moderately Suitable"
-    return "Not Suitable"
-
-
-def _safe_pct(x):
-    return f"{x * 100:.1f}%" if x is not None else "—"
-
-
-def _display_location_name(location_name, lat, lon):
-    name = (location_name or "").strip()
-    if name and any(ch.isalpha() for ch in name):
-        return name
-    if lat is not None and lon is not None:
-        return f"Selected Site ({lat:.4f}, {lon:.4f})"
-    return "Selected Site"
-
-
-def _interp(v0, v1, t):
-    return int(round(v0 + (v1 - v0) * t))
-
-
-def _score_color_rgb(score):
-    score = float(max(0.0, min(1.0, score)))
-
-    anchors = [
-        (0.00, (231, 76, 60)),
-        (0.35, (244, 176, 64)),
-        (0.55, (241, 196, 15)),
-        (0.75, (127, 204, 80)),
-        (1.00, (34, 197, 94)),
-    ]
-
-    for i in range(len(anchors) - 1):
-        s0, c0 = anchors[i]
-        s1, c1 = anchors[i + 1]
-        if s0 <= score <= s1:
-            t = 0.0 if s1 == s0 else (score - s0) / (s1 - s0)
-            return (
-                _interp(c0[0], c1[0], t),
-                _interp(c0[1], c1[1], t),
-                _interp(c0[2], c1[2], t),
-            )
-
-    return anchors[-1][1]
-
-
-def _rgb_to_hex(rgb):
-    return "#{:02x}{:02x}{:02x}".format(*rgb)
-
-
-def _aoi_bounds_polygon(aoi):
-    lon_min, lat_min, lon_max, lat_max = aoi
-    return [
-        [lat_min, lon_min],
-        [lat_min, lon_max],
-        [lat_max, lon_max],
-        [lat_max, lon_min],
-        [lat_min, lon_min],
-    ]
-
-
-def _find_existing_page(candidates=None, contains=None):
-    pages_dir = Path("pages")
-    if not pages_dir.exists():
-        return None
-
-    if candidates:
-        for candidate in candidates:
-            if Path(candidate).exists():
-                return candidate
-
-    if contains:
-        tokens = [t.lower() for t in contains]
-        for file in sorted(pages_dir.glob("*.py")):
-            lower = file.name.lower()
-            if all(token in lower for token in tokens):
-                return str(file).replace("\\", "/")
-
-    return None
-
-
-def _mean_valid_suitability_score(suitability) -> float | None:
-    if suitability is None or getattr(suitability, "data", None) is None:
-        return None
-
-    data = np.asarray(suitability.data, dtype=np.float32)
-    nodata = getattr(suitability, "nodata", -9999.0)
-
-    valid = data[np.isfinite(data)]
-    valid = valid[valid != nodata]
-
-    if valid.size == 0:
-        return None
-
-    return float(valid.mean())
-
-
-def _resolve_site_score(run, selected_site):
-    """
-    Prefer an explicit site-level score if available.
-    Otherwise fall back to the mean of valid suitability cells
-    as a practical whole-site score for this single-site page.
-    """
-    candidate_keys = [
-        "overall_score",
-        "site_score",
-        "final_score",
-        "score",
-    ]
-
-    if isinstance(selected_site, dict):
-        for key in candidate_keys:
-            value = selected_site.get(key)
-            if isinstance(value, (int, float)):
-                return float(value)
-
-    if run is not None:
-        for key in candidate_keys:
-            value = getattr(run, key, None)
-            if isinstance(value, (int, float)):
-                return float(value)
-
-    suitability = getattr(run, "suitability", None) if run is not None else None
-    return _mean_valid_suitability_score(suitability)
-
-
-def _build_map_html(aoi, site_info, height=720):
-    map_id = f"wahhaj_map_{uuid4().hex}"
-
-    lon_min, lat_min, lon_max, lat_max = aoi
-    bounds = [[lat_min, lon_min], [lat_max, lon_max]]
-    aoi_outline = _aoi_bounds_polygon(aoi)
-
-    selected_json = json.dumps(site_info, ensure_ascii=False)
-    bounds_json = json.dumps(bounds)
-    aoi_outline_json = json.dumps(aoi_outline)
-
-    html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8" />
-    <link
-        rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-        html, body {{
-            margin: 0;
-            padding: 0;
-            background: transparent;
-        }}
-
-        #{map_id} {{
-            width: 100%;
-            height: {height}px;
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
-        }}
-
-        .leaflet-container {{
-            font-family: Arial, sans-serif;
-            background: #eaeaea;
-        }}
-
-        .leaflet-control-attribution {{
-            font-size: 10px;
-        }}
-
-        .wahhaj-legend {{
-            background: rgba(255,255,255,0.95);
-            border-radius: 14px;
-            padding: 12px 14px;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.12);
-            line-height: 1.35;
-            min-width: 230px;
-        }}
-
-        .wahhaj-legend-title {{
-            font-size: 13px;
-            font-weight: 700;
-            color: #1f3864;
-            margin-bottom: 8px;
-        }}
-
-        .wahhaj-legend-bar {{
-            height: 10px;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #e74c3c, #f4b040, #f1c40f, #7fcc50, #22c55e);
-            margin-bottom: 6px;
-        }}
-
-        .wahhaj-legend-scale {{
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            color: #666;
-            margin-bottom: 8px;
-        }}
-
-        .wahhaj-legend-note {{
-            font-size: 11px;
-            color: #666;
-            margin-bottom: 4px;
-        }}
-
-        .selected-label {{
-            background: transparent;
-            border: none;
-        }}
-
-        .selected-label div {{
-            background: rgba(0,112,255,0.96);
-            color: #fff;
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-        }}
-
-        .wahhaj-popup-title {{
-            font-size: 13px;
-            font-weight: 700;
-            color: #1f3864;
-            margin-bottom: 4px;
-        }}
-
-        .wahhaj-popup-line {{
-            font-size: 12px;
-            color: #444;
-            margin-bottom: 2px;
-        }}
-    </style>
-</head>
-<body>
-    <div id="{map_id}"></div>
-
-    <script>
-        const selected = {selected_json};
-        const bounds = {bounds_json};
-        const aoiOutline = {aoi_outline_json};
-
-        const map = L.map("{map_id}", {{
-            zoomControl: true,
-            scrollWheelZoom: true,
-            preferCanvas: true
-        }});
-
-        const satellite = L.tileLayer(
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}",
-            {{
-                attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and contributors",
-                maxZoom: 19
-            }}
-        );
-
-        const streets = L.tileLayer(
-            "https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
-            {{
-                attribution: "&copy; OpenStreetMap contributors",
-                maxZoom: 19
-            }}
-        );
-
-        satellite.addTo(map);
-
-        const baseMaps = {{
-            "Satellite": satellite,
-            "Streets": streets
-        }};
-
-        L.control.layers(baseMaps, null, {{
-            collapsed: true,
-            position: "topright"
-        }}).addTo(map);
-
-        L.polygon(aoiOutline, {{
-            color: "#0070FF",
-            weight: 2.8,
-            fillColor: selected.fillColor,
-            fillOpacity: 0.38
-        }})
-        .bindPopup(`
-            <div class="wahhaj-popup-title">${{selected.name}}</div>
-            <div class="wahhaj-popup-line">Overall score: ${{selected.score_text}}</div>
-            <div class="wahhaj-popup-line">Suitability: ${{selected.suitability}}</div>
-        `)
-        .addTo(map);
-
-        const selectedIcon = L.divIcon({{
-            className: "selected-label",
-            html: `<div>${{selected.name}}</div>`,
-            iconSize: [130, 26],
-            iconAnchor: [65, -6]
-        }});
-
-        L.circleMarker([selected.lat, selected.lon], {{
-            radius: 8,
-            color: "#0070FF",
-            weight: 3,
-            fillColor: "#ffffff",
-            fillOpacity: 0.95
-        }})
-        .bindPopup(`
-            <div class="wahhaj-popup-title">${{selected.name}}</div>
-            <div class="wahhaj-popup-line">Overall score: ${{selected.score_text}}</div>
-            <div class="wahhaj-popup-line">Suitability: ${{selected.suitability}}</div>
-        `)
-        .addTo(map);
-
-        L.marker([selected.lat, selected.lon], {{ icon: selectedIcon }}).addTo(map);
-
-        map.fitBounds(bounds, {{ padding: [28, 28] }});
-
-        const legend = L.control({{ position: "bottomleft" }});
-        legend.onAdd = function() {{
-            const div = L.DomUtil.create("div", "wahhaj-legend");
-            div.innerHTML = `
-                <div class="wahhaj-legend-title">Site Suitability Scale</div>
-                <div class="wahhaj-legend-bar"></div>
-                <div class="wahhaj-legend-scale">
-                    <span>Low</span>
-                    <span>High</span>
-                </div>
-                <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
-                <div class="wahhaj-legend-note">Filled area = overall site suitability</div>
-                <div class="wahhaj-legend-note">Blue marker = selected site center</div>
-            `;
-            return div;
-        }};
-        legend.addTo(map);
-    </script>
-</body>
-</html>
-"""
-    return html
-
-
-# ── styles ────────────────────────────────────────────────────
-st.markdown(
-    """
+st.markdown("""
 <style>
-.wrap{
-    position:relative;
-    z-index:2;
-    padding-top:10px;
+
+html, body {
+    height: 100%;
 }
+
+.main {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
 .page-title{
     font-family:'Capriola',sans-serif;
     font-size:clamp(34px,3vw,44px);
@@ -430,185 +48,148 @@ st.markdown(
     margin-bottom:22px;
     text-align:center;
 }
-.map-panel{
-    background:rgba(255,255,255,0.90);
-    border-radius:24px;
-    padding:20px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    margin-bottom:18px;
-    border:1px solid rgba(255,255,255,0.6);
+
+.block-container {
+    flex: 1;
 }
-.map-title{
-    font-family:'Capriola',sans-serif;
-    font-size:18px;
-    font-weight:700;
-    color:#2E2E2E;
-    margin-bottom:14px;
-    display:flex;
-    align-items:center;
-    gap:8px;
+
+/* الفوتر */
+.footer {
+    margin-top: auto;
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+    padding-bottom: 12px;
 }
-.state-panel{
-    background:rgba(255,255,255,0.88);
-    border-radius:22px;
-    padding:24px;
-    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-    margin-bottom:18px;
-    border:1px solid rgba(255,255,255,0.6);
+
+.main .block-container {
+    max-width: 1280px;
+    padding-top: 0.65rem;
+    padding-bottom: 1.2rem;
 }
-.state-msg{
-    font-family:'Capriola',sans-serif;
-    font-size:14px;
-    color:#5A5959;
-    line-height:1.6;
+
+.heatmap-page {
+    position: relative;
+    z-index: 2;
 }
-.state-msg.error{
-    color:#B91C1C;
+
+.heatmap-content {
+    width: min(1280px, 88vw);
+    margin-left: auto;
+    margin-right: auto;
 }
-.actions-wrap{
-    margin-top:10px;
+
+.heatmap-title-card {
+    background: rgba(255,255,255,0.78);
+    border: 1px solid rgba(220,226,235,0.95);
+    border-radius: 22px;
+    box-shadow: 0 10px 26px rgba(15,23,42,0.05);
+    backdrop-filter: blur(12px);
+    padding: 16px 22px;
+    margin-bottom: 16px;
 }
-div.stButton>button{
-    background:#0070FF;
-    color:white;
-    border:none;
-    border-radius:10px;
-    min-height:48px;
-    font-family:'Capriola',sans-serif;
-    font-size:15px;
-    box-shadow:4px 5px 4px rgba(0,0,0,.14);
+
+.heatmap-title {
+    font-family: 'Capriola', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: #303149;
+    margin: 0;
 }
-div.stButton>button:hover{
-    background:#005fe0;
+
+.map-frame {
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(215,225,239,0.95);
+    margin-bottom: 20px;
 }
-div.stButton>button:disabled{
-    opacity:.55;
-}
-div[data-testid="stVerticalBlock"]{
-    gap:.35rem;
+
+div[data-testid="stVerticalBlock"] {
+    gap: 0.45rem;
 }
 </style>
-""",
+""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="page-title">Site Suitability Map</div>
+    <div class="page-subtitle">This map shows the overall suitability of the selected site as one unified area</div>
+    """,
     unsafe_allow_html=True,
 )
-
 render_top_home_button("pages/2_Home.py")
 
-st.markdown('<div class="wrap">', unsafe_allow_html=True)
-st.markdown('<div class="page-title">Site Suitability Map</div>', unsafe_allow_html=True)
+
+# These values should come from the real run after AHPModel.computeSuitabilityScore().
+suitability_raster = st.session_state.get("suitability_raster")
+analysis_aoi = st.session_state.get("analysis_aoi")
+selected_location = st.session_state.get("selected_location", {})
+
+location_name = selected_location.get("location_name") or "Selected Location"
+selected_lat = selected_location.get("latitude")
+selected_lon = selected_location.get("longitude")
+
+# Temporary preview only, so the page does not appear empty before the full pipeline stores the raster.
+# Delete this block after your Run Analysis page saves st.session_state['suitability_raster'].
+if suitability_raster is None:
+    preview_scores = np.array([
+        [0.42, 0.48, 0.50, 0.55, 0.61],
+        [0.37, 0.50, 0.58, 0.66, 0.70],
+        [0.55, 0.59, 0.68, 0.72, 0.74],
+        [0.60, 0.64, 0.72, 0.70, 0.67],
+        [0.49, 0.53, 0.66, 0.54, 0.50],
+    ], dtype=np.float32)
+    suitability_raster = Raster(
+        data=preview_scores,
+        nodata=-9999.0,
+        metadata={"layer": "suitability", "source": "AHP preview"},
+    )
+    analysis_aoi = analysis_aoi or (46.15, 24.35, 46.75, 24.95)
+    selected_lon = selected_lon or (analysis_aoi[0] + analysis_aoi[2]) / 2
+    selected_lat = selected_lat or (analysis_aoi[1] + analysis_aoi[3]) / 2
+
+if analysis_aoi is None:
+    st.error("No AOI found. Please choose a location and run the analysis first.")
+    st.stop()
+
+heatmap = SuitabilityHeatmap(resolution=100.0, color_scale="RdYlGn")
+folium_map = heatmap.create_folium_map(
+    scores=suitability_raster,
+    aoi=analysis_aoi,
+    location_name=location_name,
+    selected_lon=selected_lon,
+    selected_lat=selected_lat,
+    zoom_start=11,
+)
+
+st.markdown('<div class="heatmap-page">', unsafe_allow_html=True)
+st.markdown('<div class="heatmap-content">', unsafe_allow_html=True)
+
 st.markdown(
-    '<div class="page-subtitle">This map shows the overall suitability of the selected site as one unified area</div>',
-    unsafe_allow_html=True,
+    """
+    <div class="heatmap-title-card">
+        <div class="heatmap-title">Selected Location Suitability Distribution</div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-# ── state ─────────────────────────────────────────────────────
-run = st.session_state.get("analysis_run")
-selected_site = st.session_state.get("selected_site_analysis", {})
-sel_loc = st.session_state.get("selected_location", {})
-aoi = st.session_state.get("aoi")
+st.markdown('<div class="map-frame">', unsafe_allow_html=True)
+st_folium(folium_map, width=None, height=720, returned_objects=[])
+st.markdown('</div>', unsafe_allow_html=True)
 
-if run is None or getattr(run, "suitability", None) is None:
-    st.markdown(
-        "<div class='state-panel'>"
-        f"<div class='state-msg error'>{ICO_WARN} No suitability result is available yet. Please run the site analysis first.</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    if st.button("Back to Result", use_container_width=False):
-        st.switch_page("pages/5_Analysis.py")
-    st.stop()
+btn1, btn2 = st.columns(2, gap="large")
 
-if not aoi:
-    st.markdown(
-        "<div class='state-panel'>"
-        f"<div class='state-msg error'>{ICO_WARN} Area data is missing from the current session.</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.stop()
-
-lat = selected_site.get("latitude", sel_loc.get("latitude"))
-lon = selected_site.get("longitude", sel_loc.get("longitude"))
-location_name = selected_site.get("location_name", sel_loc.get("location_name", ""))
-site_display_name = _display_location_name(location_name, lat, lon)
-
-if lat is None or lon is None:
-    st.markdown(
-        "<div class='state-panel'>"
-        f"<div class='state-msg error'>{ICO_WARN} Selected site coordinates are unavailable.</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.stop()
-
-site_score = _resolve_site_score(run, selected_site)
-
-if site_score is None:
-    st.markdown(
-        "<div class='state-panel'>"
-        f"<div class='state-msg error'>{ICO_WARN} Could not determine an overall site score for this map.</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.stop()
-
-rgb = _score_color_rgb(site_score)
-fill_color = _rgb_to_hex(rgb)
-
-site_info = {
-    "name": site_display_name,
-    "score_text": _safe_pct(site_score),
-    "suitability": suitability_badge(site_score),
-    "lat": lat,
-    "lon": lon,
-    "fillColor": fill_color,
-}
-
-# ── render map ────────────────────────────────────────────────
-st.markdown(
-    "<div class='map-panel'>"
-    f"<div class='map-title'>{ICO_MAP} Overall Site Suitability</div>",
-    unsafe_allow_html=True,
-)
-
-components.html(
-    _build_map_html(
-        aoi=aoi,
-        site_info=site_info,
-        height=720,
-    ),
-    height=740,
-    scrolling=False,
-)
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ── navigation ────────────────────────────────────────────────
-report_page = _find_existing_page(
-    candidates=[
-        "pages/8_Final_Report.py",
-        "pages/7_Final_Report.py",
-        "pages/7_Report.py",
-        "pages/7_Generate_Report.py",
-        "pages/7_Final_Report_Generation.py",
-    ],
-    contains=["report"],
-)
-
-st.markdown("<div class='actions-wrap'></div>", unsafe_allow_html=True)
-
-c1, c2 = st.columns(2)
-with c1:
+with btn1:
     if st.button("Back to Result", use_container_width=True):
         st.switch_page("pages/5_Analysis.py")
-with c2:
-    if st.button(
-        "View Final Report",
-        use_container_width=True,
-        disabled=report_page is None,
-    ):
-        if report_page:
-            st.switch_page(report_page)
 
-st.markdown("</div>", unsafe_allow_html=True)
+with btn2:
+    if st.button("View Final Report", use_container_width=True):
+        st.switch_page("pages/8_Final_Report.py")
+
+st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="footer-spacer"></div>', unsafe_allow_html=True)
 render_footer()
+
