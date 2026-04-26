@@ -387,12 +387,13 @@ st.markdown(
         color:#6b7280;
         margin-bottom:10px;
     }
-    .map-panel {
-        background: rgba(255,255,255,0.34);
-        border: 1px solid rgba(232,236,241,0.85);
+    .map-panel,
+    div[class*="st-key-ranked_map_shell"] {
+        background: rgba(255,255,255,0.34) !important;
+        border: 1px solid rgba(232,236,241,0.85) !important;
         backdrop-filter: blur(10px);
-        border-radius: 24px;
-        padding: 14px;
+        border-radius: 24px !important;
+        padding: 14px !important;
         min-height: 100%;
     }
     div[class*="st-key-ranked_list_shell"] {
@@ -433,10 +434,34 @@ st.markdown(
         margin-bottom:8px;
     }
     .site-rank {
-        font-size:14px;
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding:5px 10px 5px 6px;
+        border-radius:999px;
+        background:#EEF5FF;
+        border:1px solid #D7E8FF;
+        color:#0F4EA8;
+        font-size:12px;
         font-weight:800;
-        color:#0f172a;
         letter-spacing:0.02em;
+    }
+    .site-rank-number {
+        width:24px;
+        height:24px;
+        border-radius:999px;
+        background:#0070FF;
+        color:white;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        font-size:12px;
+        font-weight:900;
+    }
+    .site-rank-label {
+        font-size:11px;
+        font-weight:800;
+        color:#0F4EA8;
     }
     .site-name {
         font-family:'Capriola',sans-serif;
@@ -472,7 +497,15 @@ st.markdown(
         font-size: 13px !important;
         font-weight: 700 !important;
     }
-    .foot-nav-space { margin-top: 10px; }
+    .foot-nav-space { margin-top: 14px; }
+    div[class*="st-key-add_new_site_bottom"] button {
+        min-height: 48px !important;
+        height: 48px !important;
+        border-radius: 14px !important;
+        font-size: 14px !important;
+        font-weight: 800 !important;
+        padding: 10px 18px !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -511,39 +544,28 @@ if not prepared:
 
 
 with st.container(key="ranked_shell"):
-    head_left, head_right = st.columns([5.2, 1.5], gap="large")
-    with head_left:
-        st.markdown(
-            f"""
-            <div class="ranked-shell-head">
-                <div>
-                    <div class="ranked-shell-title">Aggregated Suitability Map & Rankings</div>
-                    <div class="ranked-shell-sub">Every saved analysis for this user is collected here, ranked by the final site suitability score and shown together on one shared map.</div>
-                    <div class="ranked-chip-row">
-                        <span class="ranked-chip">{site_count} saved site{'s' if site_count != 1 else ''}</span>
-                        <span class="ranked-chip">Top ranked: {escape(latest_location)}</span>
-                    </div>
+    st.markdown(
+        f"""
+        <div class="ranked-shell-head">
+            <div>
+                <div class="ranked-shell-title">Aggregated Suitability Map & Rankings</div>
+                <div class="ranked-shell-sub">Every saved analysis for this user is collected here, ranked by the final site suitability score and shown together on one shared map.</div>
+                <div class="ranked-chip-row">
+                    <span class="ranked-chip">{site_count} saved site{'s' if site_count != 1 else ''}</span>
+                    <span class="ranked-chip">Top ranked: {escape(latest_location)}</span>
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with head_right:
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-        if st.button("＋ Add New Site", key="add_new_site_top", use_container_width=True):
-            st.switch_page("pages/3_Choose_Location.py")
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     left_col, right_col = st.columns([1.18, 0.82], gap="large")
 
     with left_col:
-        st.markdown('<div class="map-panel">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">Aggregated Suitability Map</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="panel-sub">Colored AOI areas show the coverage of each analysed site. The small center marker indicates the selected location.</div>',
-            unsafe_allow_html=True,
-        )
-        components.html(_build_ranked_map_html(prepared, height=760), height=760)
-        st.markdown('</div>', unsafe_allow_html=True)
+        with st.container(key="ranked_map_shell"):
+            st.markdown('<div class="panel-title">Aggregated Suitability Map</div>', unsafe_allow_html=True)
+            components.html(_build_ranked_map_html(prepared, height=760), height=760)
 
     with right_col:
         with st.container(key="ranked_list_shell"):
@@ -563,7 +585,7 @@ with st.container(key="ranked_shell"):
                     st.markdown(
                         f"""
                         <div class="site-rank-row">
-                            <div class="site-rank">#{item['rank']}</div>
+                            <div class="site-rank"><span class="site-rank-number">{item['rank']}</span><span class="site-rank-label">Rank</span></div>
                             <span class="site-badge" style="background:{badge_bg};color:{badge_fg};">{escape(item['label'])}</span>
                         </div>
                         <div class="site-name">{escape(item['location_name'])}</div>
@@ -588,13 +610,10 @@ with st.container(key="ranked_shell"):
                             st.warning("This saved entry cannot be reopened in the current session yet.")
 
 st.markdown('<div class="foot-nav-space"></div>', unsafe_allow_html=True)
-nav_left, nav_right = st.columns(2)
-with nav_left:
-    if st.button("Back to Heatmap", use_container_width=True):
-        st.switch_page("pages/6_Suitability_Heatmap.py")
-with nav_right:
-    if st.button("Open Current Final Report", type="primary", use_container_width=True):
-        st.switch_page("pages/8_Final_Report.py")
+add_left, add_mid, add_right = st.columns([4.6, 1.4, 4.6])
+with add_mid:
+    if st.button("＋ Add New Site", key="add_new_site_bottom", use_container_width=True):
+        st.switch_page("pages/3_Choose_Location.py")
 
 render_footer()
 st.markdown('</div>', unsafe_allow_html=True)
