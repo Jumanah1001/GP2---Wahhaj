@@ -31,7 +31,7 @@ class AIModel:
 
     def __init__(
         self,
-        modelPath: str = "weights/wahhaj_yolov8s_seg_baseline_v4_best.pt",
+        modelPath: str = "weights/wahhaj_yolov8s_seg_v10_best.pt",
         confidenceThreshold: float = 0.25,
         imageSize: int = 640,
         device: str = "cpu",

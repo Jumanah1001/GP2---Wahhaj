@@ -421,12 +421,22 @@ class FeatureExtractor:
         # ── تحديد مسار الـ model ──────────────────────────────────────────
         # أولاً: ابحث عن weights/ بجانب FeatureExtractor أو في مسار العمل
         _candidate_paths = [
-            'weights/wahhaj_yolov8s_seg_baseline_v4_best.pt',
-            os.path.join(os.path.dirname(__file__), '..', 'weights',
-                         'wahhaj_yolov8s_seg_baseline_v4_best.pt'),
+            "weights/best.pt",
+            os.path.abspath(
+                os.path.join(
+                    os.path.dirname(__file__),
+                    "..",
+                    "weights",
+                    "best.pt"
+                )
+            ),
         ]
+
         MODEL_PATH = next(
             (p for p in _candidate_paths if os.path.exists(p)), None)
+        print("MODEL_PATH =", MODEL_PATH)
+        print("MODEL_EXISTS =", os.path.exists(MODEL_PATH) if MODEL_PATH else False)
+        print("IMAGES =", [getattr(img, "filePath", None) for img in dataset.images])
 
         # ── إذا ما في صور أو ما في model — نرجع synthetic layer ─────────
         if not dataset.images or MODEL_PATH is None:
@@ -454,23 +464,56 @@ class FeatureExtractor:
                 file_path = img.filePath
                 if not os.path.exists(file_path):
                     # try storage/ subdirectory
-                    alt = os.path.join('storage', os.path.basename(file_path))
-                    if os.path.exists(alt):
-                        file_path = alt
-                    else:
-                        logger.warning("_get_obstacle_layer: skipping missing file %s", file_path)
+                    alts = [
+                        file_path,
+                        os.path.join("storage", file_path),
+                        os.path.join("storage", os.path.basename(file_path)),
+                        os.path.join("uploads", os.path.basename(file_path)),
+                    ]
+
+                    file_path = next((p for p in alts if os.path.exists(p)), None)
+
+                    if file_path is None:
+                        logger.warning("_get_obstacle_layer: skipping missing image file")
                         continue
 
-                r         = ai_model.classifyArea(file_path)
-                obstacles = int(np.sum(r.data >= 0))
-                density   = round(obstacles / r.data.size, 3)
+                r = ai_model.classifyArea(file_path)
 
-                cell_idx         = min(int(idx * n_cells / n_imgs), n_cells - 1)
-                cell_r, cell_c   = divmod(cell_idx, cols)
-                grid[cell_r, cell_c]  += density
+                # حسب مودلك:
+                # 0 = building
+                # 1 = vegetation
+                # 2 = water
+                # 3 = bare land  ✅ (هذا المهم)
+
+                SUITABLE_CLASS = 3  # bare land
+
+                # نحسب العكس: كل شيء ما هو bare land = عائق
+                mask = (r.data != SUITABLE_CLASS)
+
+                density = round(float(mask.sum() / mask.size), 3)
+                print(np.unique(r.data))
+
+                print("AI UNIQUE CLASSES =", np.unique(r.data))
+                print("NON-SUITABLE (OBSTACLE) =", density)
+
+                cell_idx = min(int(idx * n_cells / n_imgs), n_cells - 1)
+                cell_r, cell_c = divmod(cell_idx, cols)
+
+                grid[cell_r, cell_c] += density
                 count[cell_r, cell_c] += 1
 
+                
             filled = count > 0
+            if not filled.any():
+                reason = "image files not found"
+                logger.warning("_get_obstacle_layer: using synthetic layer (%s)", reason)
+                rng = np.random.default_rng(seed=99)
+                data = rng.uniform(0.05, 0.35, (rows, cols)).astype(np.float32)
+                return Raster(
+                    data=data,
+                    nodata=-9999.0,
+                    metadata={"layer": "obstacle", "source": "synthetic", "reason": reason}
+                )
             if filled.any():
                 grid[filled]  = grid[filled] / count[filled]
                 grid[~filled] = float(grid[filled].mean())

@@ -556,7 +556,7 @@ with st.container(key="choose_shell"):
                 m = folium.Map(
                     location=[centre_lat, centre_lon],
                     zoom_start=zoom,
-                    tiles="OpenStreetMap",
+                    tiles="Esri.WorldImagery",
                 )
 
                 Draw(
