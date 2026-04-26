@@ -277,6 +277,33 @@ class FeatureExtractor:
 
         # ── Step 3: per-layer min-max normalization ───────────
         for name, raster in self.layers.items():
+                        # IMPORTANT:
+            # The obstacle layer already represents AI-detected exclusion density:
+            # 0.0 = clean / bare / acceptable
+            # 1.0 = fully blocked by building, vegetation, or water
+            # Do NOT min-max normalize it, because that would destroy the real threshold logic.
+            if name == "obstacle":
+                valid_mask = raster.data != raster.nodata
+
+                if valid_mask.any():
+                    raster.data[valid_mask] = np.clip(
+                        raster.data[valid_mask].astype(np.float32),
+                        0.0,
+                        1.0,
+                    )
+
+                raster.metadata = {
+                    **(raster.metadata or {}),
+                    "normalized": True,
+                    "layer": name,
+                    "norm_min": 0.0,
+                    "norm_max": 1.0,
+                    "ai_exclusion_gate": True,
+                }
+
+                logger.debug("normalizeData: obstacle layer kept as AI exclusion density [0, 1]")
+                continue
+
             # After handle_missing_values, nodata cells have been filled,
             # so valid_mask now covers the whole array.
             # We keep the nodata check here as a safety net.
@@ -407,19 +434,20 @@ class FeatureExtractor:
    
     def _get_obstacle_layer(self, dataset) -> Raster:
         """
-        يشغّل AIModel على صور الـ dataset → obstacle_density layer مكانية 5x5.
-
-        يبحث عن الملف في مجلد storage/ إذا ما وُجد بالمسار الأصلي.
-        إذا ما شغّل الـ model (مسار غير صحيح أو مكتبة مو مثبتة)
-        يرجع synthetic obstacle layer بدلاً من رفع exception.
+        Runs the AI model first and creates an exclusion-density layer.
+        Meaning of the returned obstacle raster:
+            0.0 = no excluded class detected in this cell
+            1.0 = fully covered by excluded classes
+        Excluded classes:
+            0 = building
+            1 = vegetation
+            2 = water
+        Bare land / background is treated as acceptable unless the model
+        explicitly detects one of the excluded classes.
         """
         import numpy as np
         import os
-
-        rows, cols = self.TARGET_SHAPE  # (5, 5)
-
-        # ── تحديد مسار الـ model ──────────────────────────────────────────
-        # أولاً: ابحث عن weights/ بجانب FeatureExtractor أو في مسار العمل
+        rows, cols = self.TARGET_SHAPE
         _candidate_paths = [
             "weights/best.pt",
             os.path.abspath(
@@ -431,102 +459,125 @@ class FeatureExtractor:
                 )
             ),
         ]
-
-        MODEL_PATH = next(
-            (p for p in _candidate_paths if os.path.exists(p)), None)
+        MODEL_PATH = next((p for p in _candidate_paths if os.path.exists(p)), None)
         print("MODEL_PATH =", MODEL_PATH)
         print("MODEL_EXISTS =", os.path.exists(MODEL_PATH) if MODEL_PATH else False)
         print("IMAGES =", [getattr(img, "filePath", None) for img in dataset.images])
-
-        # ── إذا ما في صور أو ما في model — نرجع synthetic layer ─────────
         if not dataset.images or MODEL_PATH is None:
             reason = "no images" if not dataset.images else "model weights not found"
             logger.warning("_get_obstacle_layer: using synthetic layer (%s)", reason)
-            rng  = np.random.default_rng(seed=99)
-            data = rng.uniform(0.05, 0.35, (rows, cols)).astype(np.float32)
+            # Important:
+            # If AI is missing, do not pretend the site is AI-validated.
+            # Use high obstacle values so the AHP result cannot become green.
+            data = np.full((rows, cols), 1.0, dtype=np.float32)
             return Raster(
-                data=data, nodata=-9999.0,
-                metadata={'layer': 'obstacle', 'source': 'synthetic', 'reason': reason})
-
+                data=data,
+                nodata=-9999.0,
+                metadata={
+                    "layer": "obstacle",
+                    "source": "synthetic",
+                    "reason": reason,
+                    "ai_exclusion_gate": False,
+                    "excluded_classes": {
+                        0: "building",
+                        1: "vegetation",
+                        2: "water",
+                    },
+                },
+            )
         try:
             from Wahhaj.AIModel import AIModel
             ai_model = AIModel(modelPath=MODEL_PATH)
-
-            grid  = np.zeros((rows, cols), dtype=np.float32)
-            count = np.zeros((rows, cols), dtype=np.int32)
-
+            # This grid stores excluded-class density per heatmap cell.
+            # Higher value = worse suitability.
+            grid = np.zeros((rows, cols), dtype=np.float32)
+            processed_images = 0
             sorted_images = sorted(dataset.images, key=lambda img: img.timestamp)
-            n_imgs  = len(sorted_images)
-            n_cells = rows * cols
-
-            for idx, img in enumerate(sorted_images):
-                # ── resolve file path ─────────────────────────────────────
+            for img in sorted_images:
                 file_path = img.filePath
                 if not os.path.exists(file_path):
-                    # try storage/ subdirectory
                     alts = [
                         file_path,
                         os.path.join("storage", file_path),
                         os.path.join("storage", os.path.basename(file_path)),
                         os.path.join("uploads", os.path.basename(file_path)),
                     ]
-
                     file_path = next((p for p in alts if os.path.exists(p)), None)
-
                     if file_path is None:
                         logger.warning("_get_obstacle_layer: skipping missing image file")
                         continue
-
-                r = ai_model.classifyArea(file_path)
-
-                # حسب مودلك:
-                # 0 = building
-                # 1 = vegetation
-                # 2 = water
-                # 3 = bare land  ✅ (هذا المهم)
-
-                SUITABLE_CLASS = 3  # bare land
-
-                # نحسب العكس: كل شيء ما هو bare land = عائق
-                mask = (r.data != SUITABLE_CLASS)
-
-                density = round(float(mask.sum() / mask.size), 3)
-                print(np.unique(r.data))
-
-                print("AI UNIQUE CLASSES =", np.unique(r.data))
-                print("NON-SUITABLE (OBSTACLE) =", density)
-
-                cell_idx = min(int(idx * n_cells / n_imgs), n_cells - 1)
-                cell_r, cell_c = divmod(cell_idx, cols)
-
-                grid[cell_r, cell_c] += density
-                count[cell_r, cell_c] += 1
-
-                
-            filled = count > 0
-            if not filled.any():
+                class_raster = ai_model.classifyArea(file_path)
+                print("AI MODEL CLASS NAMES =", getattr(getattr(ai_model, "model", None), "names", None))
+                print("AI UNIQUE CLASSES =", np.unique(class_raster.data))
+                # Model class logic:
+                # 0 = building    -> exclude
+                # 1 = vegetation  -> exclude
+                # 2 = water       -> exclude
+                # 3 = bare_land   -> acceptable, if present
+                #
+                # nodata/background is not treated as obstacle here.
+                excluded_classes = [0, 1, 2]
+                excluded_mask = np.isin(
+                    class_raster.data,
+                    excluded_classes,
+                ).astype(np.float32)
+                # Convert the AI pixel mask to the project 5x5 grid.
+                # Each cell becomes the percentage of excluded pixels inside it.
+                cell_density = self._downsample_mean(
+                    excluded_mask,
+                    self.TARGET_SHAPE,
+                    nodata=-9999.0,
+                )
+                cell_density = np.clip(cell_density, 0.0, 1.0)
+                # If multiple images exist, keep the worst condition per cell.
+                # This means if any image detects water/building/vegetation,
+                # that cell remains excluded.
+                grid = np.maximum(grid, cell_density)
+                print("AI UNIQUE CLASSES =", np.unique(class_raster.data))
+                print("EXCLUDED DENSITY GRID =", grid)
+                processed_images += 1
+            if processed_images == 0:
                 reason = "image files not found"
                 logger.warning("_get_obstacle_layer: using synthetic layer (%s)", reason)
-                rng = np.random.default_rng(seed=99)
-                data = rng.uniform(0.05, 0.35, (rows, cols)).astype(np.float32)
+                data = np.full((rows, cols), 1.0, dtype=np.float32)
                 return Raster(
                     data=data,
                     nodata=-9999.0,
-                    metadata={"layer": "obstacle", "source": "synthetic", "reason": reason}
+                    metadata={
+                        "layer": "obstacle",
+                        "source": "synthetic",
+                        "reason": reason,
+                        "ai_exclusion_gate": False,
+                    },
                 )
-            if filled.any():
-                grid[filled]  = grid[filled] / count[filled]
-                grid[~filled] = float(grid[filled].mean())
-
             return Raster(
-                data=grid, nodata=-9999.0,
-                metadata={'layer': 'obstacle', 'source': 'AIModel',
-                          'n_images': n_imgs, 'spatial': True})
-
+                data=grid.astype(np.float32),
+                nodata=-9999.0,
+                metadata={
+                    "layer": "obstacle",
+                    "source": "AIModel",
+                    "spatial": True,
+                    "n_images": processed_images,
+                    "ai_exclusion_gate": True,
+                    "excluded_classes": {
+                        0: "building",
+                        1: "vegetation",
+                        2: "water",
+                    },
+                    "meaning": "Values represent density of AI-excluded classes per cell.",
+                },
+            )
         except Exception as exc:
             logger.warning("_get_obstacle_layer failed (%s) — using synthetic layer", exc)
-            rng  = np.random.default_rng(seed=99)
-            data = rng.uniform(0.05, 0.35, (rows, cols)).astype(np.float32)
+            # If the AI fails, do not allow AHP to make the site green.
+            data = np.full((rows, cols), 1.0, dtype=np.float32)
             return Raster(
-                data=data, nodata=-9999.0,
-                metadata={'layer': 'obstacle', 'source': 'synthetic', 'error': str(exc)})
+                data=data,
+                nodata=-9999.0,
+                metadata={
+                    "layer": "obstacle",
+                    "source": "synthetic",
+                    "error": str(exc),
+                    "ai_exclusion_gate": False,
+                },
+            )

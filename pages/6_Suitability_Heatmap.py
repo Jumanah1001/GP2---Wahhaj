@@ -128,28 +128,22 @@ location_name = selected_location.get("location_name") or "Selected Location"
 selected_lat = selected_location.get("latitude")
 selected_lon = selected_location.get("longitude")
 
-# Temporary preview only, so the page does not appear empty before the full pipeline stores the raster.
-# Delete this block after your Run Analysis page saves st.session_state['suitability_raster'].
-if suitability_raster is None:
-    preview_scores = np.array([
-        [0.42, 0.48, 0.50, 0.55, 0.61],
-        [0.37, 0.50, 0.58, 0.66, 0.70],
-        [0.55, 0.59, 0.68, 0.72, 0.74],
-        [0.60, 0.64, 0.72, 0.70, 0.67],
-        [0.49, 0.53, 0.66, 0.54, 0.50],
-    ], dtype=np.float32)
-    suitability_raster = Raster(
-        data=preview_scores,
-        nodata=-9999.0,
-        metadata={"layer": "suitability", "source": "AHP preview"},
-    )
-    analysis_aoi = analysis_aoi or (46.15, 24.35, 46.75, 24.95)
-    selected_lon = selected_lon or (analysis_aoi[0] + analysis_aoi[2]) / 2
-    selected_lat = selected_lat or (analysis_aoi[1] + analysis_aoi[3]) / 2
 
-if analysis_aoi is None:
-    st.error("No AOI found. Please choose a location and run the analysis first.")
+if suitability_raster is None:
+    st.error("No real suitability result found. Please choose a location and run the analysis first.")
     st.stop()
+    ai_source = st.session_state.get("ai_obstacle_source", "unknown")
+
+    if ai_source != "AIModel":
+        st.warning(
+            f"This heatmap is not fully AI-validated. AI obstacle source: {ai_source}"
+        )
+    else:
+        st.success("This heatmap uses AHP scoring with AI model obstacle validation.")
+
+    if analysis_aoi is None:
+        st.error("No AOI found. Please choose a location and run the analysis first.")
+        st.stop()
 
 heatmap = SuitabilityHeatmap(resolution=100.0, color_scale="RdYlGn")
 folium_map = heatmap.create_folium_map(

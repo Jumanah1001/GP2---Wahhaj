@@ -27,6 +27,7 @@ class AIModel:
         0: "building",
         1: "vegetation",
         2: "water",
+        3: "bare_land",
     }
 
     def __init__(
