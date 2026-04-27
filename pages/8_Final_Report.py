@@ -669,6 +669,104 @@ div[data-testid="stDownloadButton"] > button {
     font-weight: 700;
 }
 
+
+.fr-loading-wrap {
+    position: relative;
+    z-index: 2;
+    max-width: 900px;
+    margin: 1.2rem auto 1.2rem auto;
+}
+.fr-loading-card {
+    background: rgba(255,255,255,0.94);
+    border: 1px solid rgba(214,227,243,0.95);
+    border-radius: 30px;
+    box-shadow: 0 12px 34px rgba(15,23,42,0.08);
+    padding: 30px 30px 26px;
+    margin: 0 auto;
+}
+.fr-loader-shell {
+    width: 104px;
+    height: 104px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: linear-gradient(180deg,#EEF5FF 0%, #E0EEFF 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 0 1px #D6E6FF;
+}
+.fr-loader-ring {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 4px solid rgba(0,112,255,0.15);
+    border-top-color: #0070FF;
+    animation: frSpin 1.1s linear infinite;
+}
+@keyframes frSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.fr-loading-title {
+    font-family: 'Capriola', sans-serif;
+    font-size: clamp(28px,2.4vw,40px);
+    color: #1F3864;
+    line-height: 1.18;
+    text-align: center;
+    margin: 0 0 10px;
+}
+.fr-loading-copy {
+    font-family: 'Capriola', sans-serif;
+    font-size: 15px;
+    color: #667085;
+    line-height: 1.75;
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto 20px;
+}
+.fr-loading-progress-wrap {
+    max-width: 760px;
+    margin: 10px auto 0;
+}
+.fr-loading-progress-label {
+    font-family: 'Capriola', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #53627C;
+    text-align: center;
+    margin: 0 0 9px;
+}
+.fr-loading-progress-track {
+    width: 100%;
+    height: 22px;
+    background: rgba(0,0,0,0.07);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.10);
+}
+.fr-loading-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg,#003caa 0%,#0070FF 25%,#38b6ff 50%,#0070FF 75%,#003caa 100%);
+    background-size: 400% 100%;
+    animation: frShimmer 2s linear infinite;
+    box-shadow: 0 0 20px rgba(0,112,255,0.50),0 3px 10px rgba(0,112,255,0.24);
+    transition: width .7s cubic-bezier(.4,0,.2,1);
+}
+@keyframes frShimmer { 0% { background-position: 200% center; } 100% { background-position: -200% center; } }
+.fr-loading-status-pill {
+    width: fit-content;
+    margin: 12px auto 0;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: #EEF5FF;
+    border: 1px solid #DCEAFD;
+    font-family: 'Capriola', sans-serif;
+    font-size: 13px;
+    color: #365277;
+}
+@media (max-width: 760px) {
+    .fr-loading-card { padding: 22px 18px; border-radius: 24px; }
+    .fr-loading-title { font-size: 30px; }
+}
+
 @media (max-width: 1280px) {
     .fr-center-actions-shell {
         width: min(600px, 92%);
@@ -1141,6 +1239,28 @@ def _summary_item(label: str, value: str) -> str:
 
 
 
+
+
+def _render_final_report_loading(slot, progress_pct: int = 58, progress_msg: str = "Preparing final report...") -> None:
+    progress_pct = max(8, min(98, int(progress_pct)))
+    slot.markdown(
+        f"""
+        <div class="fr-loading-wrap">
+            <div class="fr-loading-card">
+                <div class="fr-loader-shell"><div class="fr-loader-ring"></div></div>
+                <div class="fr-loading-title">Preparing Final Report</div>
+                <div class="fr-loading-copy">WAHHAJ is loading the report content, map details, and stored PDF file. This may take a few moments.</div>
+                <div class="fr-loading-progress-wrap">
+                    <div class="fr-loading-progress-label">{escape(progress_msg)}</div>
+                    <div class="fr-loading-progress-track"><div class="fr-loading-progress-fill" style="width:{progress_pct}%;"></div></div>
+                    <div class="fr-loading-status-pill">Final report is loading...</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def _safe_float(value, default=None):
     try:
         if value is None:
@@ -1417,6 +1537,10 @@ def _render_saved_final_report(report: dict) -> None:
     st.markdown('</div>', unsafe_allow_html=True)
 
 
+# ── loading placeholder shown while heavy report content is prepared ─────────
+_report_loading_slot = st.empty()
+_render_final_report_loading(_report_loading_slot, 46, "Checking saved report data...")
+
 # ── saved report mode: open real report records from the database ───────────
 _saved_report_id = st.session_state.get("current_report_id")
 _saved_report_requested = bool(
@@ -1430,12 +1554,15 @@ _saved_report_requested = bool(
 if _saved_report_requested:
     saved_report = st.session_state.get("saved_report_data")
     if not saved_report or str(saved_report.get("report_id")) != str(_saved_report_id):
+        _render_final_report_loading(_report_loading_slot, 68, "Loading saved report and stored PDF...")
         saved_report = load_final_report_from_db(str(_saved_report_id))
 
     if saved_report:
+        _report_loading_slot.empty()
         _render_saved_final_report(saved_report)
         st.stop()
 
+    _report_loading_slot.empty()
     st.markdown('<div class="fr-card">', unsafe_allow_html=True)
     st.error("The saved report could not be loaded from the database.")
     if st.button("Back Home"):
@@ -1447,12 +1574,15 @@ if _saved_report_requested:
 # ── guard: need a completed run ────────────────────────────────────────────
 run = st.session_state.get("analysis_run")
 if run is None:
+    _report_loading_slot.empty()
     st.markdown('<div class="fr-card">', unsafe_allow_html=True)
     st.warning("No analysis found. Complete the pipeline first.")
     if st.button("Back to Analysis"):
         st.switch_page("pages/5_Analysis.py")
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
+
+_render_final_report_loading(_report_loading_slot, 58, "Preparing analysed site details...")
 
 from Wahhaj.SiteCandidate import SiteCandidate
 from Wahhaj.report import Report
@@ -1551,6 +1681,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+_render_final_report_loading(_report_loading_slot, 78, "Generating the report PDF...")
+
 pdf_bytes = rpt.build_pdf_bytes(
     run,
     ranked,
@@ -1606,6 +1738,8 @@ _report_display_data = {
     },
 }
 
+_render_final_report_loading(_report_loading_slot, 90, "Saving report and PDF file...")
+
 _saved_report_id = save_final_report_to_db(
     {
         "report_id": _report_id_for_db,
@@ -1630,6 +1764,8 @@ _saved_report_id = save_final_report_to_db(
 
 if _saved_report_id:
     st.session_state["current_report_id"] = _saved_report_id
+
+_report_loading_slot.empty()
 
 st.markdown('<div class="fr-divider-space"></div>', unsafe_allow_html=True)
 
