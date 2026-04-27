@@ -115,6 +115,7 @@ st.markdown(
     <div class="page-subtitle">This map shows the overall suitability of the selected site as one unified area</div>
     """,
     unsafe_allow_html=True,
+    
 )
 render_top_home_button("pages/2_Home.py")
 
