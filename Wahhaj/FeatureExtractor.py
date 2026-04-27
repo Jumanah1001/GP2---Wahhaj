@@ -67,7 +67,7 @@ class FeatureExtractor:
       the same shape/resolution before validation, normalization, and AHP.
     """
 
-    TARGET_SHAPE: Tuple[int, int] = (5, 5)
+    TARGET_SHAPE: Tuple[int, int] = (10, 10)
     DEFAULT_AOI: AOI = (46.0, 24.0, 47.0, 25.0)  # central Riyadh for development
 
     def __init__(self, adapter: ExternalDataSourceAdapter):
@@ -430,7 +430,7 @@ class FeatureExtractor:
                 result[r, c] = float(valid.mean())
 
         return result
-
+    
    
     def _get_obstacle_layer(self, dataset) -> Raster:
         """
@@ -448,6 +448,7 @@ class FeatureExtractor:
         import numpy as np
         import os
         rows, cols = self.TARGET_SHAPE
+        print("TARGET_SHAPE USED =", self.TARGET_SHAPE)
         _candidate_paths = [
             "weights/best.pt",
             os.path.abspath(
@@ -491,6 +492,7 @@ class FeatureExtractor:
             # This grid stores excluded-class density per heatmap cell.
             # Higher value = worse suitability.
             grid = np.zeros((rows, cols), dtype=np.float32)
+            print("OBSTACLE GRID SHAPE =", grid.shape)
             processed_images = 0
             sorted_images = sorted(dataset.images, key=lambda img: img.timestamp)
             for img in sorted_images:

@@ -99,7 +99,7 @@ class AHPModel:
                 #
                 # 0.01 means 1% of the cell contains excluded classes.
                 # If you want it less strict, change 0.01 to 0.05 or 0.10.
-                hard_exclusion_mask = valid & (obstacle_density > 0.01)
+                hard_exclusion_mask = valid & (obstacle_density > 0.10)
 
                 score[hard_exclusion_mask] = 0.0
                 print("AI HARD EXCLUDED CELLS =", int(hard_exclusion_mask.sum()))
