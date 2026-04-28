@@ -607,57 +607,158 @@ div[data-testid="stDownloadButton"] > button {
     margin-top: 0.65rem;
 }
 
+.fr-weight-intro {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+    margin: -0.10rem 0 0.80rem 0;
+}
+
+.fr-weight-legend-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.60rem;
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 15px;
+    padding: 0.72rem 0.90rem;
+    min-height: 54px;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.72rem;
+    color: var(--wah-muted);
+    line-height: 1.4;
+}
+
+.fr-weight-legend-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    flex: 0 0 18px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55), 0 4px 10px rgba(47,109,178,0.16);
+}
+
+.fr-weight-legend-dot.base {
+    background: linear-gradient(135deg, #173F8A 0%, #1F3864 100%);
+}
+
+.fr-weight-legend-dot.current {
+    background: linear-gradient(135deg, #57A4FF 0%, #1E70FF 100%);
+}
+
+.fr-weight-legend-pill b {
+    color: #1F3864;
+}
+
 .fr-weight-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.58rem 0.62rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 0.80rem;
 }
 
 .fr-weight-item {
-    background: #F8FBFF;
+    background: #FCFEFF;
     border: 1px solid #E5EEF8;
-    border-radius: 16px;
-    padding: 0.62rem 0.74rem;
-    min-height: 94px;
+    border-radius: 21px;
+    padding: 0.82rem 0.92rem 0.86rem;
+    min-height: 168px;
+    box-shadow: 0 8px 22px rgba(44,84,131,0.06);
 }
 
 .fr-weight-top {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.70rem;
+    margin-bottom: 0.66rem;
+}
+
+.fr-weight-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.8rem;
-    margin-bottom: 0.32rem;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.10rem;
+    font-weight: 700;
+    border: 1px solid color-mix(in srgb, var(--factor-accent) 20%, white 80%);
+    background: color-mix(in srgb, var(--factor-accent) 10%, white 90%);
+    color: var(--factor-accent);
+    box-shadow: 0 6px 16px rgba(44,84,131,0.08);
 }
 
 .fr-weight-name {
     font-family: 'Capriola', sans-serif;
-    font-size: 0.79rem;
-    color: var(--wah-text);
-    line-height: 1.28;
+    font-size: 0.90rem;
+    font-weight: 700;
+    color: #122B57;
+    line-height: 1.25;
 }
 
 .fr-weight-raw {
     font-family: 'Capriola', sans-serif;
-    font-size: 0.74rem;
-    color: #365277;
+    font-size: 0.82rem;
+    color: var(--factor-accent);
     font-weight: 700;
     text-align: right;
     white-space: nowrap;
 }
 
-.fr-weight-sub {
+.fr-weight-divider {
+    width: 100%;
+    height: 1px;
+    background: #E8EEF7;
+    margin: 0.08rem 0 0.66rem;
+}
+
+.fr-weight-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.fr-weight-half {
+    min-width: 0;
+    padding: 0 0.10rem;
+}
+
+.fr-weight-half.current {
+    border-left: 1px solid #E8EEF7;
+    padding-left: 0.75rem;
+}
+
+.fr-weight-half-label {
     font-family: 'Capriola', sans-serif;
-    font-size: 0.67rem;
+    font-size: 0.68rem;
+    color: #365277;
+    line-height: 1.18;
+    margin-bottom: 0.15rem;
+}
+
+.fr-weight-half-value {
+    font-family: 'Capriola', sans-serif;
+    font-size: 1.08rem;
+    font-weight: 800;
+    color: #1F3864;
+    line-height: 1.1;
+}
+
+.fr-weight-half-note {
+    margin-top: 0.18rem;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.62rem;
     color: var(--wah-muted);
-    margin-bottom: 0.26rem;
+    line-height: 1.25;
+    min-height: 18px;
 }
 
 .fr-weight-line {
     width: 100%;
-    height: 8px;
+    height: 7px;
     border-radius: 999px;
-    background: #E9EEF5;
+    background: #E1E8F2;
     overflow: hidden;
+    margin-top: 0.34rem;
 }
 
 .fr-weight-line > span {
@@ -666,32 +767,42 @@ div[data-testid="stDownloadButton"] > button {
     border-radius: 999px;
 }
 
-.fr-weight-meta {
-    margin-top: 0.42rem;
-    display: flex;
-    justify-content: space-between;
-    gap: 0.6rem;
-    align-items: center;
+.fr-pdf-status {
+    margin-top: 0.46rem;
+    padding: 0.58rem 0.72rem;
+    border-radius: 13px;
+    border: 1px solid #D6E3F3;
+    background: #F8FBFF;
+    color: #365277;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.72rem;
+    line-height: 1.45;
 }
 
-.fr-weight-badge {
-    display: inline-flex;
-    padding: 0.24rem 0.5rem;
+.fr-pdf-status.success {
+    background: #DCFCE7;
+    border-color: #BBF7D0;
+    color: #166534;
+}
+
+.fr-pdf-progress {
+    margin-top: 0.45rem;
+    height: 9px;
+    width: 100%;
+    background: #E9EEF5;
     border-radius: 999px;
-    background: #EAF1FB;
-    color: #365277;
-    font-family: 'Capriola', sans-serif;
-    font-size: 0.68rem;
-    font-weight: 700;
+    overflow: hidden;
 }
 
-.fr-weight-pct {
-    font-family: 'Capriola', sans-serif;
-    font-size: 0.74rem;
-    color: #365277;
-    font-weight: 700;
+.fr-pdf-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    width: 72%;
+    background: linear-gradient(90deg, #1F3864, #0070FF, #38B6FF);
+    background-size: 220% 100%;
+    animation: frShimmer 1.4s linear infinite;
 }
-
 
 .fr-loading-wrap {
     position: relative;
@@ -794,8 +905,20 @@ div[data-testid="stDownloadButton"] > button {
     .fr-center-actions-shell {
         width: min(600px, 92%);
     }
+    .fr-weight-intro {
+        grid-template-columns: 1fr;
+    }
     .fr-weight-grid {
         grid-template-columns: 1fr;
+    }
+    .fr-weight-split {
+        grid-template-columns: 1fr;
+    }
+    .fr-weight-half.current {
+        border-left: none;
+        border-top: 1px solid #E8EEF7;
+        padding-left: 0.10rem;
+        padding-top: 0.65rem;
     }
     .fr-ai-shell {
         min-height: auto;
@@ -838,14 +961,19 @@ ICON_HASH = _icon('<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="
 
 
 def _selected_site_badge(score: float):
+    """Return the user-facing suitability label and its UI colors.
+
+    Color logic intentionally mirrors the heatmap reading:
+    - green   = suitable
+    - orange  = moderately suitable / mid-range
+    - red     = not suitable
+    """
     pct = float(score) * 100
-    if pct >= 75:
-        return "Highly Suitable", "#166534", "#DCFCE7"
-    if pct >= 55:
-        return "Suitable", "#713f12", "#FEF9C3"
+    if pct >= 60:
+        return "Suitable", "#16A34A", "#DCFCE7"
     if pct >= 35:
-        return "Moderately Suitable", "#92400E", "#FEF3C7"
-    return "Not Suitable", "#991B1B", "#FEE2E2"
+        return "Moderately Suitable", "#F59E0B", "#FEF3C7"
+    return "Not Suitable", "#EF4444", "#FEE2E2"
 
 
 def _display_location_name(location_name, lat, lon):
@@ -1155,12 +1283,12 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
 
 def _recommendation_text(label: str) -> str:
     label_l = (label or "").lower()
-    if "high" in label_l:
-        return "Recommended for solar site consideration based on the current weighted environmental and geospatial assessment."
-    if "moderate" in label_l:
-        return "Conditionally recommended and may benefit from additional field validation before final adoption."
     if "not" in label_l:
         return "Not recommended at this stage based on the current suitability assessment."
+    if "moderate" in label_l:
+        return "Conditionally recommended and may benefit from additional field validation before final adoption."
+    if "suitable" in label_l:
+        return "Recommended for solar site consideration based on the current weighted environmental and geospatial assessment."
     return "Recommended for further review based on the current site analysis results."
 
 
@@ -1180,22 +1308,112 @@ def _factor_accent(index: int) -> str:
     return palette[index % len(palette)]
 
 
+def _factor_symbol(title: str) -> str:
+    name = (title or "").strip().lower()
+
+    if "solar" in name or "irradiance" in name or "radiation" in name:
+        return "☼"
+    if "sunlight" in name or "sunshine" in name or "sun hour" in name:
+        return "◷"
+    if "slope" in name or "terrain" in name:
+        return "⛰"
+    if "obstacle" in name or "ai" in name or "excluded" in name:
+        return "▣"
+    if "surface" in name or "temperature" in name or "lst" in name:
+        return "♨"
+    if "elevation" in name or "altitude" in name:
+        return "△"
+
+    return "•"
+
+
+def _default_ahp_weight_for_factor(title: str) -> float | None:
+    name = (title or "").strip().lower()
+
+    if "solar" in name or "irradiance" in name or "radiation" in name:
+        return 30.0
+    if "sunlight" in name or "sunshine" in name or "sun hour" in name:
+        return 18.0
+    if "slope" in name or "terrain" in name:
+        return 22.0
+    if "obstacle" in name or "ai" in name or "excluded" in name:
+        return 13.0
+    if "surface" in name or "temperature" in name or "lst" in name:
+        return 10.0
+    if "elevation" in name:
+        return 7.0
+
+    return None
+
+
+def _factor_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _factor_pct_text(value, default="—"):
+    value = _factor_float(value)
+    if value is None:
+        return default
+    return f"{value:.1f}%"
+
+
+def _prepare_factor_breakdown(factors: list[dict]) -> list[dict]:
+    prepared = []
+
+    for idx, item in enumerate(factors or []):
+        if not isinstance(item, dict):
+            continue
+
+        item = dict(item)
+        title = item.get("title") or item.get("name") or f"Factor {idx + 1}"
+
+        contribution = max(
+            0.0,
+            _factor_float(
+                item.get("current_contribution_pct", item.get("contribution_pct")),
+                0.0,
+            ) or 0.0,
+        )
+
+        weight = _factor_float(
+            item.get("ahp_weight_pct", item.get("weight_pct")),
+            None,
+        )
+
+        if weight is None:
+            weight = _default_ahp_weight_for_factor(str(title))
+
+        item["ahp_weight_pct"] = weight
+        item["weight_pct"] = weight
+        item["current_contribution_pct"] = contribution
+        item["contribution_pct"] = contribution
+        item["base_bar_pct"] = max(0.0, min(100.0, weight if weight is not None else 0.0))
+        item["current_bar_pct"] = max(0.0, min(100.0, contribution))
+        item["accent"] = item.get("accent") or _factor_accent(idx)
+
+        prepared.append(item)
+
+    return prepared
+
+
 def _normalize_factor_bars(factors: list[dict]) -> list[dict]:
-    values = [max(0.0, float(item.get("contribution_pct", 0.0) or 0.0)) for item in factors]
-    max_val = max(values) if values else 1.0
-    max_val = max(max_val, 1.0)
+    # Kept for compatibility with existing report/PDF paths.
     out = []
-    for idx, item in enumerate(factors):
-        value = max(0.0, float(item.get("contribution_pct", 0.0) or 0.0))
+    for idx, item in enumerate(_prepare_factor_breakdown(factors)):
+        value = max(0.0, float(item.get("current_contribution_pct", item.get("contribution_pct", 0.0)) or 0.0))
         out.append(
             {
                 **item,
-                "bar_pct": max(14.0, min(100.0, (value / max_val) * 100.0 if max_val else 0.0)),
-                "accent": _factor_accent(idx),
+                "bar_pct": max(0.0, min(100.0, value)),
+                "accent": item.get("accent") or _factor_accent(idx),
             }
         )
     return out
-
 
 def _factor_snapshot_html(factors: list[dict]) -> str:
     cards = []
@@ -1227,30 +1445,54 @@ def _reason_list_html(reasons: list[dict]) -> str:
 def _weight_panel_html(factors: list[dict]) -> str:
     if not factors:
         return '<div class="fr-mini-note" style="margin-top:0;">No factor contribution data available.</div>'
+
     cards = []
-    for idx, item in enumerate(_normalize_factor_bars(factors)):
-        title = _safe_html(item.get("title") or item.get("name") or f"Factor {idx + 1}")
+
+    for idx, item in enumerate(_prepare_factor_breakdown(factors)):
+        title_raw = item.get("title") or item.get("name") or f"Factor {idx + 1}"
+        title = _safe_html(title_raw)
         raw_label = _safe_html(item.get("raw_label"), "No value")
-        contribution = float(item.get("contribution_pct", 0.0) or 0.0)
-        bar_pct = float(item.get("bar_pct", 0.0) or 0.0)
+
+        weight = item.get("ahp_weight_pct")
+        contribution = float(item.get("current_contribution_pct", item.get("contribution_pct", 0.0)) or 0.0)
+        base_bar_pct = float(item.get("base_bar_pct", 0.0) or 0.0)
+        current_bar_pct = float(item.get("current_bar_pct", 0.0) or 0.0)
         accent = item.get("accent", _factor_accent(idx))
-        weight_pct = item.get("weight_pct")
-        badge_text = f"Weight {float(weight_pct):.1f}%" if isinstance(weight_pct, (int, float)) else "Weighted factor"
+        symbol = _safe_html(_factor_symbol(title_raw), "•")
+
         cards.append(
-            '<div class="fr-weight-item">'
+            f'<div class="fr-weight-item" style="--factor-accent:{accent};">'
             '<div class="fr-weight-top">'
+            f'<div class="fr-weight-icon">{symbol}</div>'
             f'<div class="fr-weight-name">{title}</div>'
             f'<div class="fr-weight-raw">{raw_label}</div>'
             '</div>'
-            '<div class="fr-weight-sub">Contribution to the selected-site result</div>'
-            f'<div class="fr-weight-line"><span style="width:{bar_pct:.1f}%;background:{accent};"></span></div>'
-            '<div class="fr-weight-meta">'
-            f'<span class="fr-weight-badge">{escape(badge_text)}</span>'
-            f'<span class="fr-weight-pct">{contribution:.1f}%</span>'
+            '<div class="fr-weight-divider"></div>'
+            '<div class="fr-weight-split">'
+            '<div class="fr-weight-half">'
+            '<div class="fr-weight-half-label">AHP Weight</div>'
+            f'<div class="fr-weight-half-value">{_factor_pct_text(weight)}</div>'
+            '<div class="fr-weight-half-note">Fixed importance</div>'
+            f'<div class="fr-weight-line"><span style="width:{base_bar_pct:.1f}%;background:#1F3864;"></span></div>'
+            '</div>'
+            f'<div class="fr-weight-half current">'
+            '<div class="fr-weight-half-label">Current Contribution</div>'
+            f'<div class="fr-weight-half-value" style="color:{accent};">{contribution:.1f}%</div>'
+            '<div class="fr-weight-half-note">This site result</div>'
+            f'<div class="fr-weight-line"><span style="width:{current_bar_pct:.1f}%;background:{accent};"></span></div>'
+            '</div>'
             '</div>'
             '</div>'
         )
-    return '<div class="fr-weight-grid">' + ''.join(cards) + '</div>'
+
+    intro = (
+        '<div class="fr-weight-intro">'
+        '<div class="fr-weight-legend-pill"><span class="fr-weight-legend-dot base"></span><span><b>AHP Weight</b> = fixed importance of the criterion</span></div>'
+        '<div class="fr-weight-legend-pill"><span class="fr-weight-legend-dot current"></span><span><b>Current Contribution</b> = how much it influenced this site result</span></div>'
+        '</div>'
+    )
+
+    return intro + '<div class="fr-weight-grid">' + ''.join(cards) + '</div>'
 
 def _summary_item(label: str, value: str) -> str:
     return (
@@ -1405,14 +1647,16 @@ def _display_from_saved_report(report: dict) -> dict:
 
     selected_color = display.get("selected_color") or "#1a1a1a"
     selected_bg = display.get("selected_bg") or "#EEF4FB"
-    if final_score is not None and not display.get("selected_color"):
-        _, selected_color, selected_bg = _selected_site_badge(float(final_score))
+    if final_score is not None:
+        final_label, selected_color, selected_bg = _selected_site_badge(float(final_score))
 
     saved_suitability = _suitability_from_storage(
-        display.get("suitability_data")
-        or display.get("heatmap_data")
-        or criteria.get("suitability_data")
-        or criteria.get("heatmap_data")
+        (
+            display.get("suitability_data")
+            or display.get("heatmap_data")
+            or criteria.get("suitability_data")
+            or criteria.get("heatmap_data")
+        )
         if isinstance(criteria, dict)
         else None
     )
@@ -1472,6 +1716,8 @@ def _render_saved_final_report(report: dict) -> None:
             {"title": "LST", "raw_label": "Saved report data", "contribution_pct": 0.0},
             {"title": "Elevation", "raw_label": "Saved report data", "contribution_pct": 0.0},
         ]
+
+    factors = _prepare_factor_breakdown(factors)
 
     report_id_short = f"{str(data['report_id'])[:8]}..." if data.get("report_id") else "—"
     run_id_short = f"{str(data['run_id'])[:8]}..." if data.get("run_id") else "—"
@@ -1610,7 +1856,7 @@ def _render_saved_final_report(report: dict) -> None:
     st.markdown(
         f"""
         <div class="fr-card fr-weight-shell">
-            <div class="fr-card-title">Weighted Factor Contribution</div>
+            <div class="fr-card-title">AHP Factor Breakdown</div>
             {_weight_panel_html(factors)}
         </div>
         """,
@@ -1754,7 +2000,8 @@ selected_coords = (
 selected_color = "#1a1a1a"
 selected_bg = "#EEF4FB"
 if selected_score is not None:
-    _, selected_color, selected_bg = _selected_site_badge(float(selected_score))
+    selected_label, selected_color, selected_bg = _selected_site_badge(float(selected_score))
+    selected_site["label"] = selected_label
 
 if "report_obj" not in st.session_state or st.session_state["report_obj"] is None:
     rpt = Report()
@@ -1800,6 +2047,13 @@ if not factors:
         {"title": "Elevation", "raw_label": "No factor data", "contribution_pct": 0.0},
     ]
 
+factors = _prepare_factor_breakdown(factors)
+selected_site["factors"] = factors
+selected_site["factor_breakdown_note"] = (
+    "AHP Weight is the fixed criterion importance; Current Contribution is the actual impact on this site result."
+)
+st.session_state["selected_site_analysis"] = selected_site
+
 st.markdown(
     f"""
 <div class="fr-header-shell">
@@ -1829,24 +2083,8 @@ pdf_bytes = st.session_state.get(pdf_cache_key)
 # The PDF bytes stored here are reused later; old reports do not regenerate the PDF.
 _report_id_for_db = str(st.session_state.get("current_report_id") or f"report_{getattr(run, 'runId', uuid4().hex)}")
 _pdf_filename = f"wahhaj_report_{str(getattr(run, 'runId', _report_id_for_db))[:8]}.pdf"
-
-if pdf_bytes is None:
-    if _show_initial_loading:
-        _render_final_report_loading(_report_loading_slot, 78, "Generating the report PDF...")
-    pdf_bytes = rpt.build_pdf_bytes(
-        run,
-        ranked,
-        location=loc,
-        suitability=run.suitability if run else None,
-        aoi=aoi if aoi and len(aoi) == 4 else None,
-        selected_site=selected_site,
-        global_ranked_sites=global_ranked_sites,
-    )
-    st.session_state[pdf_cache_key] = pdf_bytes
-
 _saved_ranked_sites = _clean_ranked_for_storage(global_ranked_sites)
 _suitability_storage = _suitability_to_storage(run.suitability if run else None)
-
 _report_display_data = {
     "report_id": _report_id_for_db,
     "run_id": getattr(run, "runId", None),
@@ -1859,6 +2097,7 @@ _report_display_data = {
     "final_label": selected_label,
     "recommendation": recommendation,
     "factors": factors,
+    "factor_breakdown_note": selected_site.get("factor_breakdown_note"),
     "reasons": reasons,
     "ranked_sites": _saved_ranked_sites,
     "report_text": report_text,
@@ -1884,6 +2123,7 @@ _report_display_data = {
         "image_name": image_name,
         "ai_assessment": ai_assessment,
         "factors": factors,
+        "factor_breakdown_note": selected_site.get("factor_breakdown_note"),
         "reasons": reasons,
     },
 }
@@ -1892,9 +2132,7 @@ _report_display_data = {
 _report_save_key = f"final_report_saved_{_report_id_for_db}"
 _report_pdf_save_key = f"final_report_pdf_saved_{_report_id_for_db}"
 
-if (not st.session_state.get(_report_save_key, False)) or (
-    pdf_bytes is not None and not st.session_state.get(_report_pdf_save_key, False)
-):
+if not st.session_state.get(_report_save_key, False):
     _saved_report_id = save_final_report_to_db(
         {
             "report_id": _report_id_for_db,
@@ -1912,7 +2150,7 @@ if (not st.session_state.get(_report_save_key, False)) or (
             "ranked_sites": _saved_ranked_sites,
             "report_date": datetime.now().isoformat(),
         },
-        pdf_bytes,
+        None,
         pdf_filename=_pdf_filename,
         report_id=_report_id_for_db,
     )
@@ -1921,8 +2159,6 @@ if (not st.session_state.get(_report_save_key, False)) or (
         st.session_state["current_report_id"] = _saved_report_id
 
     st.session_state[_report_save_key] = True
-    if pdf_bytes is not None:
-        st.session_state[_report_pdf_save_key] = True
 
 
 _report_loading_slot.empty()
@@ -2062,7 +2298,7 @@ with right_col:
 st.markdown(
     f"""
     <div class="fr-card fr-weight-shell">
-        <div class="fr-card-title">Weighted Factor Contribution</div>
+        <div class="fr-card-title">AHP Factor Breakdown</div>
         {_weight_panel_html(factors)}
     </div>
     """,
@@ -2074,6 +2310,7 @@ pdf_sp_left, pdf_col, pdf_sp_right = st.columns([1.75, 2.50, 1.75], gap="small")
 
 with pdf_col:
     pdf_cache_key = f"final_report_pdf_bytes_{getattr(run, 'runId', 'current')}"
+    pdf_ready_notice_key = f"final_report_pdf_ready_notice_{getattr(run, 'runId', 'current')}"
 
     if st.session_state.get(pdf_cache_key):
         st.download_button(
@@ -2084,18 +2321,76 @@ with pdf_col:
             use_container_width=True,
             key="download_current_report_pdf_btn",
         )
-    else:
-        if st.button("Generate PDF", use_container_width=True, key="generate_current_report_pdf_btn"):
-            st.session_state[pdf_cache_key] = rpt.build_pdf_bytes(
-                run,
-                ranked,
-                location=loc,
-                suitability=run.suitability if run else None,
-                aoi=aoi if aoi and len(aoi) == 4 else None,
-                selected_site=selected_site,
-                global_ranked_sites=global_ranked_sites,
+
+        if st.session_state.get(pdf_ready_notice_key, False):
+            st.markdown(
+                """
+                <div class="fr-pdf-status success">
+                    PDF is ready. Click <b>Export PDF</b> to download the report.
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            st.rerun()
+    else:
+        pdf_generation_slot = st.empty()
+
+        if st.button("Generate PDF", use_container_width=True, key="generate_current_report_pdf_btn"):
+            pdf_generation_slot.markdown(
+                """
+                <div class="fr-pdf-status">
+                    Generating PDF report... please wait.
+                    <div class="fr-pdf-progress"><span></span></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            try:
+                generated_pdf = rpt.build_pdf_bytes(
+                    run,
+                    ranked,
+                    location=loc,
+                    suitability=run.suitability if run else None,
+                    aoi=aoi if aoi and len(aoi) == 4 else None,
+                    selected_site=selected_site,
+                    global_ranked_sites=global_ranked_sites,
+                )
+            except Exception as e:
+                pdf_generation_slot.empty()
+                st.error(f"Could not generate PDF: {e}")
+            else:
+                st.session_state[pdf_cache_key] = generated_pdf
+                st.session_state[pdf_ready_notice_key] = True
+
+                if generated_pdf and not st.session_state.get(_report_pdf_save_key, False):
+                    _saved_pdf_report_id = save_final_report_to_db(
+                        {
+                            "report_id": _report_id_for_db,
+                            "run_id": getattr(run, "runId", None),
+                            "user_email": st.session_state.get("user_email", ""),
+                            "location_name": loc.get("location_name") or selected_display_name,
+                            "lat": selected_lat,
+                            "lon": selected_lon,
+                            "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
+                            "final_score": float(selected_score) if selected_score is not None else None,
+                            "final_label": selected_label,
+                            "recommendation": recommendation,
+                            "criteria_data": _report_display_data,
+                            "factors_data": factors,
+                            "ranked_sites": _saved_ranked_sites,
+                            "report_date": datetime.now().isoformat(),
+                        },
+                        generated_pdf,
+                        pdf_filename=_pdf_filename,
+                        report_id=_report_id_for_db,
+                    )
+
+                    if _saved_pdf_report_id:
+                        st.session_state["current_report_id"] = _saved_pdf_report_id
+
+                    st.session_state[_report_pdf_save_key] = True
+
+                st.rerun()
 
 st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
 btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
@@ -2117,4 +2412,3 @@ with btn_right:
         args=("pages/3_Choose_Location.py", True),
     )
 st.markdown('</div>', unsafe_allow_html=True)
-
