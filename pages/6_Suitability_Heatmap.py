@@ -107,15 +107,48 @@ html, body {
 div[data-testid="stVerticalBlock"] {
     gap: 0.45rem;
 }
+
+/* Same compact action style used in Final Report bottom controls */
+.heatmap-actions-shell {
+    width: 100%;
+    margin: 0.72rem 0 0 0;
+    position: relative;
+    z-index: 2;
+}
+
+.heatmap-actions-shell div[data-testid="stButton"] > button,
+.heatmap-actions-shell div.stButton > button {
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 7px 14px !important;
+    border-radius: 12px !important;
+    font-family: 'Capriola', sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    line-height: 1.1 !important;
+    background: #0070FF !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.heatmap-actions-shell div[data-testid="stButton"] > button:hover,
+.heatmap-actions-shell div.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.10) !important;
+    background: #005fe0 !important;
+    color: #FFFFFF !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
 st.markdown(
     """
     <div class="page-title">Site Suitability Map</div>
     <div class="page-subtitle">This map shows the overall suitability of the selected site as one unified area</div>
     """,
     unsafe_allow_html=True,
-    
 )
 render_top_home_button("pages/2_Home.py")
 
@@ -172,19 +205,17 @@ st.markdown('<div class="map-frame">', unsafe_allow_html=True)
 st_folium(folium_map, width=None, height=720, returned_objects=[])
 st.markdown('</div>', unsafe_allow_html=True)
 
-btn1, btn2 = st.columns(2, gap="large")
+st.markdown('<div class="heatmap-actions-shell">', unsafe_allow_html=True)
+sp_left, report_col, sp_right = st.columns([1.70, 1.20, 1.70], gap="small")
 
-with btn1:
-    if st.button("Back to Result", use_container_width=True):
-        st.switch_page("pages/5_Analysis.py")
-
-with btn2:
+with report_col:
     if st.button("View Final Report", use_container_width=True):
         st.switch_page("pages/8_Final_Report.py")
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="footer-spacer"></div>', unsafe_allow_html=True)
 render_footer()
-

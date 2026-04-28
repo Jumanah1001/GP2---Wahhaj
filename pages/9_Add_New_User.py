@@ -39,6 +39,7 @@ def _ensure_admin_page_state() -> None:
         "user_feedback_type": "success",
         "inp_role": "Analyst",
         "inp_status": "Active",
+        "reset_new_user_form": False,
     }
 
     for key, value in defaults.items():
@@ -69,6 +70,129 @@ def _set_feedback(message: str, kind: str = "success") -> None:
 def _clear_feedback() -> None:
     st.session_state["user_feedback"] = None
     st.session_state["user_feedback_type"] = "success"
+
+
+def _reset_new_user_form_values() -> None:
+    """Reset widget-owned form values before the widgets are instantiated."""
+    for key in ["inp_name", "inp_username", "inp_email", "inp_pw", "inp_pw2"]:
+        st.session_state[key] = ""
+
+    st.session_state["inp_role"] = "Analyst"
+    st.session_state["inp_status"] = "Active"
+
+
+def _role_from_db(value: str) -> UserRole:
+    return UserRole.ADMIN if str(value).strip().lower() == "admin" else UserRole.ANALYST
+
+
+def _load_users_from_db() -> bool:
+    """Load users from PostgreSQL so the admin table reflects the real database."""
+    try:
+        from Wahhaj.db_connection import get_db
+
+        with get_db() as cur:
+            cur.execute(
+                """SELECT user_id, name, email, role, pwd_hash, is_active
+                   FROM users
+                   ORDER BY created_at ASC"""
+            )
+            rows = cur.fetchall()
+
+        if not rows:
+            return False
+
+        User._user_registry.clear()
+
+        for user_id, name, email, role, pwd_hash, is_active in rows:
+            role_enum = _role_from_db(role)
+            loaded_user = User(
+                name=name,
+                email=email,
+                role=role_enum,
+                hashed_password=pwd_hash,
+                is_active=bool(is_active),
+            )
+
+            generated_id = loaded_user.userId
+            loaded_user.userId = str(user_id)
+
+            if generated_id != loaded_user.userId:
+                User._user_registry.pop(generated_id, None)
+
+            User._user_registry[loaded_user.userId] = loaded_user
+
+        return True
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("DB users load failed: %s", exc)
+        return False
+
+
+def _sync_created_user_to_db(new_user: User, raw_password: str) -> None:
+    """Insert a newly created user into the users table."""
+    from Wahhaj.db_connection import get_db
+
+    with get_db() as cur:
+        cur.execute(
+            """INSERT INTO users (user_id, name, email, role, pwd_hash, is_active)
+               VALUES (%s, %s, %s, %s, %s, %s)
+               ON CONFLICT (email) DO UPDATE SET
+                   name = EXCLUDED.name,
+                   role = EXCLUDED.role,
+                   pwd_hash = EXCLUDED.pwd_hash,
+                   is_active = EXCLUDED.is_active""",
+            (
+                new_user.userId,
+                new_user.name,
+                new_user._email,
+                new_user.role.value,
+                raw_password,
+                new_user.is_active,
+            ),
+        )
+
+
+def _sync_existing_user_to_db(user: User) -> None:
+    """Persist name, email, role, and active status for an existing user."""
+    from Wahhaj.db_connection import get_db
+
+    with get_db() as cur:
+        cur.execute(
+            """UPDATE users
+               SET name = %s,
+                   email = %s,
+                   role = %s,
+                   is_active = %s
+               WHERE user_id = %s""",
+            (
+                user.name,
+                user._email,
+                user.role.value,
+                user.is_active,
+                user.userId,
+            ),
+        )
+
+
+def _sync_user_status_to_db(user_id: str, is_active: bool) -> None:
+    """Persist only the Active/Inactive toggle."""
+    from Wahhaj.db_connection import get_db
+
+    with get_db() as cur:
+        cur.execute(
+            """UPDATE users
+               SET is_active = %s
+               WHERE user_id = %s""",
+            (bool(is_active), user_id),
+        )
+
+
+def _delete_user_from_db(user_id: str) -> None:
+    from Wahhaj.db_connection import get_db
+
+    with get_db() as cur:
+        cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
 
 
 def _open_edit_panel(user: User) -> None:
@@ -136,39 +260,13 @@ def _choice_radio(widget_key: str, options: list[str], default: str, title: str)
     )
 
 
-def _sync_created_user_to_db(new_user: User, raw_password: str) -> None:
-    """
-    Keeps the same DB-sync behaviour from the existing page:
-    new users are persisted when the database connection is available,
-    and the UI continues to work through the local registry if DB secrets are absent.
-    """
-    try:
-        from Wahhaj.db_connection import get_db
-
-        with get_db() as cur:
-            cur.execute(
-                """INSERT INTO users (user_id, name, email, role, pwd_hash, is_active)
-                   VALUES (%s, %s, %s, %s, %s, %s)
-                   ON CONFLICT (email) DO UPDATE SET
-                       name = EXCLUDED.name,
-                       role = EXCLUDED.role,
-                       pwd_hash = EXCLUDED.pwd_hash,
-                       is_active = EXCLUDED.is_active""",
-                (
-                    new_user.userId,
-                    new_user.name,
-                    new_user._email,
-                    new_user.role.value,
-                    raw_password,
-                    new_user.is_active,
-                ),
-            )
-    except Exception as exc:
-        st.warning(f"DB sync warning: {exc}")
-
 
 _ensure_admin_page_state()
 User.seed_default_users()
+_load_users_from_db()
+
+if st.session_state.pop("reset_new_user_form", False):
+    _reset_new_user_form_values()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -368,11 +466,14 @@ div[class*="st-key-btn_create"] button {
 
 /* Feedback */
 .feedback-banner {
+    width: min(1060px, 82vw);
+    box-sizing: border-box;
     border-radius: 14px;
-    padding: 14px 18px;
+    padding: 13px 18px;
     margin: 0 auto 18px auto;
     font-family: 'Capriola', sans-serif;
     font-size: 14px;
+    line-height: 1.55;
 }
 
 .feedback-success {
@@ -385,6 +486,12 @@ div[class*="st-key-btn_create"] button {
     background: rgba(255,90,90,0.10);
     border: 1px solid rgba(210,70,70,0.24);
     color: #b42318;
+}
+
+.feedback-info {
+    background: rgba(0,112,255,0.08);
+    border: 1px solid rgba(0,112,255,0.25);
+    color: #0050bb;
 }
 
 /* Existing users header area */
@@ -635,18 +742,9 @@ status_change_msg = st.session_state.pop("status_change_msg", None)
 if status_change_msg:
     st.markdown(
         f"""
-        <div style="
-            max-width: 680px;
-            margin: 0 auto 18px auto;
-            background: rgba(0,112,255,0.08);
-            border: 1px solid rgba(0,112,255,0.25);
-            border-radius: 13px;
-            padding: 12px 20px;
-            font-family: 'Capriola', sans-serif;
-            font-size: 14px;
-            color: #0050bb;
-            text-align: center;
-        ">💡 {status_change_msg}</div>
+        <div class="feedback-banner feedback-info">
+            💡 {status_change_msg}
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -754,38 +852,77 @@ with st.container(key="new_user_card"):
 
 
 if clear_clicked:
-    for key in ["inp_name", "inp_username", "inp_email", "inp_pw", "inp_pw2"]:
-        st.session_state[key] = ""
-
-    st.session_state["inp_role"] = "Analyst"
-    st.session_state["inp_status"] = "Active"
+    st.session_state["reset_new_user_form"] = True
     _clear_feedback()
     st.rerun()
 
 
 if create_clicked:
     _clear_feedback()
+
+    full_name = new_name.strip()
+    username = new_username.strip()
     email_candidate = new_email.strip().lower()
 
-    if not new_name.strip():
-        _set_feedback("Please enter the user's full name.", "error")
-    elif not new_username.strip():
-        _set_feedback("Please enter a username.", "error")
-    elif not email_candidate or "@" not in email_candidate:
-        _set_feedback("Please enter a valid email address.", "error")
+    missing_fields = []
+
+    if not full_name:
+        missing_fields.append("Full Name")
+
+    if not username:
+        missing_fields.append("Username")
+
+    if not email_candidate:
+        missing_fields.append("Email Address")
+
+    if not new_password:
+        missing_fields.append("Password")
+
+    if not confirm_password:
+        missing_fields.append("Confirm Password")
+
+    if missing_fields:
+        fields_html = "".join(
+            f"<li>{escape(field)}</li>"
+            for field in missing_fields
+        )
+        _set_feedback(
+            "<strong>Please complete the required fields:</strong>"
+            f"<ul style='margin:8px 0 0 18px;padding:0;line-height:1.7;'>{fields_html}</ul>",
+            "error",
+        )
+
+    elif "@" not in email_candidate or "." not in email_candidate.split("@")[-1]:
+        _set_feedback(
+            "Please enter a valid email address, for example: name@example.com.",
+            "error",
+        )
+
     elif len(new_password) < 8:
-        _set_feedback("Password must be at least 8 characters long.", "error")
+        _set_feedback(
+            "Password must be at least 8 characters long.",
+            "error",
+        )
+
     elif new_password != confirm_password:
-        _set_feedback("Passwords do not match. Please try again.", "error")
+        _set_feedback(
+            "Passwords do not match. Please re-enter the same password.",
+            "error",
+        )
+
     elif User.find_by_email(email_candidate):
-        _set_feedback("A user with this email already exists.", "error")
+        _set_feedback(
+            "A user with this email address already exists.",
+            "error",
+        )
+
     else:
         try:
             role = UserRole.ADMIN if role_choice == "Admin" else UserRole.ANALYST
             is_active = account_status == "Active"
 
             new_user = User(
-                name=new_name.strip(),
+                name=full_name,
                 email=email_candidate,
                 role=role,
                 hashed_password=new_password,
@@ -802,19 +939,16 @@ if create_clicked:
             _sync_created_user_to_db(new_user, new_password)
 
             _set_feedback(
-                f"<strong>{escape(new_name.strip())}</strong> created successfully as "
-                f"<strong>{escape(role_choice)}</strong> with status <strong>{escape(account_status)}</strong>."
+                f"<strong>{escape(full_name)}</strong> was created successfully as "
+                f"<strong>{escape(role_choice)}</strong> with status "
+                f"<strong>{escape(account_status)}</strong>."
             )
 
-            for key in ["inp_name", "inp_username", "inp_email", "inp_pw", "inp_pw2"]:
-                st.session_state[key] = ""
-
-            st.session_state["inp_role"] = "Analyst"
-            st.session_state["inp_status"] = "Active"
+            st.session_state["reset_new_user_form"] = True
             st.rerun()
 
         except Exception as exc:
-            _set_feedback(f"Could not create user: {exc}", "error")
+            _set_feedback(f"Could not create user: {escape(str(exc))}", "error")
             st.rerun()
 
 
@@ -895,12 +1029,26 @@ with st.container(key="existing_users_card"):
                 if duplicate:
                     _set_feedback("Another user already uses this email address.", "error")
                 else:
+                    old_name = target.name
+                    old_email = target._email
+                    old_role = target.role
+                    old_status = target.is_active
+
                     target.name = st.session_state["edit_name"].strip()
                     target._email = normalized_email
                     target.role = UserRole.ADMIN if edited_role == "Admin" else UserRole.ANALYST
                     target.is_active = edited_status == "Active"
-                    _set_feedback(f"Changes saved for <strong>{escape(target.name)}</strong>.")
-                    _close_edit_panel()
+
+                    try:
+                        _sync_existing_user_to_db(target)
+                        _set_feedback(f"Changes saved for <strong>{escape(target.name)}</strong>.")
+                        _close_edit_panel()
+                    except Exception as exc:
+                        target.name = old_name
+                        target._email = old_email
+                        target.role = old_role
+                        target.is_active = old_status
+                        _set_feedback(f"Could not save changes in the database: {escape(str(exc))}", "error")
 
             st.rerun()
 
@@ -1029,9 +1177,16 @@ with st.container(key="existing_users_card"):
                         toggle_label = "Deactivate" if user.is_active else "Activate"
 
                         if st.button(toggle_label, key=f"tbl_toggle_{user.userId}", use_container_width=True):
-                            user.is_active = not user.is_active
-                            state_word = "activated" if user.is_active else "deactivated"
-                            _set_feedback(f"<strong>{escape(user.name)}</strong> was {state_word}.")
+                            new_status = not user.is_active
+
+                            try:
+                                _sync_user_status_to_db(user.userId, new_status)
+                                user.is_active = new_status
+                                state_word = "activated" if user.is_active else "deactivated"
+                                _set_feedback(f"<strong>{escape(user.name)}</strong> was {state_word}.")
+                            except Exception as exc:
+                                _set_feedback(f"Could not update user status in the database: {escape(str(exc))}", "error")
+
                             st.rerun()
 
                     with action_cols[2]:
@@ -1039,6 +1194,8 @@ with st.container(key="existing_users_card"):
                             admin_user = _current_admin()
 
                             try:
+                                _delete_user_from_db(user.userId)
+
                                 if admin_user and admin_user.role == UserRole.ADMIN:
                                     admin_user.removeUser(user.userId)
                                 else:
@@ -1050,7 +1207,7 @@ with st.container(key="existing_users_card"):
                                     _close_edit_panel()
 
                             except Exception as exc:
-                                _set_feedback(f"Could not delete user: {exc}", "error")
+                                _set_feedback(f"Could not delete user from the database: {escape(str(exc))}", "error")
 
                             st.rerun()
 

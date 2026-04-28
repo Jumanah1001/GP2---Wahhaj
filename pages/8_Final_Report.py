@@ -44,6 +44,28 @@ require_login()
 render_top_home_button("pages/2_Home.py")
 
 
+# ── navigation guard ────────────────────────────────────────────────────────
+# Streamlit reruns the whole page when a button is clicked.
+# These callbacks let navigation buttons leave the page before the loading card
+# or report/PDF preparation starts on the rerun.
+def _queue_final_report_navigation(target_page: str, reset_analysis: bool = False) -> None:
+    st.session_state["_final_report_nav_target"] = target_page
+    st.session_state["_final_report_nav_reset"] = reset_analysis
+
+
+def _consume_final_report_navigation() -> None:
+    target_page = st.session_state.pop("_final_report_nav_target", None)
+    reset_analysis = st.session_state.pop("_final_report_nav_reset", False)
+
+    if target_page:
+        if reset_analysis:
+            reset_for_new_analysis()
+        st.switch_page(target_page)
+
+
+_consume_final_report_navigation()
+
+
 # ── page-level CSS ──────────────────────────────────────────────────────────
 st.markdown(
     """
@@ -1528,12 +1550,21 @@ def _render_saved_final_report(report: dict) -> None:
     st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
     btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
     with btn_left:
-        if st.button("Back Home", use_container_width=True):
-            st.switch_page("pages/2_Home.py")
+        st.button(
+            "View Heatmap",
+            use_container_width=True,
+            key="saved_report_view_heatmap_btn",
+            on_click=_queue_final_report_navigation,
+            args=("pages/6_Suitability_Heatmap.py", False),
+        )
     with btn_right:
-        if st.button("New Analysis", use_container_width=True):
-            reset_for_new_analysis()
-            st.switch_page("pages/3_Choose_Location.py")
+        st.button(
+            "New Analysis",
+            use_container_width=True,
+            key="saved_report_new_analysis_btn",
+            on_click=_queue_final_report_navigation,
+            args=("pages/3_Choose_Location.py", True),
+        )
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -1565,8 +1596,12 @@ if _saved_report_requested:
     _report_loading_slot.empty()
     st.markdown('<div class="fr-card">', unsafe_allow_html=True)
     st.error("The saved report could not be loaded from the database.")
-    if st.button("Back Home"):
-        st.switch_page("pages/2_Home.py")
+    st.button(
+        "Back Home",
+        key="saved_report_error_back_home_btn",
+        on_click=_queue_final_report_navigation,
+        args=("pages/2_Home.py", False),
+    )
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
@@ -1577,8 +1612,12 @@ if run is None:
     _report_loading_slot.empty()
     st.markdown('<div class="fr-card">', unsafe_allow_html=True)
     st.warning("No analysis found. Complete the pipeline first.")
-    if st.button("Back to Analysis"):
-        st.switch_page("pages/5_Analysis.py")
+    st.button(
+        "Back to Analysis",
+        key="final_report_missing_back_analysis_btn",
+        on_click=_queue_final_report_navigation,
+        args=("pages/5_Analysis.py", False),
+    )
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
@@ -1922,12 +1961,21 @@ with pdf_col:
 st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
 btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
 with btn_left:
-    if st.button("Back to Map", use_container_width=True):
-        st.switch_page("pages/6_Suitability_Heatmap.py")
+    st.button(
+        "View Heatmap",
+        use_container_width=True,
+        key="final_report_back_to_map_btn",
+        on_click=_queue_final_report_navigation,
+        args=("pages/6_Suitability_Heatmap.py", False),
+    )
 
 with btn_right:
-    if st.button("New Analysis", use_container_width=True):
-        reset_for_new_analysis()
-        st.switch_page("pages/3_Choose_Location.py")
+    st.button(
+        "New Analysis",
+        use_container_width=True,
+        key="final_report_new_analysis_btn",
+        on_click=_queue_final_report_navigation,
+        args=("pages/3_Choose_Location.py", True),
+    )
 st.markdown('</div>', unsafe_allow_html=True)
 
