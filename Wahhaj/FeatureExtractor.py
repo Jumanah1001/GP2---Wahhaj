@@ -431,7 +431,123 @@ class FeatureExtractor:
 
         return result
     
+    def _classify_satellite_with_tiles(
+        self,
+        ai_model,
+        image_path: str,
+        tile_grid: int = 3,
+        overlap: float = 0.20,
+    ) -> Raster:
+        """
+        Classify a satellite image using tiled inference.
+        Why:
+        Satellite screenshots can make buildings, trees, and water appear small.
+        Running YOLO on smaller overlapping tiles acts like a visual zoom,
+        increasing the chance of detecting small obstacles.
+        Output:
+        A full-size class raster with the same meaning as AIModel.classifyArea:
+            -1 = background / no detection
+            0 = building
+            1 = vegetation
+            2 = water
+            3 = bare_land
+        """
+        import os
+        import tempfile
+        import numpy as np
+        from PIL import Image
+        image = Image.open(image_path).convert("RGB")
+        width, height = image.size
+        # Full class map initialized as no detection.
+        full_classes = np.full((height, width), -1, dtype=np.int32)
+        tile_w = int(width / tile_grid)
+        tile_h = int(height / tile_grid)
+        step_x = max(1, int(tile_w * (1.0 - overlap)))
+        step_y = max(1, int(tile_h * (1.0 - overlap)))
+        y_positions = list(range(0, max(height - tile_h + 1, 1), step_y))
+        x_positions = list(range(0, max(width - tile_w + 1, 1), step_x))
+        # Ensure last row/column are covered.
+        if y_positions[-1] != height - tile_h:
+            y_positions.append(max(height - tile_h, 0))
+        if x_positions[-1] != width - tile_w:
+            x_positions.append(max(width - tile_w, 0))
+        # Priority rule:
+        # excluded classes are more important than bare land.
+        # building/water/vegetation should not be overwritten by bare_land.
+        excluded_classes = {0, 1, 2}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for y0 in y_positions:
+                for x0 in x_positions:
+                    x1 = min(x0 + tile_w, width)
+                    y1 = min(y0 + tile_h, height)
+                    tile = image.crop((x0, y0, x1, y1))
+                    tile_path = os.path.join(tmpdir, f"tile_{y0}_{x0}.png")
+                    tile.save(tile_path)
+                    tile_raster = ai_model.classifyArea(tile_path)
+                    tile_classes = tile_raster.data.astype(np.int32)
+                    # Resize class raster back to tile size if needed.
+                    if tile_classes.shape != (y1 - y0, x1 - x0):
+                        tile_img = Image.fromarray(tile_classes.astype(np.int16))
+                        tile_img = tile_img.resize((x1 - x0, y1 - y0), resample=Image.NEAREST)
+                        tile_classes = np.array(tile_img).astype(np.int32)
+                    current = full_classes[y0:y1, x0:x1]
+                    # Where tile detects excluded classes, always keep them.
+                    tile_excluded = np.isin(tile_classes, list(excluded_classes))
+                    # Where current is empty and tile has any valid class, fill it.
+                    current_empty = current == -1
+                    tile_valid = tile_classes != -1
+                    update_mask = tile_excluded | (current_empty & tile_valid)
+                    current[update_mask] = tile_classes[update_mask]
+                    full_classes[y0:y1, x0:x1] = current
+        return Raster(
+            data=full_classes.astype(np.float32),
+            nodata=-1.0,
+            metadata={
+                "layer": "ai_classes",
+                "source": "AIModel_tiled",
+                "tile_grid": tile_grid,
+                "overlap": overlap,
+                "meaning": "Tiled satellite classification result before obstacle-density conversion.",
+            },
+        )
    
+    def _estimate_tile_grid_from_aoi(self, aoi, target_tile_m: float = 307.0) -> int:
+        """
+        Estimate tile_grid dynamically based on AOI ground size.
+
+        The model was trained approximately on 307m × 307m scenes,
+        so each tile should approximate that ground coverage.
+        """
+        import math
+        import numpy as np
+
+        if aoi is None or len(aoi) != 4:
+            return 3
+
+        lon_min, lat_min, lon_max, lat_max = aoi
+
+        mean_lat = (lat_min + lat_max) / 2.0
+
+        meters_per_deg_lat = 111320.0
+        meters_per_deg_lon = 111320.0 * np.cos(np.radians(mean_lat))
+
+        width_m = abs(lon_max - lon_min) * meters_per_deg_lon
+        height_m = abs(lat_max - lat_min) * meters_per_deg_lat
+
+        max_side_m = max(width_m, height_m)
+
+        tile_grid = math.ceil(max_side_m / target_tile_m)
+
+        # Keep it practical for Streamlit and YOLO inference
+        tile_grid = max(1, min(tile_grid, 4))
+
+        print("AOI WIDTH M =", width_m)
+        print("AOI HEIGHT M =", height_m)
+        print("AUTO TILE GRID =", tile_grid)
+
+        return tile_grid    
+
+
     def _get_obstacle_layer(self, dataset) -> Raster:
         """
         Runs the AI model first and creates an exclusion-density layer.
@@ -492,6 +608,9 @@ class FeatureExtractor:
             # This grid stores excluded-class density per heatmap cell.
             # Higher value = worse suitability.
             grid = np.zeros((rows, cols), dtype=np.float32)
+            building_grid = np.zeros((rows, cols), dtype=np.float32)
+            vegetation_grid = np.zeros((rows, cols), dtype=np.float32)
+            water_grid = np.zeros((rows, cols), dtype=np.float32)
             print("OBSTACLE GRID SHAPE =", grid.shape)
             processed_images = 0
             sorted_images = sorted(dataset.images, key=lambda img: img.timestamp)
@@ -505,43 +624,71 @@ class FeatureExtractor:
                         os.path.join("uploads", os.path.basename(file_path)),
                     ]
                     file_path = next((p for p in alts if os.path.exists(p)), None)
-                    if file_path is None:
-                        logger.warning("_get_obstacle_layer: skipping missing image file")
-                        continue
-                class_raster = ai_model.classifyArea(file_path)
+                if file_path is None:
+                    logger.warning("_get_obstacle_layer: skipping missing image file")
+                    continue
+
+                tile_grid = self._estimate_tile_grid_from_aoi(
+                    dataset.aoi,
+                    target_tile_m=307.0,
+                )            
+
+                class_raster = self._classify_satellite_with_tiles(
+                    ai_model=ai_model,
+                    image_path=file_path,
+                    tile_grid=tile_grid,
+                    overlap=0.20,
+                )
+
+
+                classes = class_raster.data.astype(np.int32)
+
+                # Per-class full-resolution masks
+                building_mask = (classes == 0).astype(np.float32)
+                vegetation_mask = (classes == 1).astype(np.float32)
+                water_mask = (classes == 2).astype(np.float32)
+
+                # Downsample each class separately to the unified analysis grid
+                building_density = self._downsample_mean(building_mask, self.TARGET_SHAPE)
+                vegetation_density = self._downsample_mean(vegetation_mask, self.TARGET_SHAPE)
+                water_density = self._downsample_mean(water_mask, self.TARGET_SHAPE)
+
+                # A combined density just for general display/debugging
+                excluded_density = np.maximum.reduce([
+                    building_density,
+                    vegetation_density,
+                    water_density,
+                ]).astype(np.float32)
+
+                print("BUILDING DENSITY GRID =", building_density)
+                print("VEGETATION DENSITY GRID =", vegetation_density)
+                print("WATER DENSITY GRID =", water_density)
+                print("EXCLUDED DENSITY GRID =", excluded_density)
+
+
                 print("AI MODEL CLASS NAMES =", getattr(getattr(ai_model, "model", None), "names", None))
                 print("AI UNIQUE CLASSES =", np.unique(class_raster.data))
-                # Model class logic:
-                # 0 = building    -> exclude
-                # 1 = vegetation  -> exclude
-                # 2 = water       -> exclude
-                # 3 = bare_land   -> acceptable, if present
-                #
-                # nodata/background is not treated as obstacle here.
-                excluded_classes = [0, 1, 2]
-                excluded_mask = np.isin(
-                    class_raster.data,
-                    excluded_classes,
-                ).astype(np.float32)
-                # Convert the AI pixel mask to the project 5x5 grid.
-                # Each cell becomes the percentage of excluded pixels inside it.
-                cell_density = self._downsample_mean(
-                    excluded_mask,
-                    self.TARGET_SHAPE,
-                    nodata=-9999.0,
-                )
-                cell_density = np.clip(cell_density, 0.0, 1.0)
-                # If multiple images exist, keep the worst condition per cell.
-                # This means if any image detects water/building/vegetation,
-                # that cell remains excluded.
-                grid = np.maximum(grid, cell_density)
-                print("AI UNIQUE CLASSES =", np.unique(class_raster.data))
-                print("EXCLUDED DENSITY GRID =", grid)
+
+                # Keep the worst density per class across all images
+                if processed_images == 0:
+                    building_grid = building_density
+                    vegetation_grid = vegetation_density
+                    water_grid = water_density
+                    grid = excluded_density
+                else:
+                    building_grid = np.maximum(building_grid, building_density)
+                    vegetation_grid = np.maximum(vegetation_grid, vegetation_density)
+                    water_grid = np.maximum(water_grid, water_density)
+                    grid = np.maximum(grid, excluded_density)
+
                 processed_images += 1
+
             if processed_images == 0:
                 reason = "image files not found"
                 logger.warning("_get_obstacle_layer: using synthetic layer (%s)", reason)
+
                 data = np.full((rows, cols), 1.0, dtype=np.float32)
+
                 return Raster(
                     data=data,
                     nodata=-9999.0,
@@ -552,6 +699,7 @@ class FeatureExtractor:
                         "ai_exclusion_gate": False,
                     },
                 )
+
             return Raster(
                 data=grid.astype(np.float32),
                 nodata=-9999.0,
@@ -566,13 +714,22 @@ class FeatureExtractor:
                         1: "vegetation",
                         2: "water",
                     },
-                    "meaning": "Values represent density of AI-excluded classes per cell.",
+                    "building_density": building_grid.tolist(),
+                    "vegetation_density": vegetation_grid.tolist(),
+                    "water_density": water_grid.tolist(),
+                    "combined_density": grid.tolist(),
+                    "building_threshold": 0.05,
+                    "water_threshold": 0.05,
+                    "vegetation_threshold": 0.25,
+                    "meaning": "Values represent maximum AI-excluded class density per cell.",
                 },
             )
+
         except Exception as exc:
             logger.warning("_get_obstacle_layer failed (%s) — using synthetic layer", exc)
-            # If the AI fails, do not allow AHP to make the site green.
+
             data = np.full((rows, cols), 1.0, dtype=np.float32)
+
             return Raster(
                 data=data,
                 nodata=-9999.0,
