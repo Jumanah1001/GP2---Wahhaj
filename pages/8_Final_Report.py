@@ -17,6 +17,7 @@ import json
 from datetime import datetime
 from uuid import uuid4
 from html import escape
+from types import SimpleNamespace
 
 import numpy as np
 import streamlit as st
@@ -1303,6 +1304,69 @@ def _safe_aoi(value):
     return None
 
 
+def _suitability_to_storage(suitability) -> dict | None:
+    """Convert the suitability raster/grid into JSON-safe data for database storage."""
+    if suitability is None or getattr(suitability, "data", None) is None:
+        return None
+
+    try:
+        data = np.asarray(suitability.data, dtype=float)
+        if data.ndim != 2:
+            return None
+
+        nodata = getattr(suitability, "nodata", -9999.0)
+        stored_rows = []
+
+        for row in data:
+            stored_row = []
+            for value in row:
+                try:
+                    cell_value = float(value)
+                except Exception:
+                    stored_row.append(None)
+                    continue
+
+                if not np.isfinite(cell_value) or cell_value == nodata:
+                    stored_row.append(None)
+                else:
+                    stored_row.append(round(max(0.0, min(1.0, cell_value)), 6))
+
+            stored_rows.append(stored_row)
+
+        return {
+            "data": stored_rows,
+            "nodata": None,
+            "rows": int(data.shape[0]),
+            "cols": int(data.shape[1]),
+        }
+
+    except Exception:
+        return None
+
+
+def _suitability_from_storage(value):
+    """Rebuild a lightweight raster-like object from saved JSON data."""
+    if not isinstance(value, dict):
+        return None
+
+    data = value.get("data")
+    if not isinstance(data, list) or not data:
+        return None
+
+    try:
+        arr = np.asarray(data, dtype=float)
+        if arr.ndim != 2:
+            return None
+
+        nodata_raw = value.get("nodata", None)
+        nodata = float(nodata_raw) if nodata_raw is not None else -9999.0
+
+        return SimpleNamespace(data=arr, nodata=nodata)
+
+    except Exception:
+        return None
+
+
 def _clean_ranked_for_storage(items: list) -> list[dict]:
     clean = []
     for idx, item in enumerate(items or [], start=1):
@@ -1344,6 +1408,15 @@ def _display_from_saved_report(report: dict) -> dict:
     if final_score is not None and not display.get("selected_color"):
         _, selected_color, selected_bg = _selected_site_badge(float(final_score))
 
+    saved_suitability = _suitability_from_storage(
+        display.get("suitability_data")
+        or display.get("heatmap_data")
+        or criteria.get("suitability_data")
+        or criteria.get("heatmap_data")
+        if isinstance(criteria, dict)
+        else None
+    )
+
     return {
         "report_id": report.get("report_id") or "—",
         "run_id": report.get("run_id") or "—",
@@ -1358,6 +1431,7 @@ def _display_from_saved_report(report: dict) -> dict:
         "selected_lon": lon,
         "selected_coords": coords,
         "aoi": _safe_aoi(report.get("aoi") or display.get("aoi")),
+        "suitability": saved_suitability,
         "recommendation": report.get("recommendation") or display.get("recommendation") or _recommendation_text(final_label),
         "report_date": report.get("report_date") or display.get("now") or "—",
         "status_text": display.get("status_text") or "Completed",
@@ -1386,6 +1460,7 @@ def _render_saved_final_report(report: dict) -> None:
     selected_lon = data["selected_lon"]
     selected_coords = data["selected_coords"]
     aoi = data["aoi"]
+    suitability = data.get("suitability")
     factors = list(data["factors"] or [])
     reasons = list(data["reasons"] or [])
 
@@ -1493,7 +1568,16 @@ def _render_saved_final_report(report: dict) -> None:
                 "fillColor": fill_color,
             }
             st.markdown('<div class="fr-map-shell">', unsafe_allow_html=True)
-            components.html(_build_map_html(aoi=aoi, site_info=site_info, height=430), height=432, scrolling=False)
+            components.html(
+                _build_map_html(
+                    aoi=aoi,
+                    site_info=site_info,
+                    suitability=suitability,
+                    height=430,
+                ),
+                height=432,
+                scrolling=False,
+            )
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.markdown(
@@ -1761,6 +1845,8 @@ if pdf_bytes is None:
     st.session_state[pdf_cache_key] = pdf_bytes
 
 _saved_ranked_sites = _clean_ranked_for_storage(global_ranked_sites)
+_suitability_storage = _suitability_to_storage(run.suitability if run else None)
+
 _report_display_data = {
     "report_id": _report_id_for_db,
     "run_id": getattr(run, "runId", None),
@@ -1776,6 +1862,7 @@ _report_display_data = {
     "reasons": reasons,
     "ranked_sites": _saved_ranked_sites,
     "report_text": report_text,
+    "suitability_data": _suitability_storage,
     "display": {
         "location_name": loc.get("location_name") or selected_display_name,
         "selected_display_name": selected_display_name,
@@ -1788,6 +1875,7 @@ _report_display_data = {
         "selected_lon": selected_lon,
         "selected_coords": selected_coords,
         "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
+        "suitability_data": _suitability_storage,
         "recommendation": recommendation,
         "global_rank_text": global_rank_text,
         "now": now,

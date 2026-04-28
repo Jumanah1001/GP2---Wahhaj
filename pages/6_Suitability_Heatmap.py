@@ -1,6 +1,7 @@
 import numpy as np
 import streamlit as st
 from streamlit_folium import st_folium
+from types import SimpleNamespace
 
 from ui_helpers import (
     init_state,
@@ -8,6 +9,7 @@ from ui_helpers import (
     render_bg,
     render_footer,
     render_top_home_button,
+    load_final_report_from_db,
 )
 from Wahhaj.models import Raster
 from Wahhaj.SuitabilityHeatmap import SuitabilityHeatmap
@@ -19,6 +21,119 @@ render_bg()
 
 if not st.session_state.get("logged_in", False):
     st.switch_page("pages/1_Login.py")
+
+
+def _safe_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _safe_aoi(value):
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        try:
+            lon_min, lat_min, lon_max, lat_max = [float(v) for v in value]
+            if lon_min < lon_max and lat_min < lat_max:
+                return (lon_min, lat_min, lon_max, lat_max)
+        except Exception:
+            return None
+    return None
+
+
+def _suitability_from_storage(value):
+    """Rebuild a lightweight raster-like object from saved report heatmap data."""
+    if not isinstance(value, dict):
+        return None
+
+    data = value.get("data")
+    if not isinstance(data, list) or not data:
+        return None
+
+    try:
+        arr = np.asarray(data, dtype=float)
+        if arr.ndim != 2:
+            return None
+
+        nodata_raw = value.get("nodata", None)
+        nodata = float(nodata_raw) if nodata_raw is not None else -9999.0
+
+        return SimpleNamespace(data=arr, nodata=nodata)
+
+    except Exception:
+        return None
+
+
+def _load_saved_heatmap_from_report():
+    """
+    Load a saved heatmap from the report record when the live session raster is gone.
+    This is used when View Heatmap is opened from a saved Final Report.
+    """
+    report_id = st.session_state.get("current_report_id")
+    if not report_id:
+        return None, None, {}, False
+
+    saved_report = st.session_state.get("saved_report_data")
+    if not saved_report or str(saved_report.get("report_id")) != str(report_id):
+        saved_report = load_final_report_from_db(str(report_id))
+        if saved_report:
+            st.session_state["saved_report_data"] = saved_report
+
+    if not saved_report:
+        return None, None, {}, False
+
+    criteria = saved_report.get("criteria_data") or {}
+    display = criteria.get("display") if isinstance(criteria, dict) else {}
+    display = display if isinstance(display, dict) else {}
+
+    suitability_storage = None
+    if isinstance(display, dict):
+        suitability_storage = display.get("suitability_data") or display.get("heatmap_data")
+
+    if suitability_storage is None and isinstance(criteria, dict):
+        suitability_storage = criteria.get("suitability_data") or criteria.get("heatmap_data")
+
+    suitability = _suitability_from_storage(suitability_storage)
+
+    aoi = (
+        _safe_aoi(saved_report.get("aoi"))
+        or _safe_aoi(display.get("aoi"))
+        or _safe_aoi(criteria.get("aoi") if isinstance(criteria, dict) else None)
+    )
+
+    lat = (
+        _safe_float(saved_report.get("lat"))
+        if saved_report.get("lat") is not None
+        else _safe_float(display.get("selected_lat"))
+    )
+    lon = (
+        _safe_float(saved_report.get("lon"))
+        if saved_report.get("lon") is not None
+        else _safe_float(display.get("selected_lon"))
+    )
+
+    location_name = (
+        saved_report.get("location_name")
+        or display.get("location_name")
+        or display.get("selected_display_name")
+        or "Selected Location"
+    )
+
+    selected_location = {
+        "location_name": location_name,
+        "latitude": lat,
+        "longitude": lon,
+    }
+
+    if suitability is not None and aoi is not None:
+        st.session_state["suitability_raster"] = suitability
+        st.session_state["analysis_aoi"] = aoi
+        st.session_state["selected_location"] = selected_location
+
+    return suitability, aoi, selected_location, True
+
 
 st.markdown("""
 <style>
@@ -140,6 +255,20 @@ div[data-testid="stVerticalBlock"] {
     background: #005fe0 !important;
     color: #FFFFFF !important;
 }
+
+.heatmap-feedback {
+    width: min(1280px, 88vw);
+    box-sizing: border-box;
+    border-radius: 14px;
+    padding: 13px 18px;
+    margin: 0 auto 18px auto;
+    font-family: 'Capriola', sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    background: rgba(255,90,90,0.10);
+    border: 1px solid rgba(210,70,70,0.24);
+    color: #b42318;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -158,26 +287,52 @@ suitability_raster = st.session_state.get("suitability_raster")
 analysis_aoi = st.session_state.get("analysis_aoi")
 selected_location = st.session_state.get("selected_location", {})
 
+loaded_from_saved_report = False
+
+if suitability_raster is None or analysis_aoi is None:
+    (
+        saved_suitability_raster,
+        saved_analysis_aoi,
+        saved_selected_location,
+        loaded_from_saved_report,
+    ) = _load_saved_heatmap_from_report()
+
+    if saved_suitability_raster is not None:
+        suitability_raster = saved_suitability_raster
+
+    if saved_analysis_aoi is not None:
+        analysis_aoi = saved_analysis_aoi
+
+    if saved_selected_location:
+        selected_location = saved_selected_location
+
 location_name = selected_location.get("location_name") or "Selected Location"
 selected_lat = selected_location.get("latitude")
 selected_lon = selected_location.get("longitude")
 
 
 if suitability_raster is None:
-    st.error("No real suitability result found. Please choose a location and run the analysis first.")
+    st.markdown(
+        """
+        <div class="heatmap-feedback">
+            No saved suitability heatmap was found for this report. Please run a new analysis and open the Final Report once so the heatmap grid can be stored.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
-    ai_source = st.session_state.get("ai_obstacle_source", "unknown")
 
-    if ai_source != "AIModel":
-        st.warning(
-            f"This heatmap is not fully AI-validated. AI obstacle source: {ai_source}"
-        )
-    else:
-        st.success("This heatmap uses AHP scoring with AI model obstacle validation.")
+if analysis_aoi is None:
+    st.markdown(
+        """
+        <div class="heatmap-feedback">
+            No AOI boundary was found for this heatmap. Please choose a location and run the analysis first.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
-    if analysis_aoi is None:
-        st.error("No AOI found. Please choose a location and run the analysis first.")
-        st.stop()
 
 heatmap = SuitabilityHeatmap(resolution=100.0, color_scale="RdYlGn")
 folium_map = heatmap.create_folium_map(
