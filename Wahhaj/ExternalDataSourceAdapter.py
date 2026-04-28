@@ -70,8 +70,8 @@ class ExternalDataSourceAdapter:
     def _ensure_ee(self) -> bool:
         """
         Try to initialize Google Earth Engine.
-        First tries the user's default EE project.
-        If missing, tries the configured project ID.
+        First tries the configured project ID.
+        If it fails, tries the user's default Earth Engine project.
         """
         if self._ee_ready:
             return True
@@ -87,23 +87,23 @@ class ExternalDataSourceAdapter:
             )
 
             try:
-                ee.Initialize()
+                ee.Initialize(project=project_id)
                 self._ee_ready = True
                 self._last_ee_error = None
                 return True
 
-            except Exception as first_error:
+            except Exception as project_error:
                 try:
-                    ee.Initialize(project=project_id)
+                    ee.Initialize()
                     self._ee_ready = True
                     self._last_ee_error = None
                     return True
 
-                except Exception as second_error:
+                except Exception as default_error:
                     self._ee_ready = False
                     self._last_ee_error = (
-                        f"Default initialize failed: {first_error}. "
-                        f"Project initialize failed with project '{project_id}': {second_error}"
+                        f"Project initialize failed with project '{project_id}': {project_error}. "
+                        f"Default initialize failed: {default_error}"
                     )
                     return False
 
