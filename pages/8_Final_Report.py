@@ -1745,6 +1745,21 @@ pdf_bytes = st.session_state.get(pdf_cache_key)
 # The PDF bytes stored here are reused later; old reports do not regenerate the PDF.
 _report_id_for_db = str(st.session_state.get("current_report_id") or f"report_{getattr(run, 'runId', uuid4().hex)}")
 _pdf_filename = f"wahhaj_report_{str(getattr(run, 'runId', _report_id_for_db))[:8]}.pdf"
+
+if pdf_bytes is None:
+    if _show_initial_loading:
+        _render_final_report_loading(_report_loading_slot, 78, "Generating the report PDF...")
+    pdf_bytes = rpt.build_pdf_bytes(
+        run,
+        ranked,
+        location=loc,
+        suitability=run.suitability if run else None,
+        aoi=aoi if aoi and len(aoi) == 4 else None,
+        selected_site=selected_site,
+        global_ranked_sites=global_ranked_sites,
+    )
+    st.session_state[pdf_cache_key] = pdf_bytes
+
 _saved_ranked_sites = _clean_ranked_for_storage(global_ranked_sites)
 _report_display_data = {
     "report_id": _report_id_for_db,
@@ -1787,8 +1802,11 @@ _report_display_data = {
 
 
 _report_save_key = f"final_report_saved_{_report_id_for_db}"
+_report_pdf_save_key = f"final_report_pdf_saved_{_report_id_for_db}"
 
-if not st.session_state.get(_report_save_key, False):
+if (not st.session_state.get(_report_save_key, False)) or (
+    pdf_bytes is not None and not st.session_state.get(_report_pdf_save_key, False)
+):
     _saved_report_id = save_final_report_to_db(
         {
             "report_id": _report_id_for_db,
@@ -1806,7 +1824,7 @@ if not st.session_state.get(_report_save_key, False):
             "ranked_sites": _saved_ranked_sites,
             "report_date": datetime.now().isoformat(),
         },
-        None,
+        pdf_bytes,
         pdf_filename=_pdf_filename,
         report_id=_report_id_for_db,
     )
@@ -1815,6 +1833,8 @@ if not st.session_state.get(_report_save_key, False):
         st.session_state["current_report_id"] = _saved_report_id
 
     st.session_state[_report_save_key] = True
+    if pdf_bytes is not None:
+        st.session_state[_report_pdf_save_key] = True
 
 
 _report_loading_slot.empty()

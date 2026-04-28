@@ -97,26 +97,59 @@ def _clean_entry(entry: dict, fallback_rank: int) -> dict | None:
     }
 
 
+def _score_band(score: float) -> str:
+    score = _coerce_score(score)
+    if score >= 0.70:
+        return "High"
+    if score >= 0.40:
+        return "Medium"
+    return "Low"
+
+
+def _score_palette(score: float) -> dict:
+    band = _score_band(score)
+
+    if band == "High":
+        return {
+            "band": "High",
+            "solid": "#2f9e44",
+            "soft": "rgba(47, 158, 68, 0.14)",
+            "fill": "rgba(47, 158, 68, 0.20)",
+            "border": "rgba(47, 158, 68, 0.38)",
+            "text": "#166534",
+        }
+
+    if band == "Medium":
+        return {
+            "band": "Medium",
+            "solid": "#f08c00",
+            "soft": "rgba(240, 140, 0, 0.15)",
+            "fill": "rgba(240, 140, 0, 0.20)",
+            "border": "rgba(240, 140, 0, 0.40)",
+            "text": "#92400e",
+        }
+
+    return {
+        "band": "Low",
+        "solid": "#e2534a",
+        "soft": "rgba(226, 83, 74, 0.14)",
+        "fill": "rgba(226, 83, 74, 0.20)",
+        "border": "rgba(226, 83, 74, 0.38)",
+        "text": "#991b1b",
+    }
+
+
 def _label_style(label: str) -> tuple[str, str]:
-    # Ranked cards stay visually uniform; suitability color is already shown on the map.
+    # Kept for compatibility with older card rendering paths.
     return "rgba(255,255,255,0.78)", "#4b5563"
 
 
 def _score_color(score: float) -> str:
-    # Keep card typography consistent instead of colouring each card differently.
-    return "#1b5fcf"
+    return _score_palette(score)["solid"]
 
 
 def _score_fill(score: float) -> str:
-    score = _coerce_score(score)
-    if score >= 0.80:
-        return "rgba(47, 158, 68, 0.18)"
-    if score >= 0.60:
-        return "rgba(240, 173, 0, 0.18)"
-    if score >= 0.40:
-        return "rgba(240, 140, 0, 0.18)"
-    return "rgba(226, 83, 74, 0.18)"
-
+    return _score_palette(score)["fill"]
 
 def _aoi_polygon(aoi):
     lon_min, lat_min, lon_max, lat_max = aoi
@@ -147,6 +180,15 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
             if item.get("lat") is not None and item.get("lon") is not None:
                 bounds.append([item["lat"], item["lon"]])
 
+        palette = _score_palette(item["score"])
+        lat_value = item.get("lat")
+        lon_value = item.get("lon")
+        coords_text = (
+            f"{lat_value:.4f}°N, {lon_value:.4f}°E"
+            if lat_value is not None and lon_value is not None
+            else "—"
+        )
+
         serialised.append(
             {
                 "rank": item["rank"],
@@ -154,12 +196,17 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
                 "score": item["score"],
                 "score_pct": item["score_pct"],
                 "label": item["label"],
+                "band": palette["band"],
                 "analysed_at": item["analysed_at"],
-                "lat": item.get("lat"),
-                "lon": item.get("lon"),
+                "coordinates": coords_text,
+                "lat": lat_value,
+                "lon": lon_value,
                 "polygon": polygon,
-                "stroke": _score_color(item["score"]),
-                "fill": _score_fill(item["score"]),
+                "stroke": palette["solid"],
+                "fill": palette["fill"],
+                "soft": palette["soft"],
+                "border": palette["border"],
+                "text": palette["text"],
             }
         )
 
@@ -190,30 +237,65 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
             background:#edf1f4;
         }}
         .leaflet-control-attribution {{ font-size:10px; }}
-        .wahhaj-popup {{ min-width: 180px; }}
+
+        .ranked-number-marker {{
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            border: 3px solid #ffffff;
+            box-shadow: 0 7px 18px rgba(15,23,42,0.28);
+            font-size: 14px;
+            font-weight: 900;
+            line-height: 1;
+        }}
+
+        .wahhaj-popup {{
+            min-width: 230px;
+        }}
+        .wahhaj-popup .rank-pill {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid;
+            font-size: 11px;
+            font-weight: 800;
+            margin-bottom: 8px;
+        }}
         .wahhaj-popup .name {{
             font-size:15px;
-            font-weight:700;
+            font-weight:800;
             color:#1f2937;
             margin-bottom:6px;
+            line-height: 1.35;
+        }}
+        .wahhaj-popup .score {{
+            font-size:24px;
+            font-weight:900;
+            margin:4px 0 8px;
         }}
         .wahhaj-popup .meta {{
             font-size:12px;
             color:#5b6472;
-            line-height:1.5;
+            line-height:1.55;
+            margin-top: 2px;
         }}
-        .wahhaj-popup .score {{
-            font-size:22px;
-            font-weight:800;
-            margin:4px 0 6px;
+        .wahhaj-popup .meta b {{
+            color:#374151;
         }}
+
         .wahhaj-legend {{
             background: rgba(255,255,255,0.96);
             border-radius: 16px;
             padding: 12px 14px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.12);
             line-height:1.35;
-            min-width: 190px;
+            min-width: 210px;
         }}
         .wahhaj-legend-title {{
             font-size: 13px;
@@ -230,11 +312,17 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
             margin-top:7px;
         }}
         .wahhaj-legend-dot {{
-            width: 11px;
-            height: 11px;
+            width: 18px;
+            height: 18px;
             border-radius: 999px;
-            display:inline-block;
-            border:1px solid rgba(0,0,0,0.16);
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            color:white;
+            font-size:10px;
+            font-weight:900;
+            border:2px solid #fff;
+            box-shadow:0 3px 9px rgba(15,23,42,0.18);
         }}
     </style>
 </head>
@@ -254,13 +342,15 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
         map.fitBounds(bounds.pad(0.18));
 
         rankedSites.forEach((site) => {{
-            const popup = `
-                <div class="wahhaj-popup">
-                    <div class="name">#${{site.rank}} · ${{site.name}}</div>
-                    <div class="score" style="color:${{site.stroke}};">${{site.score_pct}}</div>
-                    <div class="meta">${{site.label}}</div>
-                    <div class="meta">${{site.analysed_at}}</div>
-                </div>`;
+            const popup =
+                '<div class="wahhaj-popup">' +
+                    '<div class="rank-pill" style="background:' + site.soft + ';color:' + site.text + ';border-color:' + site.border + ';">Rank ' + site.rank + ' · ' + site.band + '</div>' +
+                    '<div class="name">' + site.name + '</div>' +
+                    '<div class="score" style="color:' + site.stroke + ';">' + site.score_pct + '</div>' +
+                    '<div class="meta"><b>Suitability:</b> ' + site.label + '</div>' +
+                    '<div class="meta"><b>Coordinates:</b> ' + site.coordinates + '</div>' +
+                    '<div class="meta"><b>Analysed:</b> ' + site.analysed_at + '</div>' +
+                '</div>';
 
             if (site.polygon && site.polygon.length) {{
                 L.polygon(site.polygon, {{
@@ -269,18 +359,22 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
                     opacity: 0.95,
                     dashArray: '6,6',
                     fillColor: site.fill,
-                    fillOpacity: 0.55,
+                    fillOpacity: 0.48,
                 }}).addTo(map).bindPopup(popup);
             }}
 
             if (site.lat !== null && site.lon !== null) {{
-                L.circleMarker([site.lat, site.lon], {{
-                    radius: 7,
-                    color: '#ffffff',
-                    weight: 2,
-                    fillColor: site.stroke,
-                    fillOpacity: 1,
-                }}).addTo(map).bindPopup(popup);
+                const numberedIcon = L.divIcon({{
+                    className: '',
+                    html: '<div class="ranked-number-marker" style="background:' + site.stroke + ';border-color:#ffffff;">' + site.rank + '</div>',
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17],
+                    popupAnchor: [0, -18]
+                }});
+
+                L.marker([site.lat, site.lon], {{ icon: numberedIcon }})
+                    .addTo(map)
+                    .bindPopup(popup);
             }}
         }});
 
@@ -289,10 +383,11 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
             const div = L.DomUtil.create('div', 'wahhaj-legend');
             div.innerHTML = `
                 <div class="wahhaj-legend-title">Suitability Levels</div>
-                <div class="wahhaj-legend-row"><span class="wahhaj-legend-dot" style="background:#2f9e44"></span> High</div>
-                <div class="wahhaj-legend-row"><span class="wahhaj-legend-dot" style="background:#f0ad00"></span> Medium</div>
-                <div class="wahhaj-legend-row"><span class="wahhaj-legend-dot" style="background:#e2534a"></span> Low</div>
-                <div class="wahhaj-legend-row" style="margin-top:10px;color:#667085;">AOI areas show each analysed site coverage.</div>
+                <div class="wahhaj-legend-row"><span class="wahhaj-legend-dot" style="background:#2f9e44">1</span> High suitability</div>
+                <div class="wahhaj-legend-row"><span class="wahhaj-legend-dot" style="background:#f08c00">2</span> Medium suitability</div>
+                <div class="wahhaj-legend-row"><span class="wahhaj-legend-dot" style="background:#e2534a">3</span> Low suitability</div>
+                <div class="wahhaj-legend-row" style="margin-top:10px;color:#667085;">Numbered markers match the ranked list.</div>
+                <div class="wahhaj-legend-row" style="color:#667085;">Click a marker to view site details.</div>
             `;
             return div;
         }};
@@ -301,7 +396,6 @@ def _build_ranked_map_html(entries: list[dict], height: int = 760) -> str:
 </body>
 </html>
 """
-
 
 prepared = get_ranked_history()
 site_count = len(prepared)
@@ -576,8 +670,12 @@ with st.container(key="ranked_shell"):
             )
 
             for idx, item in enumerate(prepared):
-                badge_bg, badge_fg = _label_style(item["label"])
-                score_color = _score_color(item["score"])
+                palette = _score_palette(item["score"])
+                badge_bg = palette["soft"]
+                badge_fg = palette["text"]
+                badge_border = palette["border"]
+                score_color = palette["solid"]
+                band_label = palette["band"]
                 lat_txt = f'{item["lat"]:.4f}°N' if item.get("lat") is not None else '—'
                 lon_txt = f'{item["lon"]:.4f}°E' if item.get("lon") is not None else '—'
 
@@ -585,8 +683,11 @@ with st.container(key="ranked_shell"):
                     st.markdown(
                         f"""
                         <div class="site-rank-row">
-                            <div class="site-rank"><span class="site-rank-number">{item['rank']}</span><span class="site-rank-label">Rank</span></div>
-                            <span class="site-badge" style="background:{badge_bg};color:{badge_fg};">{escape(item['label'])}</span>
+                            <div class="site-rank" style="background:{badge_bg};border-color:{badge_border};color:{badge_fg};">
+                                <span class="site-rank-number" style="background:{score_color};">{item['rank']}</span>
+                                <span class="site-rank-label" style="color:{badge_fg};">Rank</span>
+                            </div>
+                            <span class="site-badge" style="background:{badge_bg};color:{badge_fg};border:1px solid {badge_border};">{escape(band_label)} · {escape(item['label'])}</span>
                         </div>
                         <div class="site-name">{escape(item['location_name'])}</div>
                         <div class="site-score" style="color:{score_color};">{item['score_pct']}</div>
