@@ -719,7 +719,7 @@ class FeatureExtractor:
                     "water_density": water_grid.tolist(),
                     "combined_density": grid.tolist(),
                     "building_threshold": 0.05,
-                    "water_threshold": 0.05,
+                    "water_threshold": 0.20,
                     "vegetation_threshold": 0.25,
                     "meaning": "Values represent maximum AI-excluded class density per cell.",
                 },

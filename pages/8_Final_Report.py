@@ -1545,7 +1545,7 @@ def _render_saved_final_report(report: dict) -> None:
                 use_container_width=True,
             )
         else:
-            st.button("Saved PDF unavailable", disabled=True, use_container_width=True)
+            st.info("No saved PDF is available for this report.")
 
     st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
     btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
@@ -1568,9 +1568,25 @@ def _render_saved_final_report(report: dict) -> None:
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ── loading placeholder shown while heavy report content is prepared ─────────
+# ── initial loading only ────────────────────────────────────────────────────
 _report_loading_slot = st.empty()
-_render_final_report_loading(_report_loading_slot, 46, "Checking saved report data...")
+
+_run_for_loading = st.session_state.get("analysis_run")
+_loading_ref = (
+    getattr(_run_for_loading, "runId", None)
+    or st.session_state.get("current_report_id")
+    or "current"
+)
+_loading_key = f"final_report_initial_loading_done_{_loading_ref}"
+
+_show_initial_loading = not st.session_state.get(_loading_key, False)
+
+if _show_initial_loading:
+    _render_final_report_loading(
+        _report_loading_slot,
+        46,
+        "Opening final report..."
+    )
 
 # ── saved report mode: open real report records from the database ───────────
 _saved_report_id = st.session_state.get("current_report_id")
@@ -1585,7 +1601,6 @@ _saved_report_requested = bool(
 if _saved_report_requested:
     saved_report = st.session_state.get("saved_report_data")
     if not saved_report or str(saved_report.get("report_id")) != str(_saved_report_id):
-        _render_final_report_loading(_report_loading_slot, 68, "Loading saved report and stored PDF...")
         saved_report = load_final_report_from_db(str(_saved_report_id))
 
     if saved_report:
@@ -1621,7 +1636,6 @@ if run is None:
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
-_render_final_report_loading(_report_loading_slot, 58, "Preparing analysed site details...")
 
 from Wahhaj.SiteCandidate import SiteCandidate
 from Wahhaj.report import Report
@@ -1720,18 +1734,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-_render_final_report_loading(_report_loading_slot, 78, "Generating the report PDF...")
 
-pdf_bytes = rpt.build_pdf_bytes(
-    run,
-    ranked,
-    location=loc,
-    suitability=run.suitability if run else None,
-    aoi=aoi if aoi and len(aoi) == 4 else None,
-    selected_site=selected_site,
-    global_ranked_sites=global_ranked_sites,
-)
+
 report_text = rpt._generate_report_content(run, ranked)
+
+pdf_cache_key = f"final_report_pdf_bytes_{getattr(run, 'runId', 'current')}"
+pdf_bytes = st.session_state.get(pdf_cache_key)
 
 # Save this Final Report as a real database record exactly once per run.
 # The PDF bytes stored here are reused later; old reports do not regenerate the PDF.
@@ -1777,34 +1785,42 @@ _report_display_data = {
     },
 }
 
-_render_final_report_loading(_report_loading_slot, 90, "Saving report and PDF file...")
 
-_saved_report_id = save_final_report_to_db(
-    {
-        "report_id": _report_id_for_db,
-        "run_id": getattr(run, "runId", None),
-        "user_email": st.session_state.get("user_email", ""),
-        "location_name": loc.get("location_name") or selected_display_name,
-        "lat": selected_lat,
-        "lon": selected_lon,
-        "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
-        "final_score": float(selected_score) if selected_score is not None else None,
-        "final_label": selected_label,
-        "recommendation": recommendation,
-        "criteria_data": _report_display_data,
-        "factors_data": factors,
-        "ranked_sites": _saved_ranked_sites,
-        "report_date": datetime.now().isoformat(),
-    },
-    pdf_bytes,
-    pdf_filename=_pdf_filename,
-    report_id=_report_id_for_db,
-)
+_report_save_key = f"final_report_saved_{_report_id_for_db}"
 
-if _saved_report_id:
-    st.session_state["current_report_id"] = _saved_report_id
+if not st.session_state.get(_report_save_key, False):
+    _saved_report_id = save_final_report_to_db(
+        {
+            "report_id": _report_id_for_db,
+            "run_id": getattr(run, "runId", None),
+            "user_email": st.session_state.get("user_email", ""),
+            "location_name": loc.get("location_name") or selected_display_name,
+            "lat": selected_lat,
+            "lon": selected_lon,
+            "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
+            "final_score": float(selected_score) if selected_score is not None else None,
+            "final_label": selected_label,
+            "recommendation": recommendation,
+            "criteria_data": _report_display_data,
+            "factors_data": factors,
+            "ranked_sites": _saved_ranked_sites,
+            "report_date": datetime.now().isoformat(),
+        },
+        None,
+        pdf_filename=_pdf_filename,
+        report_id=_report_id_for_db,
+    )
+
+    if _saved_report_id:
+        st.session_state["current_report_id"] = _saved_report_id
+
+    st.session_state[_report_save_key] = True
+
 
 _report_loading_slot.empty()
+
+if _show_initial_loading:
+    st.session_state[_loading_key] = True
 
 st.markdown('<div class="fr-divider-space"></div>', unsafe_allow_html=True)
 
@@ -1947,17 +1963,32 @@ st.markdown(
 
 st.markdown('<div class="fr-center-actions-shell">', unsafe_allow_html=True)
 pdf_sp_left, pdf_col, pdf_sp_right = st.columns([1.75, 2.50, 1.75], gap="small")
+
 with pdf_col:
-    if pdf_bytes:
+    pdf_cache_key = f"final_report_pdf_bytes_{getattr(run, 'runId', 'current')}"
+
+    if st.session_state.get(pdf_cache_key):
         st.download_button(
             "Export PDF",
-            data=pdf_bytes,
+            data=st.session_state[pdf_cache_key],
             file_name=_pdf_filename,
             mime="application/pdf",
             use_container_width=True,
+            key="download_current_report_pdf_btn",
         )
     else:
-        st.button("PDF unavailable", disabled=True, use_container_width=True)
+        if st.button("Generate PDF", use_container_width=True, key="generate_current_report_pdf_btn"):
+            st.session_state[pdf_cache_key] = rpt.build_pdf_bytes(
+                run,
+                ranked,
+                location=loc,
+                suitability=run.suitability if run else None,
+                aoi=aoi if aoi and len(aoi) == 4 else None,
+                selected_site=selected_site,
+                global_ranked_sites=global_ranked_sites,
+            )
+            st.rerun()
+
 st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
 btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
 with btn_left:
