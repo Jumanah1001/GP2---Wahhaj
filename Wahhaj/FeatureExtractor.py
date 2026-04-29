@@ -611,6 +611,7 @@ class FeatureExtractor:
             building_grid = np.zeros((rows, cols), dtype=np.float32)
             vegetation_grid = np.zeros((rows, cols), dtype=np.float32)
             water_grid = np.zeros((rows, cols), dtype=np.float32)
+            bare_land_grid = np.zeros((rows, cols), dtype=np.float32)
             print("OBSTACLE GRID SHAPE =", grid.shape)
             processed_images = 0
             sorted_images = sorted(dataset.images, key=lambda img: img.timestamp)
@@ -647,11 +648,13 @@ class FeatureExtractor:
                 building_mask = (classes == 0).astype(np.float32)
                 vegetation_mask = (classes == 1).astype(np.float32)
                 water_mask = (classes == 2).astype(np.float32)
+                bare_land_mask = (classes == 3).astype(np.float32)
 
                 # Downsample each class separately to the unified analysis grid
                 building_density = self._downsample_mean(building_mask, self.TARGET_SHAPE)
                 vegetation_density = self._downsample_mean(vegetation_mask, self.TARGET_SHAPE)
                 water_density = self._downsample_mean(water_mask, self.TARGET_SHAPE)
+                bare_land_density = self._downsample_mean(bare_land_mask, self.TARGET_SHAPE)
 
                 # A combined density just for general display/debugging
                 excluded_density = np.maximum.reduce([
@@ -663,6 +666,7 @@ class FeatureExtractor:
                 print("BUILDING DENSITY GRID =", building_density)
                 print("VEGETATION DENSITY GRID =", vegetation_density)
                 print("WATER DENSITY GRID =", water_density)
+                print("BARE LAND DENSITY GRID =", bare_land_density)
                 print("EXCLUDED DENSITY GRID =", excluded_density)
 
 
@@ -679,6 +683,7 @@ class FeatureExtractor:
                     building_grid = np.maximum(building_grid, building_density)
                     vegetation_grid = np.maximum(vegetation_grid, vegetation_density)
                     water_grid = np.maximum(water_grid, water_density)
+                    bare_land_grid = np.maximum(bare_land_grid, bare_land_density)
                     grid = np.maximum(grid, excluded_density)
 
                 processed_images += 1
@@ -717,6 +722,7 @@ class FeatureExtractor:
                     "building_density": building_grid.tolist(),
                     "vegetation_density": vegetation_grid.tolist(),
                     "water_density": water_grid.tolist(),
+                    "bare_land_density": bare_land_grid.tolist(),
                     "combined_density": grid.tolist(),
                     "building_threshold": 0.05,
                     "water_threshold": 0.20,

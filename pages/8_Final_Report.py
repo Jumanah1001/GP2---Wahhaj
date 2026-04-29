@@ -446,6 +446,115 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
     line-height: 1.45;
 }
 
+.fr-ai-detail-box {
+    display: grid;
+    gap: 0.42rem;
+    margin-top: 0.72rem;
+}
+
+.fr-ai-detail-row {
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 12px;
+    padding: 0.52rem 0.62rem;
+}
+
+.fr-ai-detail-label {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.66rem;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.16rem;
+}
+
+.fr-ai-detail-value {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.78rem;
+    color: #162033;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.fr-ai-explain {
+    margin-top: 0.7rem;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.74rem;
+    color: #64748B;
+    line-height: 1.55;
+}
+
+.fr-ai-main-message {
+    margin-top: 0.65rem;
+    padding: 0.72rem 0.82rem;
+    border-radius: 13px;
+    background: #FFFFFF;
+    border: 1px solid #D6E3F3;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.84rem;
+    font-weight: 800;
+    color: #1F3864;
+    line-height: 1.5;
+}
+
+.fr-ai-row-note {
+    margin-top: 0.15rem;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.66rem;
+    color: #64748B;
+    line-height: 1.35;
+}
+
+.fr-ai-status-pill {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 0.32rem 0.62rem;
+    border-radius: 999px;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: 0.55rem;
+}
+
+.fr-ai-detail-box {
+    display: grid;
+    gap: 0.42rem;
+    margin-top: 0.72rem;
+}
+
+.fr-ai-detail-row {
+    background: #F8FBFF;
+    border: 1px solid #E5EEF8;
+    border-radius: 12px;
+    padding: 0.52rem 0.62rem;
+}
+
+.fr-ai-detail-label {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.66rem;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.16rem;
+}
+
+.fr-ai-detail-value {
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.78rem;
+    color: #162033;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.fr-ai-explain {
+    margin-top: 0.7rem;
+    font-family: 'Capriola', sans-serif;
+    font-size: 0.74rem;
+    color: #64748B;
+    line-height: 1.55;
+}
+
 .fr-ai-shell {
     min-height: 548px;
     display: flex;
@@ -1442,6 +1551,84 @@ def _reason_list_html(reasons: list[dict]) -> str:
     return '<div class="fr-list">' + "".join(rows) + "</div>"
 
 
+
+def _ai_details_html(ai_details: dict) -> str:
+    if not ai_details:
+        return """
+        <div class="fr-ai-explain">
+            Detailed AI class breakdown is not available for this report.
+        </div>
+        """
+
+    def val(key, default=0):
+        return ai_details.get(key, default)
+
+    main_message = ai_details.get(
+        "main_message",
+        "AI screening result is available for the selected area."
+    )
+    supporting_message = ai_details.get(
+        "supporting_message",
+        "The AI model was used to screen land-cover obstacles before AHP scoring."
+    )
+
+    total_cells = int(val("total_cells", 0))
+    valid_cells = int(val("valid_cells", 0))
+    total_excluded = int(val("total_excluded_cells", 0))
+
+    valid_pct = float(val("valid_pct", 0.0))
+    excluded_pct = float(val("excluded_pct", 0.0))
+    building_pct = float(val("building_pct", 0.0))
+    water_pct = float(val("water_pct", 0.0))
+    vegetation_pct = float(val("vegetation_pct", 0.0))
+    bare_land_pct = float(val("bare_land_pct", 0.0))
+
+    building_cells = int(val("building_cells", 0))
+    water_cells = int(val("water_cells", 0))
+    vegetation_cells = int(val("vegetation_cells", 0))
+    bare_land_cells = int(val("bare_land_cells", 0))
+
+    detected = ai_details.get("detected_classes") or []
+    detected_text = ", ".join(detected) if detected else "No major excluded land-cover class detected"
+
+    selected_cell = ai_details.get("selected_cell") or {}
+    selected_is_excluded = bool(selected_cell.get("is_excluded", False))
+    blocking = selected_cell.get("blocking_classes") or []
+
+    if selected_is_excluded and blocking:
+        selected_text = "Selected cell rejected due to " + ", ".join(blocking)
+    elif selected_cell.get("bare_land_density_pct", 0) > 25:
+        selected_text = "Selected cell accepted as mostly bare land"
+    else:
+        selected_text = "Selected cell accepted; no excluded class exceeded the threshold"
+
+    def row(label, value, note=None):
+        note_html = f"<div class='fr-ai-row-note'>{escape(str(note))}</div>" if note else ""
+        return (
+            "<div class='fr-ai-detail-row'>"
+            f"<div class='fr-ai-detail-label'>{escape(str(label))}</div>"
+            f"<div class='fr-ai-detail-value'>{escape(str(value))}</div>"
+            f"{note_html}"
+            "</div>"
+        )
+
+    return f"""
+    <div class="fr-ai-main-message">
+        {escape(main_message)}
+    </div>
+
+    <div class="fr-ai-explain">
+        {escape(supporting_message)}
+    </div>
+
+    <div class="fr-ai-detail-box">
+        {row("Detected in image", detected_text)}
+        {row("Valid area", f"{valid_pct:.1f}% ({valid_cells} / {total_cells} cells)", "Cells kept for suitability evaluation.")}
+        {row("Rejected area", f"{excluded_pct:.1f}% ({total_excluded} / {total_cells} cells)", "Cells removed by AI before AHP scoring.")}
+    </div>
+    """
+
+
 def _weight_panel_html(factors: list[dict]) -> str:
     if not factors:
         return '<div class="fr-mini-note" style="margin-top:0;">No factor contribution data available.</div>'
@@ -1682,6 +1869,7 @@ def _display_from_saved_report(report: dict) -> dict:
         "duration_text": display.get("duration_text") or "—",
         "image_name": display.get("image_name") or "Uploaded image",
         "ai_assessment": display.get("ai_assessment") or "Pending AI model result",
+        "ai_details": display.get("ai_details") or {},
         "reasons": display.get("reasons") or [],
         "factors": report.get("factors_data") or display.get("factors") or [],
         "ranked_sites": report.get("ranked_sites") or [],
@@ -1707,6 +1895,7 @@ def _render_saved_final_report(report: dict) -> None:
     suitability = data.get("suitability")
     factors = list(data["factors"] or [])
     reasons = list(data["reasons"] or [])
+    ai_details = data.get("ai_details") or {}
 
     if not factors:
         factors = [
@@ -1725,17 +1914,13 @@ def _render_saved_final_report(report: dict) -> None:
 
     st.markdown(
         f"""
-<div class="fr-header-shell">
-  <div class="fr-header">
-    <div class="fr-title">Final Site Suitability Report</div>
-    <div class="fr-subtitle">Saved report page loaded from the system database with its stored PDF file.</div>
-    <div class="fr-chip-row">
-      <span class="fr-chip">{ICON_PIN}<span>{_safe_html(data.get('location_name') or selected_display_name)}</span></span>
-      <span class="fr-chip">{ICON_CLOCK}<span>{escape(now)}</span></span>
-      <span class="fr-chip">{ICON_HASH}<span>Report {escape(report_id_short)}</span></span>
-      <span class="fr-chip">{ICON_HASH}<span>Run {escape(run_id_short)}</span></span>
+<div class="fr-card fr-ai-shell">
+    <div class="fr-card-title">AI Assessment</div>
+    <div class="fr-ai-hero">
+        <div class="fr-ai-label">AI image assessment</div>
+        <div class="fr-ai-value">{_safe_html(data['ai_assessment'])}</div>
+        {_ai_details_html(ai_details)}
     </div>
-  </div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -1843,11 +2028,10 @@ def _render_saved_final_report(report: dict) -> None:
                 <div class="fr-card-title">AI Assessment</div>
                 <div class="fr-ai-hero">
                     <div class="fr-ai-label">AI image assessment</div>
-                    <div class="fr-ai-value">{_safe_html(data['ai_assessment'])}</div>
-                    <div class="fr-ai-note">This saved assessment is loaded from the stored report record.</div>
+                    <div class="fr-ai-value">{_safe_html(ai_assessment)}</div>
+                    {_ai_details_html(ai_details)}
                 </div>
-                <div class="fr-card-title compact">Key Drivers Behind This Score</div>
-                {_reason_list_html(reasons)}
+
             </div>
             """,
             unsafe_allow_html=True,
@@ -2034,6 +2218,7 @@ duration_text = f"{summary.get('durationSec', '—')} sec"
 status_text = _safe_text(summary.get("status"), "Completed")
 image_name = _safe_text(selected_site.get("image_name"), "Uploaded image")
 ai_assessment = _safe_text(selected_site.get("ai_assessment"), "Pending AI model result")
+ai_details = selected_site.get("ai_details") or {}
 recommendation = _recommendation_text(selected_label)
 factors = list(selected_site.get("factors") or [])
 reasons = list(selected_site.get("reasons") or [])
@@ -2122,6 +2307,7 @@ _report_display_data = {
         "status_text": status_text,
         "image_name": image_name,
         "ai_assessment": ai_assessment,
+        "ai_details": ai_details,
         "factors": factors,
         "factor_breakdown_note": selected_site.get("factor_breakdown_note"),
         "reasons": reasons,
@@ -2286,10 +2472,9 @@ with right_col:
             <div class="fr-ai-hero">
                 <div class="fr-ai-label">AI image assessment</div>
                 <div class="fr-ai-value">{_safe_html(ai_assessment)}</div>
-                <div class="fr-ai-note">This result is shown here deliberately as a primary decision cue, not as a secondary footer item.</div>
+                {_ai_details_html(ai_details)}
             </div>
-            <div class="fr-card-title compact">Key Drivers Behind This Score</div>
-            {_reason_list_html(reasons)}
+
         </div>
         """,
         unsafe_allow_html=True,

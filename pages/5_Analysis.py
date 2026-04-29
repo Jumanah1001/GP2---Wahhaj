@@ -30,6 +30,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from html import escape
+import numpy as np
 
 import streamlit as st
 from ui_helpers import (
@@ -357,30 +358,211 @@ def _find_existing_page(candidates=None, contains=None):
 
     return None
 
+def _get_ai_image_details(feature_extractor, row, col):
+    def empty_details(summary="Pending AI model result", status="Pending"):
+        return {
+            "summary": summary,
+            "status": status,
+            "detected_classes": [],
+            "main_message": summary,
+            "supporting_message": "Detailed AI class breakdown is not available for this report.",
+            "building_cells": 0,
+            "water_cells": 0,
+            "vegetation_cells": 0,
+            "bare_land_cells": 0,
+            "total_excluded_cells": 0,
+            "valid_cells": 0,
+            "total_cells": 0,
+            "valid_pct": 0.0,
+            "excluded_pct": 0.0,
+            "building_pct": 0.0,
+            "water_pct": 0.0,
+            "vegetation_pct": 0.0,
+            "bare_land_pct": 0.0,
+            "main_obstacle": "none",
+            "selected_cell": {},
+        }
 
-def _get_ai_image_assessment(feature_extractor, row, col):
     if not feature_extractor or not getattr(feature_extractor, "layers", None):
-        return "Pending AI model result"
+        return empty_details()
 
     obstacle = feature_extractor.layers.get("obstacle")
     if obstacle is None:
-        return "Pending AI model result"
+        return empty_details()
 
     meta = obstacle.metadata or {}
+
     if str(meta.get("source", "")).lower() != "aimodel":
-        return "AI model unavailable - site not validated"
+        return empty_details(
+            summary="AI model unavailable - site not validated",
+            status="Unavailable",
+        )
 
-    obstacle_density = float(obstacle.data[row, col])
+    obstacle_density = obstacle.data.astype(np.float32)
+    valid = obstacle_density != obstacle.nodata
 
-    if obstacle_density == obstacle.nodata:
-        return "Pending AI model result"
+    building_density = np.array(
+        meta.get("building_density", np.zeros_like(obstacle_density)),
+        dtype=np.float32,
+    )
+    vegetation_density = np.array(
+        meta.get("vegetation_density", np.zeros_like(obstacle_density)),
+        dtype=np.float32,
+    )
+    water_density = np.array(
+        meta.get("water_density", np.zeros_like(obstacle_density)),
+        dtype=np.float32,
+    )
+    bare_land_density = np.array(
+    meta.get("bare_land_density", np.zeros_like(obstacle_density)),
+    dtype=np.float32,
+    )
 
-    obstacle_density = max(0.0, min(1.0, obstacle_density))
+    building_threshold = float(meta.get("building_threshold", 0.05))
+    water_threshold = float(meta.get("water_threshold", 0.05))
+    vegetation_threshold = float(meta.get("vegetation_threshold", 0.25))
 
-    if obstacle_density > 0.01:
-        return "Excluded by AI: building, vegetation, or water detected"
+    building_exclusion = valid & (building_density > building_threshold)
+    water_exclusion = valid & (water_density > water_threshold)
+    vegetation_exclusion = valid & (vegetation_density > vegetation_threshold)
 
-    return "AI Validated: open bare-land conditions"
+    hard_exclusion = building_exclusion | water_exclusion | vegetation_exclusion
+
+    total_cells = int(valid.sum())
+    total_excluded_cells = int(hard_exclusion.sum())
+    valid_cells = max(total_cells - total_excluded_cells, 0)
+
+    building_cells = int(building_exclusion.sum())
+    water_cells = int(water_exclusion.sum())
+    vegetation_cells = int(vegetation_exclusion.sum())
+
+    # Bare land is counted when class 3 covers a meaningful part of the cell.
+    bare_land_mask = (bare_land_density > 0.25) & valid
+    bare_land_cells = int(bare_land_mask.sum())
+
+    def pct(value):
+        return round((float(value) / total_cells) * 100.0, 1) if total_cells else 0.0
+
+    valid_pct = pct(valid_cells)
+    excluded_pct = pct(total_excluded_cells)
+    building_pct = pct(building_cells)
+    water_pct = pct(water_cells)
+    vegetation_pct = pct(vegetation_cells)
+    bare_land_pct = pct(bare_land_cells)
+    print("AI DETAILS BARE LAND CELLS =", bare_land_cells)
+    print("AI DETAILS BARE LAND PCT =", bare_land_pct)
+
+    detected_classes = []
+    if building_cells > 0:
+        detected_classes.append("buildings")
+    if water_cells > 0:
+        detected_classes.append("water")
+    if vegetation_cells > 0:
+        detected_classes.append("vegetation")
+    if bare_land_cells > 0:
+        detected_classes.append("bare land")
+
+    obstacle_counts = {
+        "buildings": building_cells,
+        "water": water_cells,
+        "vegetation": vegetation_cells,
+    }
+    main_obstacle = max(obstacle_counts, key=obstacle_counts.get)
+    if obstacle_counts[main_obstacle] == 0:
+        main_obstacle = "none"
+
+    obstacle_parts = []
+    if vegetation_cells > 0:
+        obstacle_parts.append(f"vegetation ({vegetation_pct:.1f}%)")
+    if water_cells > 0:
+        obstacle_parts.append(f"water ({water_pct:.1f}%)")
+    if building_cells > 0:
+        obstacle_parts.append(f"buildings ({building_pct:.1f}%)")
+
+    if obstacle_parts:
+        obstacle_text = ", ".join(obstacle_parts)
+    else:
+        obstacle_text = "no major excluded obstacles"
+
+    selected_building = float(building_density[row, col])
+    selected_water = float(water_density[row, col])
+    selected_vegetation = float(vegetation_density[row, col])
+    selected_bare_land = float(bare_land_density[row, col])
+    selected_obstacle = float(obstacle_density[row, col])
+
+    selected_blocking = []
+    if selected_building > building_threshold:
+        selected_blocking.append("buildings")
+    if selected_water > water_threshold:
+        selected_blocking.append("water")
+    if selected_vegetation > vegetation_threshold:
+        selected_blocking.append("vegetation")
+
+    selected_is_excluded = len(selected_blocking) > 0
+
+    if total_excluded_cells > 0:
+        summary = f"AI screening result: {valid_pct:.1f}% valid, {excluded_pct:.1f}% rejected."
+        main_message = (
+            f"AI screening result: {valid_pct:.1f}% of the selected area remains valid "
+            f"for suitability evaluation, while {excluded_pct:.1f}% was rejected mainly "
+            f"because of {main_obstacle if main_obstacle != 'none' else 'detected obstacles'}."
+        )
+        supporting_message = (
+            f"The AI model detected {obstacle_text}. Rejected cells are removed before "
+            f"AHP scoring, so good climate or terrain conditions cannot override unsuitable "
+            f"land-cover areas."
+        )
+        status = "Excluded" if selected_is_excluded else "Partially Valid"
+    else:
+        summary = "AI screening result: selected area is valid for suitability evaluation."
+        main_message = (
+            f"AI screening result: {valid_pct:.1f}% of the selected area remains valid "
+            "for suitability evaluation."
+        )
+        supporting_message = (
+            "The AI model did not detect excluded land-cover obstacles above the rejection "
+            "thresholds. The area can continue to AHP-based suitability scoring."
+        )
+        status = "Passed"
+
+    if selected_is_excluded:
+        summary = "Excluded by AI: " + ", ".join(selected_blocking) + " detected in the selected cell"
+    else:
+        if selected_bare_land > 0.25:
+            summary = "AI validated: selected cell contains open bare-land conditions"
+        else:
+            summary = "AI validated: selected cell has no excluded obstacle above threshold"
+
+    return {
+        "summary": summary,
+        "status": status,
+        "detected_classes": detected_classes,
+        "main_message": main_message,
+        "supporting_message": supporting_message,
+        "building_cells": building_cells,
+        "water_cells": water_cells,
+        "vegetation_cells": vegetation_cells,
+        "bare_land_cells": bare_land_cells,
+        "total_excluded_cells": total_excluded_cells,
+        "valid_cells": valid_cells,
+        "total_cells": total_cells,
+        "valid_pct": valid_pct,
+        "excluded_pct": excluded_pct,
+        "building_pct": building_pct,
+        "water_pct": water_pct,
+        "vegetation_pct": vegetation_pct,
+        "bare_land_pct": bare_land_pct,
+        "main_obstacle": main_obstacle,
+        "selected_cell": {
+            "building_density_pct": round(selected_building * 100, 1),
+            "water_density_pct": round(selected_water * 100, 1),
+            "vegetation_density_pct": round(selected_vegetation * 100, 1),
+            "bare_land_density_pct": round(selected_bare_land * 100, 1),
+            "obstacle_density_pct": round(selected_obstacle * 100, 1),
+            "is_excluded": selected_is_excluded,
+            "blocking_classes": selected_blocking,
+        },
+    }
 
 
 def _save_selected_site_analysis(
@@ -396,6 +578,7 @@ def _save_selected_site_analysis(
     reason_items,
     run_id=None,
     analysis_id=None,
+    ai_details=None,
 ):
     st.session_state["selected_site_analysis"] = {
         "site_display_name": site_display_name,
@@ -409,6 +592,7 @@ def _save_selected_site_analysis(
         "run_id": run_id,
         "analysis_id": analysis_id,
         "ai_assessment": ai_assessment,
+        "ai_details": ai_details or {},
         "analysed_at": datetime.now().isoformat(),
         "reasons": [
             {
@@ -993,7 +1177,8 @@ with card_col:
 
             if feature_extractor and getattr(feature_extractor, "layers", None):
                 factor_items = _build_selected_site_breakdown(feature_extractor, row, col)
-                ai_assessment = _get_ai_image_assessment(feature_extractor, row, col)
+                ai_details = _get_ai_image_details(feature_extractor, row, col)
+                ai_assessment = ai_details["summary"]
 
                 # If AI excluded the selected cell, the decision should be explained
                 # as an AI exclusion decision, not as a normal AHP weighted decision.
@@ -1022,6 +1207,7 @@ with card_col:
                 reason_items=reason_items,
                 run_id=getattr(run, "runId", None),
                 analysis_id=(st.session_state.get("analysis_ref") or {}).get("analysis_id"),
+                ai_details=ai_details,
             )
 
         _render_page_heading(
