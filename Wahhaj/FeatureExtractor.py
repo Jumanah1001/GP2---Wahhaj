@@ -175,7 +175,7 @@ class FeatureExtractor:
         Called automatically by normalizeData() before scaling.
         """
         if not self.layers:
-            return  # nothing loaded yet — not an error
+            return
 
         expected_shape = self.TARGET_SHAPE
         mismatches = []
@@ -207,16 +207,13 @@ class FeatureExtractor:
         Fill missing / nodata cells in every layer with that layer's valid mean.
 
         A cell is considered missing if it equals raster.nodata (-9999.0)
-        OR if it is a NaN (which can arrive from API responses).
+        OR if it is a NaN.
 
         Strategy
         --------
-        - Compute the mean of all valid (non-nodata, non-NaN) cells.
+        - Compute the mean of all valid cells.
         - Replace every missing cell with that mean.
-        - If a layer has NO valid cells at all, fill with 0.0 and log a
-          warning so the team knows the layer is unusable.
-
-        Called automatically by normalizeData() before min-max scaling.
+        - If a layer has NO valid cells at all, fill with 0.0.
         """
         for name, raster in self.layers.items():
             data = raster.data.astype(np.float32)
@@ -226,7 +223,6 @@ class FeatureExtractor:
             missing_mask = nodata_mask | nan_mask
 
             if not missing_mask.any():
-                # Layer is already clean — nothing to do
                 continue
 
             n_missing = int(missing_mask.sum())
@@ -240,7 +236,6 @@ class FeatureExtractor:
                     name, n_missing, fill_value,
                 )
             else:
-                # Entire layer is nodata — safe fallback is 0.0
                 fill_value = 0.0
                 logger.warning(
                     "handle_missing_values: layer '%s' has NO valid cells. "
@@ -257,17 +252,11 @@ class FeatureExtractor:
         Validate shapes, fill missing values, then normalize all layers
         to the range [0.0, 1.0].
 
-        Steps
-        -----
-        1. validate_shapes()       — all layers must be (5, 5).
-        2. handle_missing_values() — replace nodata / NaN with layer mean.
-        3. Min-max normalization   — scale valid cells to [0.0, 1.0].
-           • If all valid values are identical, they are set to 0.0
-             so AHP does not break on a constant layer.
-
-        Returns
-        -------
-        FeatureExtractor — self, for method chaining.
+        IMPORTANT FIX:
+        If GHI or Sunshine Hours are constant across the AOI, do not set them
+        to 0.0. These layers can naturally be almost uniform over a small AOI,
+        but their raw values may still be strong. In that case, convert the raw
+        constant value to a suitability score using fixed practical ranges.
         """
         # ── Step 1: shape validation ──────────────────────────
         self.validate_shapes()
@@ -277,7 +266,8 @@ class FeatureExtractor:
 
         # ── Step 3: per-layer min-max normalization ───────────
         for name, raster in self.layers.items():
-                        # IMPORTANT:
+
+            # IMPORTANT:
             # The obstacle layer already represents AI-detected exclusion density:
             # 0.0 = clean / bare / acceptable
             # 1.0 = fully blocked by building, vegetation, or water
@@ -304,13 +294,9 @@ class FeatureExtractor:
                 logger.debug("normalizeData: obstacle layer kept as AI exclusion density [0, 1]")
                 continue
 
-            # After handle_missing_values, nodata cells have been filled,
-            # so valid_mask now covers the whole array.
-            # We keep the nodata check here as a safety net.
             valid_mask = raster.data != raster.nodata
 
             if not valid_mask.any():
-                # Completely empty layer — skip (already warned above)
                 continue
 
             mn = float(raster.data[valid_mask].min())
@@ -320,10 +306,51 @@ class FeatureExtractor:
                 raster.data[valid_mask] = (
                     (raster.data[valid_mask] - mn) / (mx - mn)
                 ).astype(np.float32)
+
             else:
-                # All valid values are the same — set to 0.0
-                # so AHP weighted sum stays defined.
-                raster.data[valid_mask] = 0.0
+                # ─────────────────────────────────────────────
+                # FIX ONLY FOR CONSTANT SOLAR API LAYERS
+                # ─────────────────────────────────────────────
+                # Old behavior:
+                #   constant layer -> 0.0
+                #
+                # Problem:
+                #   GHI and Sunshine can be constant over a small AOI,
+                #   but still represent good solar conditions.
+                #   Setting them to 0.0 makes Solar Radiation and
+                #   Sunlight Hours appear as 0.0% contribution.
+                #
+                # This keeps the old behavior for slope, lst, elevation,
+                # and every other layer.
+                # ─────────────────────────────────────────────
+
+                if name == "ghi":
+                    # Expected raw unit: MJ/m²/day
+                    # 12 = weak, 24 = excellent
+                    lo, hi = 12.0, 24.0
+                    fallback_score = float(np.clip((mn - lo) / (hi - lo), 0.0, 1.0))
+                    raster.data[valid_mask] = fallback_score
+
+                    logger.debug(
+                        "normalizeData: constant GHI layer %.4f converted to fallback score %.4f",
+                        mn, fallback_score,
+                    )
+
+                elif name == "sunshine":
+                    # Expected raw unit: hours/day
+                    # 5 = weak, 12 = excellent
+                    lo, hi = 5.0, 12.0
+                    fallback_score = float(np.clip((mn - lo) / (hi - lo), 0.0, 1.0))
+                    raster.data[valid_mask] = fallback_score
+
+                    logger.debug(
+                        "normalizeData: constant sunshine layer %.4f converted to fallback score %.4f",
+                        mn, fallback_score,
+                    )
+
+                else:
+                    # Original behavior stays exactly the same for all other layers
+                    raster.data[valid_mask] = 0.0
 
             raster.metadata = {
                 **(raster.metadata or {}),
@@ -430,7 +457,7 @@ class FeatureExtractor:
                 result[r, c] = float(valid.mean())
 
         return result
-    
+
     def _classify_satellite_with_tiles(
         self,
         ai_model,
@@ -440,65 +467,68 @@ class FeatureExtractor:
     ) -> Raster:
         """
         Classify a satellite image using tiled inference.
-        Why:
-        Satellite screenshots can make buildings, trees, and water appear small.
-        Running YOLO on smaller overlapping tiles acts like a visual zoom,
-        increasing the chance of detecting small obstacles.
+
         Output:
-        A full-size class raster with the same meaning as AIModel.classifyArea:
-            -1 = background / no detection
-            0 = building
-            1 = vegetation
-            2 = water
-            3 = bare_land
+        -1 = background / no detection
+         0 = building
+         1 = vegetation
+         2 = water
+         3 = bare_land
         """
         import os
         import tempfile
         import numpy as np
         from PIL import Image
+
         image = Image.open(image_path).convert("RGB")
         width, height = image.size
-        # Full class map initialized as no detection.
+
         full_classes = np.full((height, width), -1, dtype=np.int32)
+
         tile_w = int(width / tile_grid)
         tile_h = int(height / tile_grid)
+
         step_x = max(1, int(tile_w * (1.0 - overlap)))
         step_y = max(1, int(tile_h * (1.0 - overlap)))
+
         y_positions = list(range(0, max(height - tile_h + 1, 1), step_y))
         x_positions = list(range(0, max(width - tile_w + 1, 1), step_x))
-        # Ensure last row/column are covered.
+
         if y_positions[-1] != height - tile_h:
             y_positions.append(max(height - tile_h, 0))
         if x_positions[-1] != width - tile_w:
             x_positions.append(max(width - tile_w, 0))
-        # Priority rule:
-        # excluded classes are more important than bare land.
-        # building/water/vegetation should not be overwritten by bare_land.
+
         excluded_classes = {0, 1, 2}
+
         with tempfile.TemporaryDirectory() as tmpdir:
             for y0 in y_positions:
                 for x0 in x_positions:
                     x1 = min(x0 + tile_w, width)
                     y1 = min(y0 + tile_h, height)
+
                     tile = image.crop((x0, y0, x1, y1))
                     tile_path = os.path.join(tmpdir, f"tile_{y0}_{x0}.png")
                     tile.save(tile_path)
+
                     tile_raster = ai_model.classifyArea(tile_path)
                     tile_classes = tile_raster.data.astype(np.int32)
-                    # Resize class raster back to tile size if needed.
+
                     if tile_classes.shape != (y1 - y0, x1 - x0):
                         tile_img = Image.fromarray(tile_classes.astype(np.int16))
                         tile_img = tile_img.resize((x1 - x0, y1 - y0), resample=Image.NEAREST)
                         tile_classes = np.array(tile_img).astype(np.int32)
+
                     current = full_classes[y0:y1, x0:x1]
-                    # Where tile detects excluded classes, always keep them.
+
                     tile_excluded = np.isin(tile_classes, list(excluded_classes))
-                    # Where current is empty and tile has any valid class, fill it.
                     current_empty = current == -1
                     tile_valid = tile_classes != -1
+
                     update_mask = tile_excluded | (current_empty & tile_valid)
                     current[update_mask] = tile_classes[update_mask]
                     full_classes[y0:y1, x0:x1] = current
+
         return Raster(
             data=full_classes.astype(np.float32),
             nodata=-1.0,
@@ -510,7 +540,7 @@ class FeatureExtractor:
                 "meaning": "Tiled satellite classification result before obstacle-density conversion.",
             },
         )
-   
+
     def _estimate_tile_grid_from_aoi(self, aoi, target_tile_m: float = 307.0) -> int:
         """
         Estimate tile_grid dynamically based on AOI ground size.
@@ -538,33 +568,34 @@ class FeatureExtractor:
 
         tile_grid = math.ceil(max_side_m / target_tile_m)
 
-        # Keep it practical for Streamlit and YOLO inference
         tile_grid = max(1, min(tile_grid, 4))
 
         print("AOI WIDTH M =", width_m)
         print("AOI HEIGHT M =", height_m)
         print("AUTO TILE GRID =", tile_grid)
 
-        return tile_grid    
-
+        return tile_grid
 
     def _get_obstacle_layer(self, dataset) -> Raster:
         """
         Runs the AI model first and creates an exclusion-density layer.
+
         Meaning of the returned obstacle raster:
             0.0 = no excluded class detected in this cell
             1.0 = fully covered by excluded classes
+
         Excluded classes:
             0 = building
             1 = vegetation
             2 = water
-        Bare land / background is treated as acceptable unless the model
-        explicitly detects one of the excluded classes.
         """
         import numpy as np
         import os
+
         rows, cols = self.TARGET_SHAPE
+
         print("TARGET_SHAPE USED =", self.TARGET_SHAPE)
+
         _candidate_paths = [
             "weights/best.pt",
             os.path.abspath(
@@ -576,17 +607,20 @@ class FeatureExtractor:
                 )
             ),
         ]
+
         MODEL_PATH = next((p for p in _candidate_paths if os.path.exists(p)), None)
+
         print("MODEL_PATH =", MODEL_PATH)
         print("MODEL_EXISTS =", os.path.exists(MODEL_PATH) if MODEL_PATH else False)
         print("IMAGES =", [getattr(img, "filePath", None) for img in dataset.images])
+
         if not dataset.images or MODEL_PATH is None:
             reason = "no images" if not dataset.images else "model weights not found"
+
             logger.warning("_get_obstacle_layer: using synthetic layer (%s)", reason)
-            # Important:
-            # If AI is missing, do not pretend the site is AI-validated.
-            # Use high obstacle values so the AHP result cannot become green.
+
             data = np.full((rows, cols), 1.0, dtype=np.float32)
+
             return Raster(
                 data=data,
                 nodata=-9999.0,
@@ -602,20 +636,25 @@ class FeatureExtractor:
                     },
                 },
             )
+
         try:
             from Wahhaj.AIModel import AIModel
+
             ai_model = AIModel(modelPath=MODEL_PATH)
-            # This grid stores excluded-class density per heatmap cell.
-            # Higher value = worse suitability.
+
             grid = np.zeros((rows, cols), dtype=np.float32)
             building_grid = np.zeros((rows, cols), dtype=np.float32)
             vegetation_grid = np.zeros((rows, cols), dtype=np.float32)
             water_grid = np.zeros((rows, cols), dtype=np.float32)
+
             print("OBSTACLE GRID SHAPE =", grid.shape)
+
             processed_images = 0
             sorted_images = sorted(dataset.images, key=lambda img: img.timestamp)
+
             for img in sorted_images:
                 file_path = img.filePath
+
                 if not os.path.exists(file_path):
                     alts = [
                         file_path,
@@ -624,6 +663,7 @@ class FeatureExtractor:
                         os.path.join("uploads", os.path.basename(file_path)),
                     ]
                     file_path = next((p for p in alts if os.path.exists(p)), None)
+
                 if file_path is None:
                     logger.warning("_get_obstacle_layer: skipping missing image file")
                     continue
@@ -631,7 +671,7 @@ class FeatureExtractor:
                 tile_grid = self._estimate_tile_grid_from_aoi(
                     dataset.aoi,
                     target_tile_m=307.0,
-                )            
+                )
 
                 class_raster = self._classify_satellite_with_tiles(
                     ai_model=ai_model,
@@ -640,20 +680,16 @@ class FeatureExtractor:
                     overlap=0.20,
                 )
 
-
                 classes = class_raster.data.astype(np.int32)
 
-                # Per-class full-resolution masks
                 building_mask = (classes == 0).astype(np.float32)
                 vegetation_mask = (classes == 1).astype(np.float32)
                 water_mask = (classes == 2).astype(np.float32)
 
-                # Downsample each class separately to the unified analysis grid
                 building_density = self._downsample_mean(building_mask, self.TARGET_SHAPE)
                 vegetation_density = self._downsample_mean(vegetation_mask, self.TARGET_SHAPE)
                 water_density = self._downsample_mean(water_mask, self.TARGET_SHAPE)
 
-                # A combined density just for general display/debugging
                 excluded_density = np.maximum.reduce([
                     building_density,
                     vegetation_density,
@@ -665,11 +701,9 @@ class FeatureExtractor:
                 print("WATER DENSITY GRID =", water_density)
                 print("EXCLUDED DENSITY GRID =", excluded_density)
 
-
                 print("AI MODEL CLASS NAMES =", getattr(getattr(ai_model, "model", None), "names", None))
                 print("AI UNIQUE CLASSES =", np.unique(class_raster.data))
 
-                # Keep the worst density per class across all images
                 if processed_images == 0:
                     building_grid = building_density
                     vegetation_grid = vegetation_density
@@ -685,6 +719,7 @@ class FeatureExtractor:
 
             if processed_images == 0:
                 reason = "image files not found"
+
                 logger.warning("_get_obstacle_layer: using synthetic layer (%s)", reason)
 
                 data = np.full((rows, cols), 1.0, dtype=np.float32)
