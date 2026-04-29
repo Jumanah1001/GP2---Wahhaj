@@ -276,6 +276,155 @@ def _build_selected_site_breakdown(feature_extractor, row, col):
     return items
 
 
+
+
+def _get_ai_valid_area_mask(feature_extractor, shape):
+    """
+    Return the cells that remain valid after AI land-cover screening.
+
+    Root fix:
+    The old page used only the marker cell for the overall score. If the marker
+    happened to fall on vegetation/building/water, the score became 0.0% even
+    when most of the AOI was still valid. This mask lets the final score
+    represent the valid part of the selected AOI instead of one rejected cell.
+    """
+    base_mask = np.ones(shape, dtype=bool)
+
+    if not feature_extractor or not getattr(feature_extractor, "layers", None):
+        return base_mask
+
+    obstacle = feature_extractor.layers.get("obstacle")
+    if obstacle is None:
+        return base_mask
+
+    meta = obstacle.metadata or {}
+    if str(meta.get("source", "")).lower() != "aimodel":
+        return base_mask
+
+    obstacle_density = obstacle.data.astype(np.float32)
+    valid = obstacle_density != obstacle.nodata
+
+    building_density = np.array(
+        meta.get("building_density", np.zeros_like(obstacle_density)),
+        dtype=np.float32,
+    )
+    vegetation_density = np.array(
+        meta.get("vegetation_density", np.zeros_like(obstacle_density)),
+        dtype=np.float32,
+    )
+    water_density = np.array(
+        meta.get("water_density", np.zeros_like(obstacle_density)),
+        dtype=np.float32,
+    )
+
+    building_threshold = float(meta.get("building_threshold", 0.05))
+    water_threshold = float(meta.get("water_threshold", 0.20))
+    vegetation_threshold = float(meta.get("vegetation_threshold", 0.25))
+
+    hard_exclusion = (
+        (building_density > building_threshold)
+        | (water_density > water_threshold)
+        | (vegetation_density > vegetation_threshold)
+    )
+
+    return valid & ~hard_exclusion
+
+
+def _build_selected_site_breakdown_area(feature_extractor, score_mask=None, ai_valid_mask=None):
+    """
+    Build the AHP breakdown for the selected AOI after AI screening.
+
+    Root fix:
+    - The old logic could show 0.0% for climate/terrain factors when the
+      selected marker cell was rejected by AI.
+    - This version evaluates the whole selected AOI.
+    - AI-rejected cells are treated as zero contribution, while valid cells
+      still contribute normally.
+
+    This makes the factor cards consistent with the final score:
+    final score = average suitability across the selected AOI after AI gate.
+    """
+    items = []
+    order = ["ghi", "sunshine", "slope", "obstacle", "lst", "elevation"]
+
+    if not feature_extractor or not getattr(feature_extractor, "layers", None):
+        return items
+
+    score_mask = np.asarray(score_mask, dtype=bool) if score_mask is not None else None
+    ai_valid_mask = np.asarray(ai_valid_mask, dtype=bool) if ai_valid_mask is not None else None
+
+    for name in order:
+        raster = feature_extractor.layers.get(name)
+        if raster is None:
+            continue
+
+        data = raster.data.astype(np.float32)
+        meta = raster.metadata or {}
+        unit = meta.get("unit", "")
+
+        valid_mask = data != raster.nodata
+
+        if score_mask is not None and score_mask.shape == data.shape:
+            valid_mask = valid_mask & score_mask
+
+        if not valid_mask.any():
+            continue
+
+        norm_vals = np.clip(data[valid_mask], 0.0, 1.0)
+
+        if name in INVERTED:
+            suitability_vals = 1.0 - norm_vals
+        else:
+            suitability_vals = norm_vals
+
+        # Apply the same AI gate used by AHPModel: rejected cells remain in the
+        # selected AOI, but their effective contribution is zero.
+        if ai_valid_mask is not None and ai_valid_mask.shape == data.shape:
+            gate_vals = ai_valid_mask[valid_mask].astype(np.float32)
+            effective_vals = suitability_vals * gate_vals
+        else:
+            effective_vals = suitability_vals
+
+        suitability_component = float(np.clip(np.mean(effective_vals), 0.0, 1.0))
+        contribution_pct = suitability_component * WEIGHTS[name] * 100.0
+
+        # Raw labels should describe the actual layer value across the selected AOI,
+        # not become zero just because AI rejected some cells.
+        raw_norm_mean = float(np.mean(norm_vals))
+        raw_value = _denormalize_value(raw_norm_mean, meta)
+        raw_label = _format_raw_value(name, raw_value, unit)
+
+        items.append(
+            {
+                "name": name,
+                "title": LAYER_META[name]["title"],
+                "icon": LAYER_META[name]["icon"],
+                "weight": WEIGHTS[name],
+                "raw_label": raw_label,
+                "suitability_component": suitability_component,
+                "contribution_pct": contribution_pct,
+            }
+        )
+
+    return items
+
+
+def _area_level_score_from_suitability(suitability_raster, feature_extractor=None):
+    """
+    Compute the displayed overall score from the whole selected AOI.
+
+    AHPModel already sets AI-rejected cells to 0.0 in the suitability raster.
+    Therefore the fair site-level score is the mean of all valid AOI cells,
+    including rejected cells as zero.
+    """
+    score_data = suitability_raster.data.astype(np.float32)
+    score_mask = (score_data != suitability_raster.nodata) & np.isfinite(score_data)
+
+    if score_mask.any():
+        return float(np.mean(score_data[score_mask])), score_mask
+
+    return 0.0, score_mask
+
 def _reason_text(item):
     score = item["suitability_component"]
     name = item["name"]
@@ -1054,7 +1203,13 @@ with card_col:
                 )
 
                 _update_progress(40, "Loading analysis pipeline...")
-                adapter = ExternalDataSourceAdapter()
+                # Match the external data grid to FeatureExtractor.TARGET_SHAPE from the start.
+                # This prevents 5x5 -> 10x10 resampling artifacts and keeps
+                # the AHP layers aligned with the suitability raster.
+                adapter = ExternalDataSourceAdapter(
+                    grid_rows=FeatureExtractor.TARGET_SHAPE[0],
+                    grid_cols=FeatureExtractor.TARGET_SHAPE[1],
+                )
 
                 gee_ready = adapter.initialize_earth_engine()
                 st.session_state["gee_ready"] = gee_ready
@@ -1172,17 +1327,36 @@ with card_col:
         if run and getattr(run, "suitability", None) is not None and has_loc:
             suit = run.suitability
             row, col = _point_to_grid_cell(lat, lon, aoi, suit.data.shape)
-            selected_score = float(suit.data[row, col])
+
+            # Root fix for the top-left Overall Suitability Score:
+            # Use the valid evaluated AOI area, not only the marker cell.
+            # If the marker cell is rejected by AI, the AI panel will still explain it,
+            # but the saved score will summarize the usable part of the selected AOI.
+            selected_score, score_mask = _area_level_score_from_suitability(
+                suit,
+                feature_extractor=feature_extractor,
+            )
             selected_label, _badge_class = suitability_badge(selected_score)
 
+            ai_details = {}
+
             if feature_extractor and getattr(feature_extractor, "layers", None):
-                factor_items = _build_selected_site_breakdown(feature_extractor, row, col)
                 ai_details = _get_ai_image_details(feature_extractor, row, col)
                 ai_assessment = ai_details["summary"]
 
-                # If AI excluded the selected cell, the decision should be explained
-                # as an AI exclusion decision, not as a normal AHP weighted decision.
-                if ai_assessment.startswith("Excluded by AI"):
+                # Build AHP contribution cards from the whole selected AOI.
+                # AI-rejected cells stay in the AOI as zero contribution, so the
+                # cards explain the actual displayed site-level result.
+                ai_valid_mask = _get_ai_valid_area_mask(feature_extractor, suit.data.shape)
+                factor_items = _build_selected_site_breakdown_area(
+                    feature_extractor,
+                    score_mask,
+                    ai_valid_mask,
+                )
+
+                if ai_details.get("valid_cells", 1) == 0:
+                    # Only if the whole AOI is rejected do we treat it as a full
+                    # AI exclusion decision and suppress normal AHP explanation.
                     for item in factor_items:
                         if item["name"] != "obstacle":
                             item["contribution_pct"] = 0.0

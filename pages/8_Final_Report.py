@@ -446,113 +446,55 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
     line-height: 1.45;
 }
 
-.fr-ai-detail-box {
-    display: grid;
-    gap: 0.42rem;
-    margin-top: 0.72rem;
-}
-
-.fr-ai-detail-row {
+.fr-ai-callout {
     background: #F8FBFF;
-    border: 1px solid #E5EEF8;
-    border-radius: 12px;
-    padding: 0.52rem 0.62rem;
-}
-
-.fr-ai-detail-label {
-    font-family: 'Capriola', sans-serif;
-    font-size: 0.66rem;
-    color: #64748B;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.16rem;
-}
-
-.fr-ai-detail-value {
-    font-family: 'Capriola', sans-serif;
-    font-size: 0.78rem;
-    color: #162033;
-    font-weight: 700;
-    line-height: 1.35;
-}
-
-.fr-ai-explain {
-    margin-top: 0.7rem;
-    font-family: 'Capriola', sans-serif;
-    font-size: 0.74rem;
-    color: #64748B;
-    line-height: 1.55;
-}
-
-.fr-ai-main-message {
-    margin-top: 0.65rem;
-    padding: 0.72rem 0.82rem;
-    border-radius: 13px;
-    background: #FFFFFF;
     border: 1px solid #D6E3F3;
+    border-radius: 12px;
+    padding: 0.62rem 0.72rem;
+    margin-bottom: 0.58rem;
     font-family: 'Capriola', sans-serif;
-    font-size: 0.84rem;
-    font-weight: 800;
+    font-size: 0.76rem;
     color: #1F3864;
-    line-height: 1.5;
-}
-
-.fr-ai-row-note {
-    margin-top: 0.15rem;
-    font-family: 'Capriola', sans-serif;
-    font-size: 0.66rem;
-    color: #64748B;
-    line-height: 1.35;
-}
-
-.fr-ai-status-pill {
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    padding: 0.32rem 0.62rem;
-    border-radius: 999px;
-    font-family: 'Capriola', sans-serif;
-    font-size: 0.75rem;
+    line-height: 1.45;
     font-weight: 700;
-    margin-top: 0.55rem;
+}
+
+.fr-ai-details {
+    display: grid;
+    gap: 0.46rem;
+    margin: 0.55rem 0 0.78rem 0;
 }
 
 .fr-ai-detail-box {
-    display: grid;
-    gap: 0.42rem;
-    margin-top: 0.72rem;
-}
-
-.fr-ai-detail-row {
     background: #F8FBFF;
     border: 1px solid #E5EEF8;
     border-radius: 12px;
-    padding: 0.52rem 0.62rem;
+    padding: 0.58rem 0.68rem;
 }
 
 .fr-ai-detail-label {
     font-family: 'Capriola', sans-serif;
     font-size: 0.66rem;
-    color: #64748B;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.16rem;
+    letter-spacing: 0.06em;
+    color: var(--wah-muted);
+    margin-bottom: 0.22rem;
 }
 
 .fr-ai-detail-value {
     font-family: 'Capriola', sans-serif;
-    font-size: 0.78rem;
-    color: #162033;
-    font-weight: 700;
+    font-size: 0.80rem;
+    color: var(--wah-text);
+    font-weight: 800;
     line-height: 1.35;
 }
 
-.fr-ai-explain {
-    margin-top: 0.7rem;
+.fr-ai-detail-note {
+    margin-top: 0.18rem;
     font-family: 'Capriola', sans-serif;
-    font-size: 0.74rem;
-    color: #64748B;
-    line-height: 1.55;
+    font-size: 0.70rem;
+    color: var(--wah-muted);
+    line-height: 1.35;
 }
 
 .fr-ai-shell {
@@ -1191,7 +1133,298 @@ def _resolve_selected_site(run, location, aoi, selected_site):
     return selected_site
 
 
-def _build_map_html(aoi, site_info, suitability=None, height=430):
+
+# ── Current-run score/factor recomputation ────────────────────────────────
+# These helpers prevent old saved session values from forcing the report to
+# show 0.0% and zero AHP contributions when the current run has valid raster
+# data. They do not change the UI layout; they only correct the numbers.
+FR_WEIGHTS = {
+    "ghi": 0.30,
+    "slope": 0.22,
+    "sunshine": 0.18,
+    "obstacle": 0.13,
+    "lst": 0.10,
+    "elevation": 0.07,
+}
+FR_INVERTED = {"slope", "lst", "obstacle"}
+FR_TITLES = {
+    "ghi": "Solar Radiation",
+    "sunshine": "Sunlight Hours",
+    "slope": "Terrain Slope",
+    "obstacle": "Obstacle Conditions",
+    "lst": "Surface Temperature",
+    "elevation": "Elevation",
+}
+
+
+def _fr_denormalize_value(norm_val, meta):
+    n_min = meta.get("norm_min")
+    n_max = meta.get("norm_max")
+    if n_min is None or n_max is None:
+        return norm_val
+    try:
+        return (float(norm_val) * (float(n_max) - float(n_min))) + float(n_min)
+    except Exception:
+        return norm_val
+
+
+def _fr_format_raw_value(layer_name, raw_value, unit):
+    if raw_value is None:
+        return "No data"
+    try:
+        raw_value = float(raw_value)
+    except Exception:
+        return str(raw_value)
+
+    if layer_name == "obstacle":
+        return f"{raw_value * 100:.1f}%"
+    if layer_name == "slope":
+        return f"{raw_value:.1f}°"
+    if layer_name == "sunshine":
+        return f"{raw_value:.1f} {unit or 'hours/day'}"
+    if layer_name == "ghi":
+        return f"{raw_value:.1f} {unit or 'MJ/m²/day'}"
+    if layer_name == "lst":
+        return f"{raw_value:.1f} {unit or '°C'}"
+    if layer_name == "elevation":
+        return f"{raw_value:.1f} {unit or 'm'}"
+    return f"{raw_value:.2f} {unit}".strip()
+
+
+def _fr_ai_valid_mask(feature_extractor, shape):
+    base = np.ones(shape, dtype=bool)
+
+    if not feature_extractor or not getattr(feature_extractor, "layers", None):
+        return base
+
+    obstacle = feature_extractor.layers.get("obstacle")
+    if obstacle is None or getattr(obstacle, "data", None) is None:
+        return base
+
+    meta = obstacle.metadata or {}
+    if str(meta.get("source", "")).lower() != "aimodel":
+        return base
+
+    obstacle_density = np.asarray(obstacle.data, dtype=np.float32)
+    if obstacle_density.shape != shape:
+        return base
+
+    valid = obstacle_density != getattr(obstacle, "nodata", -9999.0)
+    zeros = np.zeros_like(obstacle_density, dtype=np.float32)
+
+    building_density = np.asarray(meta.get("building_density", zeros), dtype=np.float32)
+    vegetation_density = np.asarray(meta.get("vegetation_density", zeros), dtype=np.float32)
+    water_density = np.asarray(meta.get("water_density", zeros), dtype=np.float32)
+
+    if building_density.shape != shape:
+        building_density = zeros
+    if vegetation_density.shape != shape:
+        vegetation_density = zeros
+    if water_density.shape != shape:
+        water_density = zeros
+
+    building_threshold = float(meta.get("building_threshold", 0.05))
+    water_threshold = float(meta.get("water_threshold", 0.20))
+    vegetation_threshold = float(meta.get("vegetation_threshold", 0.25))
+
+    hard_exclusion = (
+        (building_density > building_threshold)
+        | (water_density > water_threshold)
+        | (vegetation_density > vegetation_threshold)
+    )
+
+    return valid & ~hard_exclusion
+
+
+def _fr_build_factor_breakdown(feature_extractor, score_mask=None, ai_valid_mask=None):
+    items = []
+    order = ["ghi", "sunshine", "slope", "obstacle", "lst", "elevation"]
+
+    if not feature_extractor or not getattr(feature_extractor, "layers", None):
+        return items
+
+    score_mask = np.asarray(score_mask, dtype=bool) if score_mask is not None else None
+    ai_valid_mask = np.asarray(ai_valid_mask, dtype=bool) if ai_valid_mask is not None else None
+
+    for name in order:
+        raster = feature_extractor.layers.get(name)
+        if raster is None or getattr(raster, "data", None) is None:
+            continue
+
+        data = np.asarray(raster.data, dtype=np.float32)
+        meta = raster.metadata or {}
+        unit = meta.get("unit", "")
+        valid_mask = (data != getattr(raster, "nodata", -9999.0)) & np.isfinite(data)
+
+        if score_mask is not None and score_mask.shape == data.shape:
+            valid_mask = valid_mask & score_mask
+
+        if not valid_mask.any():
+            continue
+
+        norm_vals = np.clip(data[valid_mask], 0.0, 1.0)
+        suitability_vals = 1.0 - norm_vals if name in FR_INVERTED else norm_vals
+
+        # Same AI gate as the score raster: rejected cells remain in the AOI,
+        # but they contribute zero to the displayed result.
+        if ai_valid_mask is not None and ai_valid_mask.shape == data.shape:
+            effective_vals = suitability_vals * ai_valid_mask[valid_mask].astype(np.float32)
+        else:
+            effective_vals = suitability_vals
+
+        suitability_component = float(np.clip(np.mean(effective_vals), 0.0, 1.0))
+        contribution_pct = suitability_component * FR_WEIGHTS[name] * 100.0
+
+        raw_norm_mean = float(np.mean(norm_vals))
+        raw_value = _fr_denormalize_value(raw_norm_mean, meta)
+        raw_label = _fr_format_raw_value(name, raw_value, unit)
+
+        items.append({
+            "name": name,
+            "title": FR_TITLES[name],
+            "raw_label": raw_label,
+            "contribution_pct": round(contribution_pct, 2),
+            "current_contribution_pct": round(contribution_pct, 2),
+            "weight_pct": round(FR_WEIGHTS[name] * 100.0, 2),
+            "ahp_weight_pct": round(FR_WEIGHTS[name] * 100.0, 2),
+            "suitability_component": round(suitability_component, 4),
+        })
+
+    return items
+
+
+def _fr_recompute_current_report_values(run, feature_extractor, selected_site):
+    """Recompute report score/factors from the current run when available."""
+    selected_site = dict(selected_site or {})
+    suitability = getattr(run, "suitability", None) if run is not None else None
+
+    if suitability is None or getattr(suitability, "data", None) is None:
+        return selected_site
+
+    score_data = np.asarray(suitability.data, dtype=np.float32)
+    nodata = getattr(suitability, "nodata", -9999.0)
+    score_mask = (score_data != nodata) & np.isfinite(score_data)
+
+    if not score_mask.any():
+        return selected_site
+
+    # AHPModel already sets AI-rejected cells to 0.0. Averaging the full AOI
+    # gives the fair final site score without letting one marker cell decide.
+    score = float(np.mean(score_data[score_mask]))
+    label, _, _ = _selected_site_badge(score)
+
+    selected_site["score"] = score
+    selected_site["score_text"] = f"{score * 100:.1f}%"
+    selected_site["label"] = label
+
+    ai_valid_mask = _fr_ai_valid_mask(feature_extractor, score_data.shape)
+    factors = _fr_build_factor_breakdown(
+        feature_extractor,
+        score_mask=score_mask,
+        ai_valid_mask=ai_valid_mask,
+    )
+    if factors:
+        selected_site["factors"] = factors
+
+        sorted_reasons = sorted(factors, key=lambda x: x.get("contribution_pct", 0.0), reverse=True)
+        selected_site["reasons"] = [
+            {"name": item.get("name"), "title": item.get("title"), "reason": item.get("title")}
+            for item in sorted_reasons[:3]
+        ]
+
+    return selected_site
+
+
+
+def _matrix_to_storage(matrix, shape=None, decimals=6):
+    """Convert a 2D numeric matrix into JSON-safe nested lists."""
+    try:
+        arr = np.asarray(matrix, dtype=float)
+        if arr.ndim != 2:
+            return None
+        if shape is not None and arr.shape != shape:
+            return None
+
+        stored = []
+        for row in arr:
+            stored_row = []
+            for value in row:
+                try:
+                    cell = float(value)
+                except Exception:
+                    stored_row.append(None)
+                    continue
+                if not np.isfinite(cell):
+                    stored_row.append(None)
+                else:
+                    stored_row.append(round(max(0.0, min(1.0, cell)), decimals))
+            stored.append(stored_row)
+        return stored
+    except Exception:
+        return None
+
+
+def _ai_overlay_from_extractor(feature_extractor) -> dict | None:
+    """
+    Build the map overlay data from the AI obstacle layer, not from AHP.
+
+    The map cells are intended to show image-analysis screening:
+    - green = valid/open/bare land cell
+    - red   = AI rejected cell due to buildings, vegetation, or water
+
+    The overall score and AHP factor cards still use the final AHP suitability
+    result. This only changes the visual cells displayed on the map.
+    """
+    if not feature_extractor or not getattr(feature_extractor, "layers", None):
+        return None
+
+    obstacle = feature_extractor.layers.get("obstacle")
+    if obstacle is None or getattr(obstacle, "data", None) is None:
+        return None
+
+    meta = obstacle.metadata or {}
+    if str(meta.get("source", "")).lower() != "aimodel":
+        return None
+
+    try:
+        obstacle_density = np.asarray(obstacle.data, dtype=float)
+        if obstacle_density.ndim != 2:
+            return None
+
+        shape = obstacle_density.shape
+        zeros = np.zeros(shape, dtype=float)
+
+        building_density = np.asarray(meta.get("building_density", zeros), dtype=float)
+        vegetation_density = np.asarray(meta.get("vegetation_density", zeros), dtype=float)
+        water_density = np.asarray(meta.get("water_density", zeros), dtype=float)
+        bare_land_density = np.asarray(meta.get("bare_land_density", zeros), dtype=float)
+
+        if building_density.shape != shape:
+            building_density = zeros.copy()
+        if vegetation_density.shape != shape:
+            vegetation_density = zeros.copy()
+        if water_density.shape != shape:
+            water_density = zeros.copy()
+        if bare_land_density.shape != shape:
+            bare_land_density = zeros.copy()
+
+        return {
+            "type": "ai_land_cover",
+            "rows": int(shape[0]),
+            "cols": int(shape[1]),
+            "building_density": _matrix_to_storage(building_density, shape=shape),
+            "vegetation_density": _matrix_to_storage(vegetation_density, shape=shape),
+            "water_density": _matrix_to_storage(water_density, shape=shape),
+            "bare_land_density": _matrix_to_storage(bare_land_density, shape=shape),
+            "combined_density": _matrix_to_storage(obstacle_density, shape=shape),
+            "building_threshold": float(meta.get("building_threshold", 0.05)),
+            "water_threshold": float(meta.get("water_threshold", 0.20)),
+            "vegetation_threshold": float(meta.get("vegetation_threshold", 0.25)),
+        }
+    except Exception:
+        return None
+
+def _build_map_html(aoi, site_info, suitability=None, height=430, ai_overlay=None):
     map_id = f"wahhaj_map_{uuid4().hex}"
 
     lon_min, lat_min, lon_max, lat_max = aoi
@@ -1203,7 +1436,95 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
     aoi_outline_json = json.dumps(aoi_outline)
 
     grid_cells = []
-    if suitability is not None and getattr(suitability, "data", None) is not None:
+    overlay_mode = "suitability"
+
+    # ── Preferred visual overlay: AI image-analysis result ───────────────
+    # The colored map cells should answer: what did the AI detect in the
+    # uploaded image? The final score and factor cards still show AHP.
+    if isinstance(ai_overlay, dict) and ai_overlay.get("type") == "ai_land_cover":
+        try:
+            building = np.asarray(ai_overlay.get("building_density") or [], dtype=float)
+            vegetation = np.asarray(ai_overlay.get("vegetation_density") or [], dtype=float)
+            water = np.asarray(ai_overlay.get("water_density") or [], dtype=float)
+            bare_land = np.asarray(ai_overlay.get("bare_land_density") or [], dtype=float)
+            combined = np.asarray(ai_overlay.get("combined_density") or [], dtype=float)
+
+            if combined.ndim == 2 and combined.size > 0:
+                rows, cols = combined.shape[:2]
+
+                def _same_shape(arr):
+                    return arr if arr.shape == combined.shape else np.zeros_like(combined)
+
+                building = _same_shape(building)
+                vegetation = _same_shape(vegetation)
+                water = _same_shape(water)
+                bare_land = _same_shape(bare_land)
+
+                building_threshold = float(ai_overlay.get("building_threshold", 0.05))
+                water_threshold = float(ai_overlay.get("water_threshold", 0.20))
+                vegetation_threshold = float(ai_overlay.get("vegetation_threshold", 0.25))
+
+                lat_step = (lat_max - lat_min) / rows
+                lon_step = (lon_max - lon_min) / cols
+
+                for r in range(rows):
+                    for c in range(cols):
+                        b = float(building[r, c]) if np.isfinite(building[r, c]) else 0.0
+                        v = float(vegetation[r, c]) if np.isfinite(vegetation[r, c]) else 0.0
+                        w = float(water[r, c]) if np.isfinite(water[r, c]) else 0.0
+                        bare = float(bare_land[r, c]) if np.isfinite(bare_land[r, c]) else 0.0
+                        obs = float(combined[r, c]) if np.isfinite(combined[r, c]) else 0.0
+
+                        rejected = []
+                        if b > building_threshold:
+                            rejected.append("buildings")
+                        if v > vegetation_threshold:
+                            rejected.append("vegetation")
+                        if w > water_threshold:
+                            rejected.append("water")
+
+                        cell_lat_max = lat_max - (r * lat_step)
+                        cell_lat_min = lat_max - ((r + 1) * lat_step)
+                        cell_lon_min = lon_min + (c * lon_step)
+                        cell_lon_max = lon_min + ((c + 1) * lon_step)
+
+                        if rejected:
+                            status = "AI Rejected"
+                            reason = ", ".join(rejected)
+                            fill_color = "#EF4444"
+                            stroke_color = "#B91C1C"
+                            tooltip = (
+                                f"AI Result: Rejected — {reason} | "
+                                f"Building {b * 100:.1f}%, Vegetation {v * 100:.1f}%, Water {w * 100:.1f}%"
+                            )
+                        else:
+                            status = "AI Valid"
+                            reason = "bare/open land" if bare > 0.25 else "no excluded obstacle"
+                            fill_color = "#22C55E"
+                            stroke_color = "#15803D"
+                            tooltip = (
+                                f"AI Result: Valid — {reason} | "
+                                f"Bare land {bare * 100:.1f}%, Obstacle {obs * 100:.1f}%"
+                            )
+
+                        grid_cells.append({
+                            "bounds": [[cell_lat_min, cell_lon_min], [cell_lat_max, cell_lon_max]],
+                            "fillColor": fill_color,
+                            "strokeColor": stroke_color,
+                            "tooltip": tooltip,
+                            "mode": "ai",
+                            "status": status,
+                        })
+
+                overlay_mode = "ai"
+
+        except Exception:
+            grid_cells = []
+            overlay_mode = "suitability"
+
+    # ── Fallback overlay: AHP suitability raster ─────────────────────────
+    # Used only when AI overlay data is unavailable, such as older saved reports.
+    if overlay_mode != "ai" and suitability is not None and getattr(suitability, "data", None) is not None:
         data = np.asarray(suitability.data, dtype=float)
         nodata = getattr(suitability, "nodata", -9999.0)
 
@@ -1229,9 +1550,13 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
                     "bounds": [[cell_lat_min, cell_lon_min], [cell_lat_max, cell_lon_max]],
                     "score_text": f"{score * 100:.1f}%",
                     "fillColor": color,
+                    "strokeColor": "#4a8f2a",
+                    "tooltip": f"AHP Suitability Score: {score * 100:.1f}%",
+                    "mode": "suitability",
                 })
 
     grid_json = json.dumps(grid_cells, ensure_ascii=False)
+    overlay_mode_json = json.dumps(overlay_mode)
 
     return f"""
 <!DOCTYPE html>
@@ -1256,7 +1581,7 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
             padding: 10px 12px;
             box-shadow: 0 4px 18px rgba(0,0,0,0.12);
             line-height: 1.35;
-            min-width: 210px;
+            min-width: 214px;
         }}
         .wahhaj-legend-title {{
             font-size: 12px;
@@ -1281,6 +1606,21 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
             font-size: 10px;
             color: #666;
             margin-bottom: 3px;
+        }}
+        .wahhaj-legend-row {{
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 10px;
+            color: #444;
+            margin-bottom: 5px;
+        }}
+        .wahhaj-legend-swatch {{
+            width: 13px;
+            height: 13px;
+            border-radius: 4px;
+            border: 1px solid rgba(0,0,0,0.12);
+            flex: 0 0 13px;
         }}
         .selected-label {{ background: transparent; border: none; }}
         .selected-label div {{
@@ -1313,6 +1653,7 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
         const bounds = {bounds_json};
         const aoiOutline = {aoi_outline_json};
         const gridCells = {grid_json};
+        const overlayMode = {overlay_mode_json};
 
         const map = L.map("{map_id}", {{ zoomControl: true, scrollWheelZoom: true, preferCanvas: true }});
 
@@ -1330,13 +1671,13 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
 
         gridCells.forEach(cell => {{
             L.rectangle(cell.bounds, {{
-                color: "#4a8f2a",
-                weight: 0.55,
+                color: cell.strokeColor || "#4a8f2a",
+                weight: overlayMode === "ai" ? 0.75 : 0.55,
                 fill: true,
                 fillColor: cell.fillColor,
-                fillOpacity: 0.42
+                fillOpacity: overlayMode === "ai" ? 0.46 : 0.42
             }})
-            .bindTooltip(`Suitability Score: ${{cell.score_text}}`)
+            .bindTooltip(cell.tooltip || `Cell result`)
             .addTo(map);
         }});
 
@@ -1373,14 +1714,25 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
         const legend = L.control({{ position: "bottomleft" }});
         legend.onAdd = function() {{
             const div = L.DomUtil.create("div", "wahhaj-legend");
-            div.innerHTML = `
-                <div class="wahhaj-legend-title">Selected Location Suitability Scale</div>
-                <div class="wahhaj-legend-bar"></div>
-                <div class="wahhaj-legend-scale"><span>Low</span><span>High</span></div>
-                <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
-                <div class="wahhaj-legend-note">Colored cells = AHP suitability scores</div>
-                <div class="wahhaj-legend-note">Blue marker = selected site center</div>
-            `;
+            if (overlayMode === "ai") {{
+                div.innerHTML = `
+                    <div class="wahhaj-legend-title">AI Image Analysis Result</div>
+                    <div class="wahhaj-legend-row"><span class="wahhaj-legend-swatch" style="background:#22C55E;"></span><span>Valid / bare or open land</span></div>
+                    <div class="wahhaj-legend-row"><span class="wahhaj-legend-swatch" style="background:#EF4444;"></span><span>AI rejected: vegetation, building, or water</span></div>
+                    <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
+                    <div class="wahhaj-legend-note">Colored cells = AI image screening result</div>
+                    <div class="wahhaj-legend-note">AHP score is shown in the score and factor cards</div>
+                `;
+            }} else {{
+                div.innerHTML = `
+                    <div class="wahhaj-legend-title">Selected Location Suitability Scale</div>
+                    <div class="wahhaj-legend-bar"></div>
+                    <div class="wahhaj-legend-scale"><span>Low</span><span>High</span></div>
+                    <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
+                    <div class="wahhaj-legend-note">Colored cells = AHP suitability scores</div>
+                    <div class="wahhaj-legend-note">Blue marker = selected site center</div>
+                `;
+            }}
             return div;
         }};
         legend.addTo(map);
@@ -1388,7 +1740,6 @@ def _build_map_html(aoi, site_info, suitability=None, height=430):
 </body>
 </html>
 """
-
 
 def _recommendation_text(label: str) -> str:
     label_l = (label or "").lower()
@@ -1551,81 +1902,64 @@ def _reason_list_html(reasons: list[dict]) -> str:
     return '<div class="fr-list">' + "".join(rows) + "</div>"
 
 
+def _ai_details_panel_html(ai_details: dict | None) -> str:
+    """Render the detailed AI screening summary card without affecting scoring logic."""
+    if not isinstance(ai_details, dict) or not ai_details:
+        return ""
 
-def _ai_details_html(ai_details: dict) -> str:
-    if not ai_details:
-        return """
-        <div class="fr-ai-explain">
-            Detailed AI class breakdown is not available for this report.
-        </div>
-        """
+    def _num(value, default=0.0):
+        try:
+            if value is None:
+                return default
+            return float(value)
+        except Exception:
+            return default
 
-    def val(key, default=0):
-        return ai_details.get(key, default)
+    def _int(value, default=0):
+        try:
+            if value is None:
+                return default
+            return int(round(float(value)))
+        except Exception:
+            return default
 
-    main_message = ai_details.get(
-        "main_message",
-        "AI screening result is available for the selected area."
+    supporting_message = _safe_html(
+        ai_details.get("supporting_message")
+        or ai_details.get("summary")
+        or "AI screening details are available for this selected area."
     )
-    supporting_message = ai_details.get(
-        "supporting_message",
-        "The AI model was used to screen land-cover obstacles before AHP scoring."
-    )
 
-    total_cells = int(val("total_cells", 0))
-    valid_cells = int(val("valid_cells", 0))
-    total_excluded = int(val("total_excluded_cells", 0))
-
-    valid_pct = float(val("valid_pct", 0.0))
-    excluded_pct = float(val("excluded_pct", 0.0))
-    building_pct = float(val("building_pct", 0.0))
-    water_pct = float(val("water_pct", 0.0))
-    vegetation_pct = float(val("vegetation_pct", 0.0))
-    bare_land_pct = float(val("bare_land_pct", 0.0))
-
-    building_cells = int(val("building_cells", 0))
-    water_cells = int(val("water_cells", 0))
-    vegetation_cells = int(val("vegetation_cells", 0))
-    bare_land_cells = int(val("bare_land_cells", 0))
-
-    detected = ai_details.get("detected_classes") or []
-    detected_text = ", ".join(detected) if detected else "No major excluded land-cover class detected"
-
-    selected_cell = ai_details.get("selected_cell") or {}
-    selected_is_excluded = bool(selected_cell.get("is_excluded", False))
-    blocking = selected_cell.get("blocking_classes") or []
-
-    if selected_is_excluded and blocking:
-        selected_text = "Selected cell rejected due to " + ", ".join(blocking)
-    elif selected_cell.get("bare_land_density_pct", 0) > 25:
-        selected_text = "Selected cell accepted as mostly bare land"
+    detected_classes = ai_details.get("detected_classes") or []
+    if isinstance(detected_classes, (list, tuple)):
+        detected_text = ", ".join(str(x) for x in detected_classes if str(x).strip())
     else:
-        selected_text = "Selected cell accepted; no excluded class exceeded the threshold"
+        detected_text = str(detected_classes or "")
+    detected_text = detected_text or "No detected classes available"
 
-    def row(label, value, note=None):
-        note_html = f"<div class='fr-ai-row-note'>{escape(str(note))}</div>" if note else ""
-        return (
-            "<div class='fr-ai-detail-row'>"
-            f"<div class='fr-ai-detail-label'>{escape(str(label))}</div>"
-            f"<div class='fr-ai-detail-value'>{escape(str(value))}</div>"
-            f"{note_html}"
-            "</div>"
-        )
+    valid_pct = _num(ai_details.get("valid_pct"), 0.0)
+    excluded_pct = _num(ai_details.get("excluded_pct"), 0.0)
+    valid_cells = _int(ai_details.get("valid_cells"), 0)
+    total_cells = _int(ai_details.get("total_cells"), 100)
+    rejected_cells = _int(ai_details.get("total_excluded_cells"), max(total_cells - valid_cells, 0))
 
     return f"""
-    <div class="fr-ai-main-message">
-        {escape(main_message)}
-    </div>
-
-    <div class="fr-ai-explain">
-        {escape(supporting_message)}
-    </div>
-
-    <div class="fr-ai-detail-box">
-        {row("Detected in image", detected_text)}
-        {row("Valid area", f"{valid_pct:.1f}% ({valid_cells} / {total_cells} cells)", "Cells kept for suitability evaluation.")}
-        {row("Rejected area", f"{excluded_pct:.1f}% ({total_excluded} / {total_cells} cells)", "Cells removed by AI before AHP scoring.")}
-    </div>
+        <div class="fr-ai-details">
+            <div class="fr-ai-callout">{supporting_message}</div>
+            <div class="fr-ai-detail-box">
+                <div class="fr-ai-detail-label">Detected in image</div>
+                <div class="fr-ai-detail-value">{_safe_html(detected_text)}</div>
+            </div>
+            <div class="fr-ai-detail-box">
+                <div class="fr-ai-detail-label">Valid area</div>
+                <div class="fr-ai-detail-value">{valid_pct:.1f}% ({valid_cells} / {total_cells} cells)</div>
+                <div class="fr-ai-detail-note">Cells kept for suitability evaluation.</div>
+            </div>
+            <div class="fr-ai-detail-box">
+                <div class="fr-ai-detail-label">Rejected area</div>
+                <div class="fr-ai-detail-value">{excluded_pct:.1f}% ({rejected_cells} / {total_cells} cells)</div>
+                <div class="fr-ai-detail-note">Cells removed by AI before AHP scoring.</div>
+            </div>
+        </div>
     """
 
 
@@ -1863,13 +2197,14 @@ def _display_from_saved_report(report: dict) -> dict:
         "selected_coords": coords,
         "aoi": _safe_aoi(report.get("aoi") or display.get("aoi")),
         "suitability": saved_suitability,
+        "ai_overlay_data": (display.get("ai_overlay_data") or criteria.get("ai_overlay_data") if isinstance(criteria, dict) else None),
         "recommendation": report.get("recommendation") or display.get("recommendation") or _recommendation_text(final_label),
         "report_date": report.get("report_date") or display.get("now") or "—",
         "status_text": display.get("status_text") or "Completed",
         "duration_text": display.get("duration_text") or "—",
         "image_name": display.get("image_name") or "Uploaded image",
         "ai_assessment": display.get("ai_assessment") or "Pending AI model result",
-        "ai_details": display.get("ai_details") or {},
+        "ai_details": display.get("ai_details") or (criteria.get("ai_details") if isinstance(criteria, dict) else {}) or {},
         "reasons": display.get("reasons") or [],
         "factors": report.get("factors_data") or display.get("factors") or [],
         "ranked_sites": report.get("ranked_sites") or [],
@@ -1893,9 +2228,9 @@ def _render_saved_final_report(report: dict) -> None:
     selected_coords = data["selected_coords"]
     aoi = data["aoi"]
     suitability = data.get("suitability")
+    ai_overlay_data = data.get("ai_overlay_data")
     factors = list(data["factors"] or [])
     reasons = list(data["reasons"] or [])
-    ai_details = data.get("ai_details") or {}
 
     if not factors:
         factors = [
@@ -1914,13 +2249,17 @@ def _render_saved_final_report(report: dict) -> None:
 
     st.markdown(
         f"""
-<div class="fr-card fr-ai-shell">
-    <div class="fr-card-title">AI Assessment</div>
-    <div class="fr-ai-hero">
-        <div class="fr-ai-label">AI image assessment</div>
-        <div class="fr-ai-value">{_safe_html(data['ai_assessment'])}</div>
-        {_ai_details_html(ai_details)}
+<div class="fr-header-shell">
+  <div class="fr-header">
+    <div class="fr-title">Final Site Suitability Report</div>
+    <div class="fr-subtitle">Saved report page loaded from the system database with its stored PDF file.</div>
+    <div class="fr-chip-row">
+      <span class="fr-chip">{ICON_PIN}<span>{_safe_html(data.get('location_name') or selected_display_name)}</span></span>
+      <span class="fr-chip">{ICON_CLOCK}<span>{escape(now)}</span></span>
+      <span class="fr-chip">{ICON_HASH}<span>Report {escape(report_id_short)}</span></span>
+      <span class="fr-chip">{ICON_HASH}<span>Run {escape(run_id_short)}</span></span>
     </div>
+  </div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -1982,7 +2321,7 @@ def _render_saved_final_report(report: dict) -> None:
             """
             <div class="fr-card" style="padding:0;overflow:hidden;">
                 <div class="fr-map-title">
-                    <div class="fr-card-title compact">Selected Site Suitability Map</div>
+                    <div class="fr-card-title compact">Selected Site AI Analysis Map</div>
                     <div class="fr-map-caption">Saved AOI view reconstructed from the stored report record.</div>
                 </div>
             """,
@@ -2004,6 +2343,7 @@ def _render_saved_final_report(report: dict) -> None:
                     aoi=aoi,
                     site_info=site_info,
                     suitability=suitability,
+                    ai_overlay=ai_overlay_data,
                     height=430,
                 ),
                 height=432,
@@ -2028,10 +2368,12 @@ def _render_saved_final_report(report: dict) -> None:
                 <div class="fr-card-title">AI Assessment</div>
                 <div class="fr-ai-hero">
                     <div class="fr-ai-label">AI image assessment</div>
-                    <div class="fr-ai-value">{_safe_html(ai_assessment)}</div>
-                    {_ai_details_html(ai_details)}
+                    <div class="fr-ai-value">{_safe_html(data['ai_assessment'])}</div>
+                    <div class="fr-ai-note">This saved assessment is loaded from the stored report record.</div>
                 </div>
-
+                {_ai_details_panel_html(data.get("ai_details"))}
+                <div class="fr-card-title compact">Key Drivers Behind This Score</div>
+                {_reason_list_html(reasons)}
             </div>
             """,
             unsafe_allow_html=True,
@@ -2166,6 +2508,11 @@ selected_site = _resolve_selected_site(
     aoi if isinstance(aoi, tuple) and len(aoi) == 4 else None,
     st.session_state.get("selected_site_analysis", {}),
 )
+selected_site = _fr_recompute_current_report_values(
+    run,
+    st.session_state.get("extractor"),
+    selected_site,
+)
 st.session_state["selected_site_analysis"] = selected_site
 
 selected_score = selected_site.get("score")
@@ -2270,6 +2617,7 @@ _report_id_for_db = str(st.session_state.get("current_report_id") or f"report_{g
 _pdf_filename = f"wahhaj_report_{str(getattr(run, 'runId', _report_id_for_db))[:8]}.pdf"
 _saved_ranked_sites = _clean_ranked_for_storage(global_ranked_sites)
 _suitability_storage = _suitability_to_storage(run.suitability if run else None)
+_ai_overlay_storage = _ai_overlay_from_extractor(st.session_state.get("extractor"))
 _report_display_data = {
     "report_id": _report_id_for_db,
     "run_id": getattr(run, "runId", None),
@@ -2287,6 +2635,8 @@ _report_display_data = {
     "ranked_sites": _saved_ranked_sites,
     "report_text": report_text,
     "suitability_data": _suitability_storage,
+    "ai_overlay_data": _ai_overlay_storage,
+    "ai_details": ai_details,
     "display": {
         "location_name": loc.get("location_name") or selected_display_name,
         "selected_display_name": selected_display_name,
@@ -2300,6 +2650,7 @@ _report_display_data = {
         "selected_coords": selected_coords,
         "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
         "suitability_data": _suitability_storage,
+        "ai_overlay_data": _ai_overlay_storage,
         "recommendation": recommendation,
         "global_rank_text": global_rank_text,
         "now": now,
@@ -2444,6 +2795,7 @@ with center_col:
                 aoi=aoi,
                 site_info=site_info,
                 suitability=run.suitability,
+                ai_overlay=_ai_overlay_storage,
                 height=430,
             ),
             height=432,
@@ -2472,9 +2824,11 @@ with right_col:
             <div class="fr-ai-hero">
                 <div class="fr-ai-label">AI image assessment</div>
                 <div class="fr-ai-value">{_safe_html(ai_assessment)}</div>
-                {_ai_details_html(ai_details)}
+                <div class="fr-ai-note">This result is shown here deliberately as a primary decision cue, not as a secondary footer item.</div>
             </div>
-
+            {_ai_details_panel_html(ai_details)}
+            <div class="fr-card-title compact">Key Drivers Behind This Score</div>
+            {_reason_list_html(reasons)}
         </div>
         """,
         unsafe_allow_html=True,

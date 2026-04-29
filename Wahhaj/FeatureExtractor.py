@@ -392,9 +392,19 @@ class FeatureExtractor:
 
     def _resample_to_target_grid(self, raster: Raster, layer_name: str) -> Raster:
         """
-        Convert any incoming raster to the project-standard 5x5 grid.
+        Convert any incoming raster to TARGET_SHAPE without destroying data.
 
-        This keeps all layers aligned before normalization/AHP.
+        Root fix:
+        ExternalDataSourceAdapter can return a smaller grid than TARGET_SHAPE.
+        The old code sent smaller grids through _downsample_mean(), which is
+        safe only when the source is larger than the target. When used for
+        upsampling, it creates empty blocks that later get filled with the
+        layer mean, flattening the raster and causing misleading AHP values.
+
+        Rules:
+        - Same shape      -> copy as-is.
+        - Source smaller  -> nearest-neighbour upsampling.
+        - Source larger   -> block-mean downsampling.
         """
         target_rows, target_cols = self.TARGET_SHAPE
         src = raster.data.astype(np.float32)
@@ -402,9 +412,20 @@ class FeatureExtractor:
         if src.ndim != 2:
             raise ValueError(f"Raster for layer '{layer_name}' must be 2D")
 
+        src_rows, src_cols = src.shape
+
         if src.shape == self.TARGET_SHAPE:
             out = src.copy()
+
+        elif src_rows < target_rows or src_cols < target_cols:
+            # Upsampling: preserve actual fetched values and never create
+            # empty blocks/nodata gaps. This is safer for 5x5 -> 10x10.
+            row_idx = np.linspace(0, src_rows - 1, target_rows).round().astype(int)
+            col_idx = np.linspace(0, src_cols - 1, target_cols).round().astype(int)
+            out = src[np.ix_(row_idx, col_idx)].astype(np.float32)
+
         else:
+            # Downsampling only: block mean is safe when the source is larger.
             out = self._downsample_mean(src, self.TARGET_SHAPE, nodata=raster.nodata)
 
         metadata = {
