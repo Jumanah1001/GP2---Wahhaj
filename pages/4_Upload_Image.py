@@ -1,6 +1,5 @@
 import os
 import tempfile
-import time
 from html import escape
 from textwrap import dedent
 from uuid import uuid4
@@ -15,6 +14,7 @@ from ui_helpers import (
     render_top_home_button,
     build_image_record,
     clear_analysis_state,
+    clear_uploaded_image_state,
     set_dataset_state,
     set_image_records,
 )
@@ -40,101 +40,96 @@ st.markdown(
         const BTN_SH  = "0 4px 14px rgba(0,112,255,0.30)";
         const BTN_PAD = "13px 24px";
 
-        function styleBtn(btn, isDisabled) {
-            btn.style.setProperty("min-height", BTN_H,  "important");
-            btn.style.setProperty("height",     BTN_H,  "important");
-            btn.style.setProperty("width",      BTN_W,  "important");
-            btn.style.setProperty("min-width",  BTN_W,  "important");
-            btn.style.setProperty("max-width",  BTN_W,  "important");
-            btn.style.setProperty("padding",    BTN_PAD,"important");
-            btn.style.setProperty("font-size",  BTN_FS, "important");
-            btn.style.setProperty("border-radius", BTN_R,"important");
-            btn.style.setProperty("line-height","1",    "important");
-            btn.style.setProperty("white-space","nowrap","important");
-            btn.style.setProperty("display",    "inline-flex","important");
-            btn.style.setProperty("align-items","center","important");
-            btn.style.setProperty("justify-content","center","important");
+        function forceBlueButton(btn, fullWidth) {
+            btn.style.setProperty("appearance", "none", "important");
+            btn.style.setProperty("background", "#0070FF", "important");
+            btn.style.setProperty("background-color", "#0070FF", "important");
+            btn.style.setProperty("color", "white", "important");
+            btn.style.setProperty("border", "none", "important");
+            btn.style.setProperty("border-radius", BTN_R, "important");
 
-            if (isDisabled) {
-                btn.style.setProperty("background","#d0d0d0","important");
-                btn.style.setProperty("color",     "#888",   "important");
-                btn.style.setProperty("border",    "1px solid #bbb","important");
-                btn.style.setProperty("box-shadow","none",   "important");
-                btn.style.setProperty("cursor",    "not-allowed","important");
-                btn.style.setProperty("opacity",   "1",      "important");
-                btn.style.setProperty("transform", "none",   "important");
+            if (fullWidth) {
+                btn.style.setProperty("width", "100%", "important");
+                btn.style.setProperty("min-width", "100%", "important");
+                btn.style.setProperty("max-width", "100%", "important");
             } else {
-                btn.style.setProperty("background","#0070FF","important");
-                btn.style.setProperty("color",     "white",  "important");
-                btn.style.setProperty("border",    "none",   "important");
-                btn.style.setProperty("box-shadow",BTN_SH,  "important");
+                btn.style.setProperty("width", BTN_W, "important");
+                btn.style.setProperty("min-width", BTN_W, "important");
+                btn.style.setProperty("max-width", BTN_W, "important");
             }
+
+            btn.style.setProperty("height", BTN_H, "important");
+            btn.style.setProperty("min-height", BTN_H, "important");
+            btn.style.setProperty("padding", BTN_PAD, "important");
+
+            btn.style.setProperty("font-family", "'Capriola', sans-serif", "important");
+            btn.style.setProperty("font-size", BTN_FS, "important");
+            btn.style.setProperty("font-weight", "700", "important");
+            btn.style.setProperty("line-height", "1", "important");
+
+            btn.style.setProperty("box-shadow", BTN_SH, "important");
+            btn.style.setProperty("display", "inline-flex", "important");
+            btn.style.setProperty("align-items", "center", "important");
+            btn.style.setProperty("justify-content", "center", "important");
+            btn.style.setProperty("white-space", "nowrap", "important");
+            btn.style.setProperty("opacity", "1", "important");
         }
 
-        function applyHomeSize(b) {
-            b.style.setProperty("min-height",    BTN_H,   "important");
-            b.style.setProperty("height",        BTN_H,   "important");
-            b.style.setProperty("width",         BTN_W,   "important");
-            b.style.setProperty("min-width",     BTN_W,   "important");
-            b.style.setProperty("max-width",     BTN_W,   "important");
-            b.style.setProperty("padding",       BTN_PAD, "important");
-            b.style.setProperty("font-size",     BTN_FS,  "important");
-            b.style.setProperty("border-radius", BTN_R,   "important");
-            b.style.setProperty("line-height",   "1",     "important");
-            b.style.setProperty("white-space",   "nowrap","important");
-            b.style.setProperty("display",       "inline-flex","important");
-            b.style.setProperty("align-items",   "center","important");
-            b.style.setProperty("justify-content","center","important");
-            b.style.setProperty("box-shadow",    BTN_SH,  "important");
+        function forceDisabledButton(btn) {
+            btn.style.setProperty("background", "#d0d0d0", "important");
+            btn.style.setProperty("background-color", "#d0d0d0", "important");
+            btn.style.setProperty("color", "#888", "important");
+            btn.style.setProperty("border", "1px solid #bbb", "important");
+            btn.style.setProperty("box-shadow", "none", "important");
+            btn.style.setProperty("cursor", "not-allowed", "important");
+            btn.style.setProperty("opacity", "1", "important");
+            btn.style.setProperty("transform", "none", "important");
         }
 
         function run() {
-            // Home button — fixed width like original
-            document.querySelectorAll(".top-home-btn button").forEach(b => {
-                applyHomeSize(b);
+            document.querySelectorAll(".top-home-btn button").forEach(btn => {
+                forceBlueButton(btn, false);
             });
 
-            // Run Analysis button — full width of its column, only fix height + color
-            document.querySelectorAll(".run-analysis-row button").forEach(b => {
-                const isDisabled = b.disabled
-                    || b.hasAttribute("disabled")
-                    || b.getAttribute("aria-disabled") === "true"
-                    || b.closest("[data-ready='false']") !== null;
-                b.style.setProperty("min-height",    BTN_H,  "important");
-                b.style.setProperty("height",        BTN_H,  "important");
-                b.style.setProperty("padding",       BTN_PAD,"important");
-                b.style.setProperty("font-size",     BTN_FS, "important");
-                b.style.setProperty("border-radius", BTN_R,  "important");
-                b.style.setProperty("line-height",   "1",    "important");
-                b.style.setProperty("white-space",   "nowrap","important");
-                b.style.setProperty("font-weight",   "700",  "important");
+            document.querySelectorAll('[data-testid="stFileUploader"] button').forEach(btn => {
+                forceBlueButton(btn, false);
+            });
+
+            document.querySelectorAll(".run-analysis-row button").forEach(btn => {
+                const forceReady = btn.closest("[data-ready='true']") !== null;
+                const isDisabled = !forceReady && (
+                    btn.disabled
+                    || btn.hasAttribute("disabled")
+                    || btn.getAttribute("aria-disabled") === "true"
+                    || btn.closest("[data-ready='false']") !== null
+                );
+
                 if (isDisabled) {
-                    b.style.setProperty("background", "#d0d0d0", "important");
-                    b.style.setProperty("color",      "#888",    "important");
-                    b.style.setProperty("border",     "1px solid #bbb","important");
-                    b.style.setProperty("box-shadow", "none",    "important");
-                    b.style.setProperty("cursor",     "not-allowed","important");
-                    b.style.setProperty("opacity",    "1",       "important");
+                    forceDisabledButton(btn);
                 } else {
-                    b.style.setProperty("background", "#0070FF", "important");
-                    b.style.setProperty("color",      "white",   "important");
-                    b.style.setProperty("border",     "none",    "important");
-                    b.style.setProperty("box-shadow", BTN_SH,   "important");
+                    forceBlueButton(btn, true);
                 }
             });
 
-            // Upload (Browse files) button
-            document.querySelectorAll('[data-testid="stFileUploader"] button').forEach(b => {
-                applyHomeSize(b);
+            document.querySelectorAll("button").forEach(btn => {
+                const label = (btn.innerText || btn.textContent || "").trim();
+
+                if (label === "Clear Image") {
+                    forceBlueButton(btn, true);
+                }
             });
         }
 
-        // Run immediately + watch for DOM changes (Streamlit re-renders)
         const obs = new MutationObserver(run);
         obs.observe(document.body, { childList: true, subtree: true });
+
+        run();
         setTimeout(run, 100);
-        setTimeout(run, 500);
+        setTimeout(run, 300);
+        setTimeout(run, 700);
         setTimeout(run, 1500);
+
+        setInterval(run, 200);
     })();
     </script>
     """,
@@ -164,6 +159,9 @@ if "upload_ui_signature" not in st.session_state:
 
 if "upload_ui_ready" not in st.session_state:
     st.session_state["upload_ui_ready"] = False
+
+if "upload_uploader_key" not in st.session_state:
+    st.session_state["upload_uploader_key"] = 0    
 
 
 def job_is_done(job) -> bool:
@@ -203,7 +201,6 @@ def _render_upload_success(file_name: str, file_size_mb: float) -> str:
     <div class="upload-status-wrap done">
         <div class="upload-file-row done">
             <div class="upload-file-left">
-                <span class="upload-file-icon">📄</span>
                 <span class="upload-file-name">{safe_name}</span>
             </div>
             <div class="upload-done-right">
@@ -214,6 +211,44 @@ def _render_upload_success(file_name: str, file_size_mb: float) -> str:
         <div class="upload-success-meta">Upload completed successfully • {file_size_mb:.2f} MB</div>
     </div>
     """
+
+def _remove_uploaded_image() -> None:
+    clear_uploaded_image_state()
+    clear_analysis_state(clear_dataset=False)
+
+    st.session_state["uploaded_image_name"] = ""
+    st.session_state["uploaded_image_bytes"] = None
+    st.session_state["uploaded_image_temp_path"] = ""
+    st.session_state["uploaded_images"] = []
+    st.session_state["upload_ui_signature"] = ""
+    st.session_state["upload_ui_ready"] = False
+    st.session_state["report_obj"] = None
+    st.session_state["selected_site_analysis"] = None
+
+    st.session_state["upload_uploader_key"] = int(
+        st.session_state.get("upload_uploader_key", 0)
+    ) + 1 
+
+
+
+def _render_clear_image_button() -> None:
+    _gap1, _btn_col, _gap2 = st.columns([1.5, 1.5, 1.5])
+
+    with _btn_col:
+        st.markdown('<div class="clear-image-btn-space">', unsafe_allow_html=True)
+
+        clear_clicked = st.button(
+            "Clear Image",
+            key="clear_image_action",
+            help="Remove this image",
+            use_container_width=True,
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    if clear_clicked:
+        _remove_uploaded_image()
+        st.rerun()
 
 
 st.markdown(
@@ -248,6 +283,7 @@ st.markdown(
         margin: 34px auto 0 auto;
     }
 
+<<<<<<< HEAD
     :root {
         --upload-btn-width: 184px;
         --upload-btn-height: 58px;
@@ -255,6 +291,9 @@ st.markdown(
         --upload-btn-font: 16px;
         --upload-btn-shadow: 0 4px 14px rgba(0,112,255,0.30);
     }
+=======
+
+>>>>>>> f3ab2876c8909c539038d5cd326dace87f874b5d
 
     div[data-testid="stFileUploader"] {
         width: 100%;
@@ -489,10 +528,58 @@ st.markdown(
         text-align: center;
     }
 
+    .clear-image-btn-space {
+        width: 100%;
+        margin: 0 0 18px 0;
+    }
+
+    .st-key-clear_image_action button,
+    .st-key-clear_image_action button:focus,
+    .st-key-clear_image_action button:active {
+        background: #0070FF !important;
+        background-color: #0070FF !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 12px !important;
+
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+
+        height: 50px !important;
+        min-height: 50px !important;
+        max-height: 50px !important;
+
+        padding: 12px 18px !important;
+
+        font-family: 'Source Sans', sans-serif !important;
+        font-size: 17px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+
+        box-shadow: 0 4px 14px rgba(0,112,255,0.30) !important;
+
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+
+        white-space: nowrap !important;
+        opacity: 1 !important;
+    }
+
+    .st-key-clear_image_action button:hover {
+        background: #005fe0 !important;
+        background-color: #005fe0 !important;
+        color: white !important;
+        transform: translateY(-1px) !important;
+    }
+
+
+
     /* Run Analysis button: matches Home button size */
     .run-analysis-row {
         width: 100%;
-        margin: 4px 0 0 0;
+        margin: 8px 0 0 0;
     }
 
     .run-analysis-row div.stButton > button,
@@ -588,6 +675,7 @@ with center:
         type=["jpg", "jpeg", "png"],
         accept_multiple_files=False,
         label_visibility="collapsed",
+        key=f"upload_image_file_{st.session_state['upload_uploader_key']}",
     )
 
     if uploaded_file is None:
@@ -627,25 +715,21 @@ with center:
         progress_slot = st.empty()
 
         if not st.session_state.get("upload_ui_ready", False):
-            steps = [
-                (18, "Preparing uploaded image..."),
-                (42, "Validating file format..."),
-                (71, "Finalising upload preview..."),
-                (100, "Upload completed successfully."),
-            ]
-            for pct, msg in steps:
-                progress_slot.markdown(
-                    _render_upload_progress(uploaded_file.name, pct, msg),
-                    unsafe_allow_html=True,
-                )
-                time.sleep(0.18)
+            progress_slot.markdown(
+                _render_upload_success(uploaded_file.name, file_size_mb),
+                unsafe_allow_html=True,
+            )
+
             st.session_state["upload_ui_ready"] = True
             st.rerun()
+
         else:
             progress_slot.markdown(
                 _render_upload_success(uploaded_file.name, file_size_mb),
                 unsafe_allow_html=True,
             )
+
+            _render_clear_image_button()
 
         is_ready = st.session_state.get("upload_ui_ready", False)
         _gap1, _btn_col, _gap2 = st.columns([1.5, 1.5, 1.5])
