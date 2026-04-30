@@ -228,26 +228,26 @@ def _remove_uploaded_image() -> None:
         st.session_state.get("upload_uploader_key", 0)
     ) + 1 
 
-if st.query_params.get("clear_upload") == "1":
-    _remove_uploaded_image()
-    st.query_params.clear()
-    st.rerun()
 
 
-def _render_clear_image_html_button() -> None:
+def _render_clear_image_button() -> None:
     _gap1, _btn_col, _gap2 = st.columns([1.5, 1.5, 1.5])
 
     with _btn_col:
-        st.markdown(
-            """
-            <div class="clear-image-html-btn-wrap">
-                <a class="clear-image-html-btn" href="?clear_upload=1" target="_self">
-                    Clear Image
-                </a>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.markdown('<div class="clear-image-btn-space">', unsafe_allow_html=True)
+
+        clear_clicked = st.button(
+            "Clear Image",
+            key="clear_image_action",
+            help="Remove this image",
+            use_container_width=True,
         )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    if clear_clicked:
+        _remove_uploaded_image()
+        st.rerun()
 
 
 st.markdown(
@@ -516,23 +516,17 @@ st.markdown(
         text-align: center;
     }
 
-
-    .clear-image-html-btn-wrap {
+    .clear-image-btn-space {
         width: 100%;
         margin: 0 0 18px 0;
     }
 
-    .clear-image-html-btn,
-    .clear-image-html-btn:visited,
-    .clear-image-html-btn:focus,
-    .clear-image-html-btn:active {
-        box-sizing: border-box !important;
-
+    .st-key-clear_image_action button,
+    .st-key-clear_image_action button:focus,
+    .st-key-clear_image_action button:active {
         background: #0070FF !important;
         background-color: #0070FF !important;
         color: white !important;
-        text-decoration: none !important;
-
         border: none !important;
         border-radius: 12px !important;
 
@@ -544,13 +538,12 @@ st.markdown(
         min-height: 50px !important;
         max-height: 50px !important;
 
-        padding: 18px 32px !important;
+        padding: 12px 18px !important;
 
         font-family: 'Source Sans', sans-serif !important;
         font-size: 17px !important;
         font-weight: 700 !important;
         line-height: 1 !important;
-        letter-spacing: normal !important;
 
         box-shadow: 0 4px 14px rgba(0,112,255,0.30) !important;
 
@@ -559,18 +552,16 @@ st.markdown(
         justify-content: center !important;
 
         white-space: nowrap !important;
-        cursor: pointer !important;
-        margin: 0 !important;
         opacity: 1 !important;
     }
 
-    .clear-image-html-btn:hover {
+    .st-key-clear_image_action button:hover {
         background: #005fe0 !important;
         background-color: #005fe0 !important;
         color: white !important;
-        text-decoration: none !important;
         transform: translateY(-1px) !important;
     }
+
 
 
     /* Run Analysis button: matches Home button size */
@@ -725,7 +716,7 @@ with center:
                 unsafe_allow_html=True,
             )
 
-            _render_clear_image_html_button()
+            _render_clear_image_button()
 
         is_ready = st.session_state.get("upload_ui_ready", False)
         _gap1, _btn_col, _gap2 = st.columns([1.5, 1.5, 1.5])
