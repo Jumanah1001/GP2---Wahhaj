@@ -9,6 +9,7 @@ import streamlit as st
 from ui_helpers import (
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     login_user,
     render_footer,
@@ -46,14 +47,14 @@ st.markdown("""
 
 .login-title {
     font-family:'Capriola',sans-serif;
-    font-size:clamp(54px,4.4vw,66px);
+    font-size:clamp(58px,4.6vw,72px);
     color:#5A5959;
     line-height:1;
     margin-bottom:8px;
 }
 .login-subtitle {
     font-family:'Capriola',sans-serif;
-    font-size:15px;
+    font-size:17px;
     color:#5E5B5B;
     margin-bottom:26px;
 }
@@ -83,9 +84,9 @@ div[data-testid="stTextInput"] input {
     color:#6f6f6f !important;
     border:none !important;
     border-radius:10px !important;
-    min-height:46px !important;
+    min-height:54px !important;
     font-family:'Capriola',sans-serif !important;
-    font-size:13px !important;
+    font-size:16px !important;
     padding-left:14px !important;
     box-shadow:none !important;
 }
@@ -97,14 +98,14 @@ div[data-testid="stFormSubmitButton"] button:focus {
     color:white !important;
     border:none !important;
     border-radius:16px !important;
-    min-height:56px !important;
+    min-height:60px !important;
     height:auto !important;
     padding-top:14px !important;
     padding-bottom:14px !important;
     padding-left:28px !important;
     padding-right:28px !important;
     font-family:'Capriola',sans-serif !important;
-    font-size:18px !important;
+    font-size:19px !important;
     font-weight:700 !important;
     letter-spacing:0.03em !important;
     box-shadow: 0 4px 18px rgba(0,112,255,0.42), 0 2px 6px rgba(0,0,0,0.10) !important;
@@ -115,7 +116,7 @@ div[data-testid="stFormSubmitButton"] button:focus {
 div[data-testid="stFormSubmitButton"] button > div,
 div[data-testid="stFormSubmitButton"] button p {
     font-weight:700 !important;
-    font-size:18px !important;
+    font-size:19px !important;
     padding:0 !important;
     margin:0 !important;
 }
@@ -253,4 +254,5 @@ with right:
     )
 
 st.markdown("</div></div>", unsafe_allow_html=True)
+apply_ui_consistency_patch()
 render_footer()

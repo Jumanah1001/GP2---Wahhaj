@@ -27,6 +27,7 @@ import streamlit as st
 from ui_helpers import (
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     render_footer,
     render_top_home_button,
@@ -267,7 +268,7 @@ st.markdown(
 
 .page-title {
     font-family: 'Capriola', sans-serif;
-    font-size: clamp(34px, 3vw, 44px);
+    font-size: clamp(40px, 3.4vw, 56px);
     color: #1a1a1a;
     line-height: 1;
     margin-bottom: 10px;
@@ -276,7 +277,7 @@ st.markdown(
 
 .page-subtitle {
     font-family: 'Capriola', sans-serif;
-    font-size: 14px;
+    font-size: 17px;
     color: #444;
     margin-bottom: 22px;
     text-align: center;
@@ -303,15 +304,15 @@ div[class*="st-key-choose_right_shell"] {
 
 .section-title {
     font-family: 'Capriola', sans-serif;
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 23px;
+    font-weight: 800;
     color: #1b2430;
     margin-bottom: 8px;
 }
 
 .section-sub {
     font-family: 'Capriola', sans-serif;
-    font-size: 13px;
+    font-size: 15px;
     color: #6b7280;
     line-height: 1.65;
     margin-bottom: 18px;
@@ -319,7 +320,7 @@ div[class*="st-key-choose_right_shell"] {
 
 .search-label {
     font-family: 'Capriola', sans-serif;
-    font-size: 16px;
+    font-size: 18px;
     color: #1a1a1a;
     font-weight: 700;
     margin-bottom: 8px;
@@ -330,9 +331,9 @@ div[data-testid="stTextInput"] input {
     color: #1a1a1a !important;
     border: 1px solid #d3d8e0 !important;
     border-radius: 10px !important;
-    min-height: 46px !important;
+    min-height: 54px !important;
     font-family: 'Capriola', sans-serif !important;
-    font-size: 15px !important;
+    font-size: 16px !important;
     padding-left: 12px !important;
     box-shadow: none !important;
 }
@@ -344,13 +345,13 @@ div[data-testid="stTextInput"] input::placeholder {
 div.stButton > button:disabled,
 div.stButton > button[disabled],
 div.stButton > button:not(:disabled) {
-    min-height: 46px !important;
-    height: 46px !important;
+    min-height: 56px !important;
+    height: auto !important;
     width: 100% !important;
     border-radius: 10px !important;
     font-family: 'Capriola', sans-serif !important;
-    font-size: 15px !important;
-    padding: 0 18px !important;
+    font-size: 16px !important;
+    padding: 12px 20px !important;
     box-sizing: border-box !important;
 }
 
@@ -375,6 +376,17 @@ div.stButton > button:not(:disabled):hover {
     background: #005fe0 !important;
 }
 
+div.stButton > button p,
+div.stButton > button > div {
+    font-family: 'Capriola', sans-serif !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    line-height: 1.25 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    white-space: normal !important;
+}
+
 /* Add New User style feedback */
 .loc-feedback {
     box-sizing: border-box;
@@ -382,8 +394,8 @@ div.stButton > button:not(:disabled):hover {
     padding: 13px 18px;
     margin: 0 0 14px 0;
     font-family: 'Capriola', sans-serif;
-    font-size: 14px;
-    line-height: 1.55;
+    font-size: 15px;
+    line-height: 1.6;
     font-weight: 700;
 }
 
@@ -405,7 +417,7 @@ div.stButton > button:not(:disabled):hover {
     border-radius: 16px;
     padding: 14px 16px;
     font-family: 'Capriola', sans-serif;
-    font-size: 14px;
+    font-size: 15px;
     color: #233044;
     line-height: 1.8;
     margin: 10px 0 14px;
@@ -426,15 +438,15 @@ div.stButton > button:not(:disabled):hover {
 
 .steps-title {
     font-family: 'Capriola', sans-serif;
-    font-size: 15px;
-    font-weight: 700;
+    font-size: 17px;
+    font-weight: 800;
     color: #1f2937;
     margin-bottom: 8px;
 }
 
 .steps-list {
     font-family: 'Capriola', sans-serif;
-    font-size: 14px;
+    font-size: 15px;
     color: #4b5563;
     line-height: 1.95;
 }
@@ -454,7 +466,7 @@ div.stButton > button:not(:disabled):hover {
 
 .map-caption {
     font-family: 'Capriola', sans-serif;
-    font-size: 13px;
+    font-size: 15px;
     color: #6b7280;
     line-height: 1.75;
     margin-top: 12px;
@@ -684,7 +696,7 @@ with st.container(key="choose_shell"):
                     <div style="width:100%;height:500px;border-radius:18px;
                          background:linear-gradient(135deg,rgba(79,195,247,.18),rgba(249,178,51,.18));
                          display:flex;align-items:center;justify-content:center;
-                         color:#333;font-family:'Capriola',sans-serif;font-size:15px;
+                         color:#333;font-family:'Capriola',sans-serif;font-size:16px;
                          text-align:center;padding:20px;box-sizing:border-box;
                          border:1px solid #ddd;">
                         Interactive map requires:<br>
@@ -823,4 +835,5 @@ with st.container(key="choose_shell"):
                             st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
+apply_ui_consistency_patch()
 render_footer()

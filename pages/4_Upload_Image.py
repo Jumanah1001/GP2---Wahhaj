@@ -9,6 +9,7 @@ import streamlit as st
 from ui_helpers import (
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     render_footer,
     render_top_home_button,
@@ -32,12 +33,12 @@ st.markdown(
     """
     <script>
     (function applyBtnSizes() {
-        const BTN_H   = "50px";
-        const BTN_W   = "120px";
-        const BTN_R   = "12px";
-        const BTN_FS  = "18px";
+        const BTN_H   = "54px";
+        const BTN_W   = "124px";
+        const BTN_R   = "14px";
+        const BTN_FS  = "15px";
         const BTN_SH  = "0 4px 14px rgba(0,112,255,0.30)";
-        const BTN_PAD = "12px 18px";
+        const BTN_PAD = "13px 24px";
 
         function styleBtn(btn, isDisabled) {
             btn.style.setProperty("min-height", BTN_H,  "important");
@@ -226,7 +227,7 @@ st.markdown(
 
     .page-title {
         font-family: 'Capriola', sans-serif;
-        font-size: clamp(34px, 3vw, 44px);
+        font-size: clamp(40px, 3.4vw, 56px);
         color: #5A5959;
         line-height: 1.05;
         margin-bottom: 10px;
@@ -235,7 +236,7 @@ st.markdown(
 
     .page-subtitle {
         font-family: 'Capriola', sans-serif;
-        font-size: 14px;
+        font-size: 17px;
         color: #5E5B5B;
         margin-top: 4px;
         margin-bottom: 18px;
@@ -248,10 +249,10 @@ st.markdown(
     }
 
     :root {
-        --upload-btn-width: 120px;
-        --upload-btn-height: 50px;
-        --upload-btn-radius: 12px;
-        --upload-btn-font: 18px;
+        --upload-btn-width: 184px;
+        --upload-btn-height: 58px;
+        --upload-btn-radius: 14px;
+        --upload-btn-font: 16px;
         --upload-btn-shadow: 0 4px 14px rgba(0,112,255,0.30);
     }
 
@@ -327,13 +328,14 @@ st.markdown(
         font-family: 'Capriola', sans-serif !important;
         font-size: var(--upload-btn-font) !important;
         font-weight: 700 !important;
-        line-height: 1 !important;
+        line-height: 1.2 !important;
         box-shadow: var(--upload-btn-shadow) !important;
         z-index: 4 !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        white-space: nowrap !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
     }
 
     div[data-testid="stFileUploader"] button:hover,
@@ -354,7 +356,7 @@ st.markdown(
 
     .upload-note {
         font-family: 'Capriola', sans-serif;
-        font-size: 13px;
+        font-size: 15px;
         color: #777777;
         text-align: center;
         margin-top: -122px;
@@ -405,7 +407,7 @@ st.markdown(
     .upload-file-name {
         font-family: 'Capriola', sans-serif;
         color: #41516E;
-        font-size: 13px;
+        font-size: 15px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -413,7 +415,7 @@ st.markdown(
 
     .upload-progress-pct {
         font-family: 'Capriola', sans-serif;
-        font-size: 13px;
+        font-size: 15px;
         color: #365277;
         font-weight: 700;
         flex-shrink: 0;
@@ -445,7 +447,7 @@ st.markdown(
     .upload-progress-text {
         margin-top: 10px;
         font-family: 'Capriola', sans-serif;
-        font-size: 12px;
+        font-size: 14px;
         color: #6B7280;
         text-align: center;
     }
@@ -466,7 +468,7 @@ st.markdown(
         border-radius: 999px;
         background: #22C55E;
         color: white;
-        font-size: 12px;
+        font-size: 13px;
         font-family: 'Capriola', sans-serif;
         line-height: 1;
         font-weight: 700;
@@ -474,7 +476,7 @@ st.markdown(
 
     .upload-success-inline {
         font-family: 'Capriola', sans-serif;
-        font-size: 12px;
+        font-size: 14px;
         color: #22A352;
         font-weight: 700;
     }
@@ -482,7 +484,7 @@ st.markdown(
     .upload-success-meta {
         margin-top: 10px;
         font-family: 'Capriola', sans-serif;
-        font-size: 12px;
+        font-size: 14px;
         color: #777777;
         text-align: center;
     }
@@ -508,13 +510,14 @@ st.markdown(
         font-family: 'Capriola', sans-serif !important;
         font-size: var(--upload-btn-font) !important;
         font-weight: 700 !important;
-        line-height: 1 !important;
+        line-height: 1.2 !important;
         box-shadow: var(--upload-btn-shadow) !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
         margin: 0 auto !important;
-        white-space: nowrap !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
     }
 
     .run-analysis-row div.stButton > button:hover {
@@ -737,4 +740,5 @@ with center:
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
+apply_ui_consistency_patch()
 render_footer()

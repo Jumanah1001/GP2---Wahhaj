@@ -1584,3 +1584,390 @@ def apply_global_style() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def apply_ui_consistency_patch() -> None:
+    """
+    Final UI polish layer for WAHHAJ.
+
+    This function is intentionally injected after each page's local CSS so it can
+    normalize typography, button sizing, card spacing, and center alignment
+    without changing backend, analysis, database, map, report, or AHP logic.
+    """
+    st.markdown(
+        """
+        <style>
+        /* ═══════════════════════════════════════════════════════════════
+           WAHHAJ FINAL UI CONSISTENCY PATCH
+           Keep this layer after page-specific CSS to avoid style conflicts.
+        ═══════════════════════════════════════════════════════════════ */
+        :root {
+            --wahhaj-font: 'Capriola', 'Inter', sans-serif;
+            --wahhaj-text: #172033;
+            --wahhaj-muted: #5E6678;
+            --wahhaj-blue: #0070FF;
+            --wahhaj-blue-hover: #005fe0;
+            --wahhaj-card-bg: rgba(255,255,255,0.88);
+            --wahhaj-border: rgba(220,226,235,0.95);
+            --wahhaj-radius-lg: 24px;
+            --wahhaj-radius-md: 16px;
+            --wahhaj-shadow: 0 10px 28px rgba(15,23,42,0.065);
+            --wahhaj-page-title: clamp(40px, 3.4vw, 56px);
+            --wahhaj-section-title: clamp(24px, 1.9vw, 29px);
+            --wahhaj-card-title: 20px;
+            --wahhaj-body: 17px;
+            --wahhaj-small: 15px;
+            --wahhaj-button-font: 16px;
+            --wahhaj-button-height: 58px;
+        }
+
+        html, body, .stApp, .main, .block-container,
+        [data-testid="stMarkdownContainer"], .stMarkdown,
+        input, textarea, label, button {
+            font-family: var(--wahhaj-font) !important;
+        }
+
+        .main .block-container {
+            max-width: 1280px !important;
+            padding-left: clamp(1.25rem, 3vw, 2.8rem) !important;
+            padding-right: clamp(1.25rem, 3vw, 2.8rem) !important;
+        }
+
+        /* Page titles: same size and true center alignment across pages */
+        .hero-title,
+        .page-title,
+        .analysis-title,
+        .ranked-title,
+        .fr-title {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            text-align: center !important;
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-page-title) !important;
+            line-height: 1.08 !important;
+            letter-spacing: 0.005em !important;
+            color: var(--wahhaj-text) !important;
+        }
+
+        .login-title {
+            display: block !important;
+            font-size: clamp(58px, 4.5vw, 70px) !important;
+            line-height: 1.05 !important;
+        }
+
+        .hero-subtitle,
+        .page-subtitle,
+        .analysis-subtitle,
+        .ranked-subtitle,
+        .section-subtitle,
+        .section-sub,
+        .fr-subtitle {
+            display: block !important;
+            width: 100% !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            text-align: center !important;
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-body) !important;
+            line-height: 1.65 !important;
+            color: var(--wahhaj-muted) !important;
+        }
+
+        .section-title,
+        .account-heading,
+        .steps-title,
+        .heatmap-title-card .heatmap-title,
+        .ranked-shell-title,
+        .panel-title,
+        .card-title,
+        .edit-panel-title {
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-section-title) !important;
+            line-height: 1.25 !important;
+            font-weight: 800 !important;
+            color: var(--wahhaj-text) !important;
+        }
+
+        .fr-card-title {
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-card-title) !important;
+            line-height: 1.25 !important;
+            font-weight: 800 !important;
+            color: var(--wahhaj-text) !important;
+            text-transform: none !important;
+            letter-spacing: 0.02em !important;
+            margin-bottom: 0.72rem !important;
+        }
+
+        /* Body text normalization: fixes tiny 11/12/13 px labels without making UI huge */
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] li,
+        .empty-text,
+        .account-value,
+        .history-location,
+        .site-name,
+        .fr-kv-value,
+        .fr-list-item,
+        .fr-score-label,
+        .fr-ai-note,
+        .fr-ai-label,
+        .fr-ai-value,
+        .upload-file-name,
+        .upload-progress-text,
+        .upload-success-meta {
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-body) !important;
+            line-height: 1.55 !important;
+        }
+
+        .login-subtitle,
+        .field-label,
+        .account-label,
+        .account-muted,
+        .role-pill,
+        .history-meta,
+        .history-filter,
+        .empty-title,
+        .search-label,
+        .loc-feedback,
+        .status-card,
+        .steps-list,
+        .upload-note,
+        .upload-progress-pct,
+        .fr-chip,
+        .fr-mini-note,
+        .fr-kv-label,
+        .fr-map-caption,
+        .fr-factor-head,
+        .fr-factor-sub,
+        .fr-factor-val,
+        .fr-mini-factor h4,
+        .fr-mini-raw,
+        .fr-mini-pill,
+        .fr-summary-item,
+        .site-meta,
+        .wahhaj-popup,
+        .wahhaj-popup .meta,
+        .wahhaj-legend,
+        .wahhaj-legend-title {
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-small) !important;
+            line-height: 1.5 !important;
+        }
+
+        .field-label {
+            font-size: 20px !important;
+            font-weight: 800 !important;
+            color: var(--wahhaj-text) !important;
+        }
+
+        /* Inputs */
+        div[data-testid="stTextInput"] input,
+        div[data-testid="stNumberInput"] input,
+        div[data-testid="stTextArea"] textarea,
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            min-height: 54px !important;
+            font-size: 16px !important;
+            border-radius: 12px !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Main buttons and download buttons */
+        div.stButton > button,
+        div.stButton > button:focus,
+        div[data-testid="stFormSubmitButton"] button,
+        div[data-testid="stFormSubmitButton"] button:focus,
+        div[data-testid="stDownloadButton"] button,
+        div[data-testid="stDownloadButton"] button:focus {
+            min-height: var(--wahhaj-button-height) !important;
+            height: auto !important;
+            padding: 13px 24px !important;
+            border-radius: 14px !important;
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-button-font) !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
+            letter-spacing: 0.02em !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            white-space: normal !important;
+            box-sizing: border-box !important;
+            min-width: 150px !important;
+            max-width: 100% !important;
+            overflow-wrap: anywhere !important;
+            background: var(--wahhaj-blue) !important;
+            color: #ffffff !important;
+            border: 1px solid var(--wahhaj-blue) !important;
+            box-shadow: 0 4px 16px rgba(0,112,255,0.30), 0 2px 6px rgba(0,0,0,0.08) !important;
+        }
+
+        div.stButton > button p,
+        div.stButton > button > div,
+        div[data-testid="stFormSubmitButton"] button p,
+        div[data-testid="stFormSubmitButton"] button > div,
+        div[data-testid="stDownloadButton"] button p,
+        div[data-testid="stDownloadButton"] button > div {
+            font-family: var(--wahhaj-font) !important;
+            font-size: var(--wahhaj-button-font) !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            color: inherit !important;
+            text-align: center !important;
+        }
+
+        div.stButton > button:hover,
+        div[data-testid="stFormSubmitButton"] button:hover,
+        div[data-testid="stDownloadButton"] button:hover {
+            background: var(--wahhaj-blue-hover) !important;
+            border-color: var(--wahhaj-blue-hover) !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 0 6px 22px rgba(0,112,255,0.42), 0 2px 8px rgba(0,0,0,0.10) !important;
+        }
+
+        div.stButton > button:disabled,
+        div.stButton > button[disabled],
+        div[data-testid="stFormSubmitButton"] button:disabled,
+        div[data-testid="stDownloadButton"] button:disabled {
+            background: #d0d0d0 !important;
+            color: #888888 !important;
+            border-color: #bbbbbb !important;
+            box-shadow: none !important;
+            cursor: not-allowed !important;
+            transform: none !important;
+            opacity: 1 !important;
+        }
+
+        /* Smaller action buttons inside history/tables/cards */
+        div[class*="st-key-hist_open_"] button,
+        div[class*="st-key-open_saved_report_"] button,
+        div[class*="st-key-tbl_"] button {
+            min-height: 50px !important;
+            padding: 11px 18px !important;
+            font-size: 15px !important;
+            border-radius: 13px !important;
+        }
+        div[class*="st-key-hist_open_"] button p,
+        div[class*="st-key-hist_open_"] button > div,
+        div[class*="st-key-open_saved_report_"] button p,
+        div[class*="st-key-open_saved_report_"] button > div,
+        div[class*="st-key-tbl_"] button p,
+        div[class*="st-key-tbl_"] button > div {
+            font-size: 15px !important;
+        }
+
+        .top-home-btn {
+            width: 124px !important;
+            margin-left: auto !important;
+        }
+        .top-home-btn div.stButton > button {
+            min-height: 52px !important;
+            padding: 11px 18px !important;
+            font-size: 16px !important;
+            border-radius: 13px !important;
+        }
+
+        /* Cards and containers: unified spacing and visual rhythm */
+        .account-card,
+        .status-card,
+        .steps-card,
+        .heatmap-title-card,
+        .fr-card,
+        .fr-header,
+        .fr-kv-item,
+        .fr-list-item,
+        .fr-mini-factor,
+        .fr-summary-item,
+        div[class*="st-key-home_history_shell"],
+        div[class*="st-key-home_history_row_"],
+        div[class*="st-key-saved_site_"] {
+            box-sizing: border-box !important;
+            border-color: var(--wahhaj-border) !important;
+            box-shadow: var(--wahhaj-shadow) !important;
+        }
+
+        .account-card,
+        .status-card,
+        .steps-card,
+        .heatmap-title-card,
+        .fr-card,
+        .fr-header,
+        div[class*="st-key-home_history_shell"],
+        div[class*="st-key-home_history_row_"],
+        div[class*="st-key-saved_site_"] {
+            border-radius: var(--wahhaj-radius-lg) !important;
+        }
+
+        .fixed-width,
+        .login-shell,
+        .upload-center-shell,
+        .heatmap-content,
+        .fr-header-shell,
+        .fr-card,
+        div[class*="st-key-home_history_shell"] {
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .hero-block,
+        .location-page,
+        .upload-page,
+        .analysis-wrap,
+        .heatmap-page,
+        .fr-header,
+        .fr-header-shell {
+            text-align: center !important;
+        }
+
+        .account-card,
+        .fr-card,
+        .status-card,
+        .steps-card,
+        .fr-kv-item,
+        .fr-list-item {
+            text-align: left !important;
+        }
+
+        /* Final report was intentionally compact; this keeps it readable without breaking the single-screen layout. */
+        .fr-card {
+            padding: 1.05rem 1.15rem !important;
+        }
+        .fr-kv-item,
+        .fr-list-item,
+        .fr-summary-item {
+            border-radius: 14px !important;
+        }
+        .fr-chip-row {
+            justify-content: center !important;
+        }
+
+        @media (max-width: 900px) {
+            :root {
+                --wahhaj-page-title: clamp(34px, 8vw, 44px);
+                --wahhaj-body: 16px;
+                --wahhaj-small: 14px;
+                --wahhaj-button-height: 54px;
+            }
+
+            .main .block-container {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+
+            div.stButton > button,
+            div[data-testid="stFormSubmitButton"] button,
+            div[data-testid="stDownloadButton"] button {
+                padding-left: 16px !important;
+                padding-right: 16px !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )

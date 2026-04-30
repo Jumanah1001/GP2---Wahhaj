@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from ui_helpers import (
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     render_footer,
     render_top_home_button,
@@ -135,143 +136,166 @@ def _load_saved_heatmap_from_report():
     return suitability, aoi, selected_location, True
 
 
-st.markdown("""
-<style>
+st.markdown(
+    """
+    <style>
 
-html, body {
-    height: 100%;
-}
+    html, body {
+        height: 100%;
+    }
 
-.main {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-}
+    .main {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
 
-.page-title{
-    font-family:'Capriola',sans-serif;
-    font-size:clamp(34px,3vw,44px);
-    color:#5A5959;
-    line-height:1;
-    margin-bottom:4px;
-    text-align:center;
-}
-.page-subtitle{
-    font-family:'Capriola',sans-serif;
-    font-size:14px;
-    color:#5E5B5B;
-    margin-bottom:22px;
-    text-align:center;
-}
+    .block-container {
+        flex: 1;
+    }
 
-.block-container {
-    flex: 1;
-}
+    .main .block-container {
+        max-width: 1280px;
+        padding-top: 0.65rem;
+        padding-bottom: 1.2rem;
+    }
 
-/* الفوتر */
-.footer {
-    margin-top: auto;
-    text-align: center;
-    font-size: 12px;
-    color: #666;
-    padding-bottom: 12px;
-}
+    .page-title {
+        font-family: 'Capriola', sans-serif;
+        font-size: clamp(40px, 3.4vw, 56px);
+        color: #1F2638;
+        line-height: 1;
+        margin-top: 0.2rem;
+        margin-bottom: 8px;
+        text-align: center;
+        font-weight: 800;
+    }
 
-.main .block-container {
-    max-width: 1280px;
-    padding-top: 0.65rem;
-    padding-bottom: 1.2rem;
-}
+    .page-subtitle {
+        font-family: 'Capriola', sans-serif;
+        font-size: 17px;
+        color: #5E5B5B;
+        margin-bottom: 22px;
+        text-align: center;
+        font-weight: 600;
+    }
 
-.heatmap-page {
-    position: relative;
-    z-index: 2;
-}
+    .heatmap-page {
+        position: relative;
+        z-index: 2;
+    }
 
-.heatmap-content {
-    width: min(1280px, 88vw);
-    margin-left: auto;
-    margin-right: auto;
-}
+    .heatmap-content {
+        width: min(1280px, 88vw);
+        margin-left: auto;
+        margin-right: auto;
+    }
 
-.heatmap-title-card {
-    background: rgba(255,255,255,0.78);
-    border: 1px solid rgba(220,226,235,0.95);
-    border-radius: 22px;
-    box-shadow: 0 10px 26px rgba(15,23,42,0.05);
-    backdrop-filter: blur(12px);
-    padding: 16px 22px;
-    margin-bottom: 16px;
-}
+    .heatmap-title-card {
+        background: rgba(255,255,255,0.78);
+        border: 1px solid rgba(220,226,235,0.95);
+        border-radius: 22px;
+        box-shadow: 0 10px 26px rgba(15,23,42,0.05);
+        backdrop-filter: blur(12px);
+        padding: 16px 22px;
+        margin-bottom: 16px;
+    }
 
-.heatmap-title {
-    font-family: 'Capriola', sans-serif;
-    font-size: 20px;
-    font-weight: 800;
-    color: #303149;
-    margin: 0;
-}
+    .heatmap-title {
+        font-family: 'Capriola', sans-serif;
+        font-size: 24px;
+        font-weight: 800;
+        color: #303149;
+        margin: 0;
+    }
 
-.map-frame {
-    border-radius: 18px;
-    overflow: hidden;
-    border: 1px solid rgba(215,225,239,0.95);
-    margin-bottom: 20px;
-}
+    .map-frame {
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(215,225,239,0.95);
+        margin-bottom: 20px;
+    }
 
-div[data-testid="stVerticalBlock"] {
-    gap: 0.45rem;
-}
+    div[data-testid="stVerticalBlock"] {
+        gap: 0.45rem;
+    }
 
-/* Same compact action style used in Final Report bottom controls */
-.heatmap-actions-shell {
-    width: 100%;
-    margin: 0.72rem 0 0 0;
-    position: relative;
-    z-index: 2;
-}
+    .heatmap-actions-shell {
+        width: 100%;
+        margin: 0.72rem 0 0 0;
+        position: relative;
+        z-index: 2;
+    }
 
-.heatmap-actions-shell div[data-testid="stButton"] > button,
-.heatmap-actions-shell div.stButton > button {
-    min-height: 38px !important;
-    height: 38px !important;
-    padding: 7px 14px !important;
-    border-radius: 12px !important;
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    line-height: 1.1 !important;
-    background: #0070FF !important;
-    color: #FFFFFF !important;
-    border: none !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
-    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-}
+    .heatmap-actions-shell div[data-testid="stButton"] > button,
+    .heatmap-actions-shell div.stButton > button {
+        min-height: 56px !important;
+        height: auto !important;
+        padding: 12px 20px !important;
+        border-radius: 12px !important;
+        font-family: 'Capriola', sans-serif !important;
+        font-size: 16px !important;
+        font-weight: 800 !important;
+        line-height: 1.25 !important;
+        background: #0070FF !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+    }
 
-.heatmap-actions-shell div[data-testid="stButton"] > button:hover,
-.heatmap-actions-shell div.stButton > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.10) !important;
-    background: #005fe0 !important;
-    color: #FFFFFF !important;
-}
+    .heatmap-actions-shell div.stButton > button p,
+    .heatmap-actions-shell div.stButton > button > div,
+    .heatmap-actions-shell div[data-testid="stButton"] > button p,
+    .heatmap-actions-shell div[data-testid="stButton"] > button > div {
+        font-family: 'Capriola', sans-serif !important;
+        font-size: 16px !important;
+        font-weight: 800 !important;
+        line-height: 1.25 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        white-space: normal !important;
+    }
 
-.heatmap-feedback {
-    width: min(1280px, 88vw);
-    box-sizing: border-box;
-    border-radius: 14px;
-    padding: 13px 18px;
-    margin: 0 auto 18px auto;
-    font-family: 'Capriola', sans-serif;
-    font-size: 14px;
-    line-height: 1.55;
-    background: rgba(255,90,90,0.10);
-    border: 1px solid rgba(210,70,70,0.24);
-    color: #b42318;
-}
-</style>
-""", unsafe_allow_html=True)
+    .heatmap-actions-shell div[data-testid="stButton"] > button:hover,
+    .heatmap-actions-shell div.stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.10) !important;
+        background: #005fe0 !important;
+        color: #FFFFFF !important;
+    }
 
+    .heatmap-feedback {
+        width: min(1280px, 88vw);
+        box-sizing: border-box;
+        border-radius: 14px;
+        padding: 13px 18px;
+        margin: 0 auto 18px auto;
+        font-family: 'Capriola', sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        background: rgba(255,90,90,0.10);
+        border: 1px solid rgba(210,70,70,0.24);
+        color: #b42318;
+    }
+
+    .footer {
+        margin-top: auto;
+        text-align: center;
+        font-size: 13px;
+        color: #666;
+        padding-bottom: 12px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Home button must stay at the top like the rest of the pages
+render_top_home_button("pages/2_Home.py")
+
+# Page title stays centered under the Home button
 st.markdown(
     """
     <div class="page-title">Site Suitability Map</div>
@@ -279,7 +303,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-render_top_home_button("pages/2_Home.py")
 
 
 # These values should come from the real run after AHPModel.computeSuitabilityScore().
@@ -353,7 +376,7 @@ st.markdown(
         <div class="heatmap-title">Selected Location Suitability Distribution</div>
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 st.markdown('<div class="map-frame">', unsafe_allow_html=True)
@@ -367,10 +390,12 @@ with report_col:
     if st.button("View Final Report", use_container_width=True):
         st.switch_page("pages/8_Final_Report.py")
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="footer-spacer"></div>', unsafe_allow_html=True)
+
+apply_ui_consistency_patch()
 render_footer()
