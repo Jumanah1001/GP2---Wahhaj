@@ -260,32 +260,22 @@ def _persist_selected_location(location_name: str, latitude: float, longitude: f
 st.markdown(
     """
 <style>
+/* ===============================================================
+   Choose Location page cleanup
+   Main title/subtitle and shared button typography come from ui_helpers.py.
+   This page keeps only layout, map panel structure, and card spacing.
+=============================================================== */
+
 .location-page {
     position: relative;
     z-index: 2;
     padding-top: 12px;
 }
 
-.page-title {
-    font-family: 'Capriola', sans-serif;
-    font-size: clamp(40px, 3.4vw, 56px);
-    color: #1a1a1a;
-    line-height: 1;
-    margin-bottom: 10px;
-    text-align: center;
-}
-
-.page-subtitle {
-    font-family: 'Capriola', sans-serif;
-    font-size: 17px;
-    color: #444;
-    margin-bottom: 22px;
-    text-align: center;
-}
-
+/* Layout shells */
 div[class*="st-key-choose_shell"] {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
+    background: rgba(255,255,255,0.72);
+    border: 1px solid rgba(226,232,240,0.95);
     border-radius: 26px;
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
     padding: 22px 22px 18px 22px;
@@ -294,46 +284,60 @@ div[class*="st-key-choose_shell"] {
 
 div[class*="st-key-choose_left_shell"],
 div[class*="st-key-choose_right_shell"] {
-    background: #ffffff;
-    border: 1px solid #e6ebf2;
+    background: rgba(255,255,255,0.74);
+    border: 1px solid rgba(230,235,242,0.95);
     border-radius: 22px;
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
     padding: 18px 18px 16px 18px;
     height: 100%;
 }
 
-.section-title {
-    font-family: 'Capriola', sans-serif;
-    font-size: 23px;
-    font-weight: 800;
-    color: #1b2430;
-    margin-bottom: 8px;
-}
-
-.section-sub {
-    font-family: 'Capriola', sans-serif;
-    font-size: 15px;
-    color: #6b7280;
-    line-height: 1.65;
-    margin-bottom: 18px;
+/* Local labels connected to the shared UI variables */
+.search-label,
+.choose-map-title,
+.steps-title {
+    font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+    color: var(--wahhaj-text, #172033) !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    letter-spacing: 0.005em !important;
 }
 
 .search-label {
-    font-family: 'Capriola', sans-serif;
-    font-size: 18px;
-    color: #1a1a1a;
-    font-weight: 700;
-    margin-bottom: 8px;
+    font-size: var(--wahhaj-small, 15px) !important;
+    margin-bottom: 8px !important;
 }
 
+.choose-map-title {
+    font-size: var(--wahhaj-card-title, 20px) !important;
+    margin-bottom: 8px !important;
+}
+
+.choose-map-sub,
+.map-caption,
+.steps-list {
+    font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+    font-size: var(--wahhaj-small, 15px) !important;
+    color: var(--wahhaj-muted, #5E6678) !important;
+    line-height: 1.6 !important;
+}
+
+.choose-map-sub {
+    margin-bottom: 18px !important;
+    text-align: center !important;
+}
+
+.steps-title {
+    font-size: var(--wahhaj-card-title, 20px) !important;
+    margin-bottom: 8px !important;
+}
+
+/* Input shape only. Font/color come from the shared UI. */
 div[data-testid="stTextInput"] input {
     background: #F0EEEE !important;
-    color: #1a1a1a !important;
     border: 1px solid #d3d8e0 !important;
     border-radius: 10px !important;
     min-height: 54px !important;
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 16px !important;
     padding-left: 12px !important;
     box-shadow: none !important;
 }
@@ -342,59 +346,14 @@ div[data-testid="stTextInput"] input::placeholder {
     color: #999 !important;
 }
 
-div.stButton > button:disabled,
-div.stButton > button[disabled],
-div.stButton > button:not(:disabled) {
-    min-height: 56px !important;
-    height: auto !important;
-    width: 100% !important;
-    border-radius: 10px !important;
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 16px !important;
-    padding: 12px 20px !important;
-    box-sizing: border-box !important;
-}
-
-div.stButton > button:disabled,
-div.stButton > button[disabled] {
-    background: #d0d0d0 !important;
-    color: #777 !important;
-    border: 1px solid #bbb !important;
-    box-shadow: none !important;
-    cursor: not-allowed !important;
-    opacity: 1 !important;
-}
-
-div.stButton > button:not(:disabled) {
-    background: #0070FF !important;
-    color: white !important;
-    border: none !important;
-    box-shadow: 4px 5px 4px rgba(0,0,0,0.16) !important;
-}
-
-div.stButton > button:not(:disabled):hover {
-    background: #005fe0 !important;
-}
-
-div.stButton > button p,
-div.stButton > button > div {
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 16px !important;
-    font-weight: 800 !important;
-    line-height: 1.25 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    white-space: normal !important;
-}
-
-/* Add New User style feedback */
+/* Feedback and cards use the shared font variables */
 .loc-feedback {
     box-sizing: border-box;
     border-radius: 14px;
     padding: 13px 18px;
     margin: 0 0 14px 0;
-    font-family: 'Capriola', sans-serif;
-    font-size: 15px;
+    font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+    font-size: var(--wahhaj-small, 15px) !important;
     line-height: 1.6;
     font-weight: 700;
 }
@@ -412,23 +371,23 @@ div.stButton > button > div {
 }
 
 .status-card {
-    background: #f8fbff;
+    background: rgba(248,251,255,0.82);
     border: 1px solid #d7e7fb;
     border-radius: 16px;
     padding: 14px 16px;
-    font-family: 'Capriola', sans-serif;
-    font-size: 15px;
+    font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+    font-size: var(--wahhaj-small, 15px) !important;
     color: #233044;
     line-height: 1.8;
     margin: 10px 0 14px;
 }
 
 .status-card b {
-    color: #0070FF;
+    color: var(--wahhaj-blue, #0070FF);
 }
 
 .steps-card {
-    background: #f8fafc;
+    background: rgba(248,250,252,0.84);
     border: 1px solid #e5ecf3;
     border-radius: 16px;
     padding: 14px 18px;
@@ -436,40 +395,17 @@ div.stButton > button > div {
     margin-bottom: 14px;
 }
 
-.steps-title {
-    font-family: 'Capriola', sans-serif;
-    font-size: 17px;
-    font-weight: 800;
-    color: #1f2937;
-    margin-bottom: 8px;
-}
-
-.steps-list {
-    font-family: 'Capriola', sans-serif;
-    font-size: 15px;
-    color: #4b5563;
-    line-height: 1.95;
-}
-
 .save-confirm {
     background: rgba(80,200,120,0.12);
     border: 1px solid rgba(80,160,100,0.30);
     border-radius: 14px;
     padding: 13px 18px;
-    font-family: 'Capriola', sans-serif;
-    font-size: 14px;
+    font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+    font-size: var(--wahhaj-small, 15px) !important;
     color: #2c7a4b;
     margin-top: 14px;
     font-weight: 700;
     line-height: 1.55;
-}
-
-.map-caption {
-    font-family: 'Capriola', sans-serif;
-    font-size: 15px;
-    color: #6b7280;
-    line-height: 1.75;
-    margin-top: 12px;
 }
 
 @media (max-width: 900px) {
@@ -683,10 +619,10 @@ with st.container(key="choose_shell"):
 
     with right_col:
         with st.container(key="choose_right_shell"):
-            st.markdown('<div class="section-title">Interactive AOI Map</div>', unsafe_allow_html=True)
+            st.markdown('<div class="choose-map-title">Interactive AOI Map</div>', unsafe_allow_html=True)
 
             st.markdown(
-                '<div class="section-sub">Use the map tools to draw one rectangle that represents the analysis boundary for the selected site.</div>',
+                '<div class="choose-map-sub">Use the map tools to draw one rectangle that represents the analysis boundary for the selected site.</div>',
                 unsafe_allow_html=True,
             )
 
@@ -836,4 +772,29 @@ with st.container(key="choose_shell"):
 
 st.markdown("</div>", unsafe_allow_html=True)
 apply_ui_consistency_patch()
+
+st.markdown(
+    """
+    <style>
+    .choose-map-title {
+        font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+        font-size: var(--wahhaj-card-title, 20px) !important;
+        font-weight: 700 !important;
+        color: var(--wahhaj-text, #172033) !important;
+        line-height: 1.25 !important;
+        margin-bottom: 8px !important;
+    }
+
+    .choose-map-sub {
+        font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+        font-size: var(--wahhaj-small, 15px) !important;
+        color: var(--wahhaj-muted, #5E6678) !important;
+        line-height: 1.6 !important;
+        text-align: center !important;
+        margin-bottom: 18px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 render_footer()

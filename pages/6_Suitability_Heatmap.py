@@ -136,10 +136,11 @@ def _load_saved_heatmap_from_report():
     return suitability, aoi, selected_location, True
 
 
+# Page-specific CSS only for layout/map containers.
+# Typography for the main page title/subtitle is controlled by ui_helpers.py.
 st.markdown(
     """
     <style>
-
     html, body {
         height: 100%;
     }
@@ -155,29 +156,9 @@ st.markdown(
     }
 
     .main .block-container {
-        max-width: 1280px;
-        padding-top: 0.65rem;
-        padding-bottom: 1.2rem;
-    }
-
-    .page-title {
-        font-family: 'Capriola', sans-serif;
-        font-size: clamp(40px, 3.4vw, 56px);
-        color: #1F2638;
-        line-height: 1;
-        margin-top: 0.2rem;
-        margin-bottom: 8px;
-        text-align: center;
-        font-weight: 800;
-    }
-
-    .page-subtitle {
-        font-family: 'Capriola', sans-serif;
-        font-size: 17px;
-        color: #5E5B5B;
-        margin-bottom: 22px;
-        text-align: center;
-        font-weight: 600;
+        max-width: 1280px !important;
+        padding-top: 0.65rem !important;
+        padding-bottom: 1.2rem !important;
     }
 
     .heatmap-page {
@@ -192,21 +173,13 @@ st.markdown(
     }
 
     .heatmap-title-card {
-        background: rgba(255,255,255,0.78);
-        border: 1px solid rgba(220,226,235,0.95);
-        border-radius: 22px;
-        box-shadow: 0 10px 26px rgba(15,23,42,0.05);
+        background: rgba(255,255,255,0.78) !important;
+        border: 1px solid rgba(220,226,235,0.95) !important;
+        border-radius: 20px !important;
+        box-shadow: 0 10px 26px rgba(15,23,42,0.05) !important;
         backdrop-filter: blur(12px);
-        padding: 16px 22px;
-        margin-bottom: 16px;
-    }
-
-    .heatmap-title {
-        font-family: 'Capriola', sans-serif;
-        font-size: 24px;
-        font-weight: 800;
-        color: #303149;
-        margin: 0;
+        padding: 12px 18px !important;
+        margin-bottom: 16px !important;
     }
 
     .map-frame {
@@ -233,11 +206,11 @@ st.markdown(
         height: auto !important;
         padding: 12px 20px !important;
         border-radius: 12px !important;
-        font-family: 'Capriola', sans-serif !important;
-        font-size: 16px !important;
-        font-weight: 800 !important;
+        font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+        font-size: var(--wahhaj-button-font, 16px) !important;
+        font-weight: 700 !important;
         line-height: 1.25 !important;
-        background: #0070FF !important;
+        background: var(--wahhaj-blue, #0070FF) !important;
         color: #FFFFFF !important;
         border: none !important;
         box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
@@ -248,20 +221,21 @@ st.markdown(
     .heatmap-actions-shell div.stButton > button > div,
     .heatmap-actions-shell div[data-testid="stButton"] > button p,
     .heatmap-actions-shell div[data-testid="stButton"] > button > div {
-        font-family: 'Capriola', sans-serif !important;
-        font-size: 16px !important;
-        font-weight: 800 !important;
+        font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+        font-size: var(--wahhaj-button-font, 16px) !important;
+        font-weight: 700 !important;
         line-height: 1.25 !important;
         margin: 0 !important;
         padding: 0 !important;
         white-space: normal !important;
+        color: #FFFFFF !important;
     }
 
     .heatmap-actions-shell div[data-testid="stButton"] > button:hover,
     .heatmap-actions-shell div.stButton > button:hover {
         transform: translateY(-1px);
         box-shadow: 0 6px 12px rgba(0,0,0,0.10) !important;
-        background: #005fe0 !important;
+        background: var(--wahhaj-blue-hover, #005fe0) !important;
         color: #FFFFFF !important;
     }
 
@@ -271,8 +245,8 @@ st.markdown(
         border-radius: 14px;
         padding: 13px 18px;
         margin: 0 auto 18px auto;
-        font-family: 'Capriola', sans-serif;
-        font-size: 15px;
+        font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif);
+        font-size: var(--wahhaj-small, 15px);
         line-height: 1.6;
         background: rgba(255,90,90,0.10);
         border: 1px solid rgba(210,70,70,0.24);
@@ -286,16 +260,15 @@ st.markdown(
         color: #666;
         padding-bottom: 12px;
     }
-
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Home button must stay at the top like the rest of the pages
+# Home button stays at the top like the rest of the pages.
 render_top_home_button("pages/2_Home.py")
 
-# Page title stays centered under the Home button
+# Main title uses the shared .page-title and .page-subtitle from ui_helpers.py.
 st.markdown(
     """
     <div class="page-title">Site Suitability Map</div>
@@ -397,5 +370,28 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="footer-spacer"></div>', unsafe_allow_html=True)
 
+# Apply the shared UI system once at the end, like the rest of the project pages.
 apply_ui_consistency_patch()
+
+# Final local override ONLY for the heatmap card title.
+# This must come after apply_ui_consistency_patch(), because ui_helpers.py has
+# the selector .heatmap-title-card .heatmap-title with a larger section-title size.
+st.markdown(
+    """
+    <style>
+    .heatmap-title-card .heatmap-title {
+        font-family: var(--wahhaj-font, 'Capriola', 'Inter', sans-serif) !important;
+        font-size: var(--wahhaj-card-title, 20px) !important;
+        font-weight: 700 !important;
+        color: var(--wahhaj-text, #172033) !important;
+        line-height: 1.28 !important;
+        margin: 0 !important;
+        letter-spacing: 0.005em !important;
+        text-transform: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 render_footer()

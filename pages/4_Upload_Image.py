@@ -26,121 +26,15 @@ from Wahhaj.storage_service import StorageService
 st.set_page_config(page_title="Upload Image", layout="wide")
 init_state()
 apply_global_style()
+
 render_bg()
-
-# ── JS enforcer: يطبّق الأبعاد على DOM مباشرة بعد كل render ──
-st.markdown(
-    """
-    <script>
-    (function applyBtnSizes() {
-        const BTN_H   = "54px";
-        const BTN_W   = "124px";
-        const BTN_R   = "14px";
-        const BTN_FS  = "15px";
-        const BTN_SH  = "0 4px 14px rgba(0,112,255,0.30)";
-        const BTN_PAD = "13px 24px";
-
-        function forceBlueButton(btn, fullWidth) {
-            btn.style.setProperty("appearance", "none", "important");
-            btn.style.setProperty("background", "#0070FF", "important");
-            btn.style.setProperty("background-color", "#0070FF", "important");
-            btn.style.setProperty("color", "white", "important");
-            btn.style.setProperty("border", "none", "important");
-            btn.style.setProperty("border-radius", BTN_R, "important");
-
-            if (fullWidth) {
-                btn.style.setProperty("width", "100%", "important");
-                btn.style.setProperty("min-width", "100%", "important");
-                btn.style.setProperty("max-width", "100%", "important");
-            } else {
-                btn.style.setProperty("width", BTN_W, "important");
-                btn.style.setProperty("min-width", BTN_W, "important");
-                btn.style.setProperty("max-width", BTN_W, "important");
-            }
-
-            btn.style.setProperty("height", BTN_H, "important");
-            btn.style.setProperty("min-height", BTN_H, "important");
-            btn.style.setProperty("padding", BTN_PAD, "important");
-
-            btn.style.setProperty("font-family", "'Capriola', sans-serif", "important");
-            btn.style.setProperty("font-size", BTN_FS, "important");
-            btn.style.setProperty("font-weight", "700", "important");
-            btn.style.setProperty("line-height", "1", "important");
-
-            btn.style.setProperty("box-shadow", BTN_SH, "important");
-            btn.style.setProperty("display", "inline-flex", "important");
-            btn.style.setProperty("align-items", "center", "important");
-            btn.style.setProperty("justify-content", "center", "important");
-            btn.style.setProperty("white-space", "nowrap", "important");
-            btn.style.setProperty("opacity", "1", "important");
-        }
-
-        function forceDisabledButton(btn) {
-            btn.style.setProperty("background", "#d0d0d0", "important");
-            btn.style.setProperty("background-color", "#d0d0d0", "important");
-            btn.style.setProperty("color", "#888", "important");
-            btn.style.setProperty("border", "1px solid #bbb", "important");
-            btn.style.setProperty("box-shadow", "none", "important");
-            btn.style.setProperty("cursor", "not-allowed", "important");
-            btn.style.setProperty("opacity", "1", "important");
-            btn.style.setProperty("transform", "none", "important");
-        }
-
-        function run() {
-            document.querySelectorAll(".top-home-btn button").forEach(btn => {
-                forceBlueButton(btn, false);
-            });
-
-            document.querySelectorAll('[data-testid="stFileUploader"] button').forEach(btn => {
-                forceBlueButton(btn, false);
-            });
-
-            document.querySelectorAll(".run-analysis-row button").forEach(btn => {
-                const forceReady = btn.closest("[data-ready='true']") !== null;
-                const isDisabled = !forceReady && (
-                    btn.disabled
-                    || btn.hasAttribute("disabled")
-                    || btn.getAttribute("aria-disabled") === "true"
-                    || btn.closest("[data-ready='false']") !== null
-                );
-
-                if (isDisabled) {
-                    forceDisabledButton(btn);
-                } else {
-                    forceBlueButton(btn, true);
-                }
-            });
-
-            document.querySelectorAll("button").forEach(btn => {
-                const label = (btn.innerText || btn.textContent || "").trim();
-
-                if (label === "Clear Image") {
-                    forceBlueButton(btn, true);
-                }
-            });
-        }
-
-        const obs = new MutationObserver(run);
-        obs.observe(document.body, { childList: true, subtree: true });
-
-        run();
-        setTimeout(run, 100);
-        setTimeout(run, 300);
-        setTimeout(run, 700);
-        setTimeout(run, 1500);
-
-        setInterval(run, 200);
-    })();
-    </script>
-    """,
-    unsafe_allow_html=True,
-)
 
 if not st.session_state.get("logged_in", False):
     st.switch_page("pages/1_Login.py")
 
+
 # -----------------------------
-# session state defaults
+# Session state defaults
 # -----------------------------
 if "uploaded_image_name" not in st.session_state:
     st.session_state["uploaded_image_name"] = ""
@@ -161,7 +55,7 @@ if "upload_ui_ready" not in st.session_state:
     st.session_state["upload_ui_ready"] = False
 
 if "upload_uploader_key" not in st.session_state:
-    st.session_state["upload_uploader_key"] = 0    
+    st.session_state["upload_uploader_key"] = 0
 
 
 def job_is_done(job) -> bool:
@@ -212,6 +106,7 @@ def _render_upload_success(file_name: str, file_size_mb: float) -> str:
     </div>
     """
 
+
 def _remove_uploaded_image() -> None:
     clear_uploaded_image_state()
     clear_analysis_state(clear_dataset=False)
@@ -227,8 +122,7 @@ def _remove_uploaded_image() -> None:
 
     st.session_state["upload_uploader_key"] = int(
         st.session_state.get("upload_uploader_key", 0)
-    ) + 1 
-
+    ) + 1
 
 
 def _render_clear_image_button() -> None:
@@ -251,49 +145,44 @@ def _render_clear_image_button() -> None:
         st.rerun()
 
 
+# -----------------------------
+# Page-specific CSS
+# -----------------------------
 st.markdown(
     dedent("""
     <style>
+    :root {
+        --upload-btn-width: 184px;
+        --upload-btn-height: var(--wahhaj-button-height, 58px);
+        --upload-btn-radius: 14px;
+        --upload-btn-font: var(--wahhaj-button-font, 16px);
+        --upload-btn-shadow: 0 4px 14px rgba(0,112,255,0.30);
+    }
+
+    .main .block-container {
+        max-width: 1280px !important;
+        padding-top: 1.2rem !important;
+        padding-bottom: 1.2rem !important;
+    }
+
     .upload-page {
         position: relative;
         z-index: 2;
-        padding-top: 44px;
+        padding-top: 28px;
     }
 
-    .page-title {
-        font-family: 'Capriola', sans-serif;
-        font-size: clamp(40px, 3.4vw, 56px);
-        color: #5A5959;
-        line-height: 1.05;
-        margin-bottom: 10px;
-        text-align: center;
-    }
-
-    .page-subtitle {
-        font-family: 'Capriola', sans-serif;
-        font-size: 17px;
-        color: #5E5B5B;
-        margin-top: 4px;
-        margin-bottom: 18px;
-        text-align: center;
-    }
+    /*
+       Do not style .page-title or .page-subtitle here.
+       They must stay controlled by ui_helpers.py to match all pages.
+       This page only controls spacing and upload-box layout.
+    */
 
     .upload-center-shell {
-        max-width: 700px;
-        margin: 34px auto 0 auto;
+        max-width: 760px;
+        margin: 0 auto 0 auto !important;
+        position: relative !important;
+        z-index: 2 !important;
     }
-
-<<<<<<< HEAD
-    :root {
-        --upload-btn-width: 184px;
-        --upload-btn-height: 58px;
-        --upload-btn-radius: 14px;
-        --upload-btn-font: 16px;
-        --upload-btn-shadow: 0 4px 14px rgba(0,112,255,0.30);
-    }
-=======
-
->>>>>>> f3ab2876c8909c539038d5cd326dace87f874b5d
 
     div[data-testid="stFileUploader"] {
         width: 100%;
@@ -303,7 +192,7 @@ st.markdown(
     div[data-testid="stFileUploader"] > section {
         border: 3px dashed #9ED79D !important;
         border-radius: 24px !important;
-        background: rgba(255,255,255,0.10) !important;
+        background: rgba(255,255,255,0.08) !important;
         min-height: 420px !important;
         padding: 24px !important;
         box-shadow: none !important;
@@ -346,7 +235,7 @@ st.markdown(
         display: none !important;
     }
 
-    /* Upload button: matches Home button size */
+    /* Upload button: icon + text are drawn as one centered group. */
     div[data-testid="stFileUploader"] button,
     div[data-testid="stFileUploader"] section button,
     div[data-testid="stFileUploader"] [role="button"] {
@@ -355,7 +244,8 @@ st.markdown(
         top: 50% !important;
         transform: translate(-50%, -50%) !important;
         background: #0070FF !important;
-        color: white !important;
+        background-color: #0070FF !important;
+        color: transparent !important;
         border: none !important;
         border-radius: var(--upload-btn-radius) !important;
         min-height: var(--upload-btn-height) !important;
@@ -365,23 +255,74 @@ st.markdown(
         max-width: var(--upload-btn-width) !important;
         padding: 12px 18px !important;
         font-family: 'Capriola', sans-serif !important;
-        font-size: var(--upload-btn-font) !important;
+        font-size: 0 !important;
         font-weight: 700 !important;
-        line-height: 1.2 !important;
+        line-height: 1 !important;
         box-shadow: var(--upload-btn-shadow) !important;
         z-index: 4 !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        white-space: normal !important;
-        overflow-wrap: anywhere !important;
+        gap: 8px !important;
+        column-gap: 8px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        overflow-wrap: normal !important;
     }
 
+    /* Hide Streamlit native children completely to prevent uploadUpload and spacing issues. */
+    div[data-testid="stFileUploader"] button > *,
+    div[data-testid="stFileUploader"] section button > *,
+    div[data-testid="stFileUploader"] [role="button"] > * {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        height: 0 !important;
+        font-size: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        opacity: 0 !important;
+        overflow: hidden !important;
+    }
+
+    /* Custom centered upload icon. */
+    div[data-testid="stFileUploader"] button::before,
+    div[data-testid="stFileUploader"] section button::before,
+    div[data-testid="stFileUploader"] [role="button"]::before {
+        content: "" !important;
+        display: inline-block !important;
+        width: 18px !important;
+        height: 18px !important;
+        flex: 0 0 18px !important;
+        margin: 0 !important;
+        background: #FFFFFF !important;
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpath d='M17 8l-5-5-5 5'/%3E%3Cpath d='M12 3v12'/%3E%3C/svg%3E") center / contain no-repeat !important;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpath d='M17 8l-5-5-5 5'/%3E%3Cpath d='M12 3v12'/%3E%3C/svg%3E") center / contain no-repeat !important;
+    }
+
+    /* Custom centered Upload text. */
+    div[data-testid="stFileUploader"] button::after,
+    div[data-testid="stFileUploader"] section button::after,
+    div[data-testid="stFileUploader"] [role="button"]::after {
+        content: "Upload" !important;
+        display: inline-block !important;
+        flex: 0 0 auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        color: #FFFFFF !important;
+        font-family: 'Capriola', sans-serif !important;
+        font-size: var(--upload-btn-font) !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
+    }
     div[data-testid="stFileUploader"] button:hover,
     div[data-testid="stFileUploader"] section button:hover,
     div[data-testid="stFileUploader"] [role="button"]:hover {
         background: #005fe0 !important;
-        color: white !important;
+        background-color: #005fe0 !important;
+        color: #FFFFFF !important;
         transform: translate(-50%, -50%) translateY(-1px) !important;
     }
 
@@ -394,14 +335,15 @@ st.markdown(
     }
 
     .upload-note {
-        font-family: 'Capriola', sans-serif;
-        font-size: 15px;
-        color: #777777;
-        text-align: center;
-        margin-top: -122px;
-        margin-bottom: 112px;
-        position: relative;
-        z-index: 5;
+        font-family: 'Capriola', sans-serif !important;
+        font-size: 15px !important;
+        color: #777777 !important;
+        text-align: center !important;
+        margin-top: -122px !important;
+        margin-bottom: 112px !important;
+        position: relative !important;
+        z-index: 5 !important;
+        font-weight: 600 !important;
     }
 
     .upload-status-wrap {
@@ -444,18 +386,18 @@ st.markdown(
     }
 
     .upload-file-name {
-        font-family: 'Capriola', sans-serif;
-        color: #41516E;
-        font-size: 15px;
+        font-family: 'Capriola', sans-serif !important;
+        color: #41516E !important;
+        font-size: 15px !important;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
 
     .upload-progress-pct {
-        font-family: 'Capriola', sans-serif;
-        font-size: 15px;
-        color: #365277;
+        font-family: 'Capriola', sans-serif !important;
+        font-size: 15px !important;
+        color: #365277 !important;
         font-weight: 700;
         flex-shrink: 0;
     }
@@ -485,9 +427,9 @@ st.markdown(
 
     .upload-progress-text {
         margin-top: 10px;
-        font-family: 'Capriola', sans-serif;
-        font-size: 14px;
-        color: #6B7280;
+        font-family: 'Capriola', sans-serif !important;
+        font-size: 14px !important;
+        color: #6B7280 !important;
         text-align: center;
     }
 
@@ -522,9 +464,9 @@ st.markdown(
 
     .upload-success-meta {
         margin-top: 10px;
-        font-family: 'Capriola', sans-serif;
-        font-size: 14px;
-        color: #777777;
+        font-family: 'Capriola', sans-serif !important;
+        font-size: 14px !important;
+        color: #777777 !important;
         text-align: center;
     }
 
@@ -541,28 +483,21 @@ st.markdown(
         color: white !important;
         border: none !important;
         border-radius: 12px !important;
-
         width: 100% !important;
         min-width: 100% !important;
         max-width: 100% !important;
-
         height: 50px !important;
         min-height: 50px !important;
         max-height: 50px !important;
-
         padding: 12px 18px !important;
-
-        font-family: 'Source Sans', sans-serif !important;
+        font-family: 'Capriola', sans-serif !important;
         font-size: 17px !important;
         font-weight: 700 !important;
         line-height: 1 !important;
-
         box-shadow: 0 4px 14px rgba(0,112,255,0.30) !important;
-
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-
         white-space: nowrap !important;
         opacity: 1 !important;
     }
@@ -574,9 +509,6 @@ st.markdown(
         transform: translateY(-1px) !important;
     }
 
-
-
-    /* Run Analysis button: matches Home button size */
     .run-analysis-row {
         width: 100%;
         margin: 8px 0 0 0;
@@ -603,8 +535,7 @@ st.markdown(
         align-items: center !important;
         justify-content: center !important;
         margin: 0 auto !important;
-        white-space: normal !important;
-        overflow-wrap: anywhere !important;
+        white-space: nowrap !important;
     }
 
     .run-analysis-row div.stButton > button:hover {
@@ -646,23 +577,240 @@ st.markdown(
             width: 92%;
             margin: -188px auto 110px auto;
         }
-
-        .run-analysis-row {
-            width: var(--upload-btn-width);
-        }
     }
     </style>
     """),
     unsafe_allow_html=True,
 )
 
+
+# Apply the shared UI system after the page CSS.
+# Page title/subtitle are not styled locally, so they now match the rest of WAHHAJ.
+apply_ui_consistency_patch()
+
+
+# -----------------------------
+# Small JS enforcement for stable button styling
+# -----------------------------
+st.markdown(
+    """
+    <script>
+    (function applyStableUploadStyles() {
+        const BTN_H   = "58px";
+        const BTN_W   = "184px";
+        const BTN_R   = "14px";
+        const BTN_FS  = "16px";
+        const BTN_SH  = "0 4px 14px rgba(0,112,255,0.30)";
+        const BTN_PAD = "12px 18px";
+
+        function forceBlueButton(btn, fullWidth) {
+            btn.style.setProperty("appearance", "none", "important");
+            btn.style.setProperty("background", "#0070FF", "important");
+            btn.style.setProperty("background-color", "#0070FF", "important");
+            btn.style.setProperty("color", "#FFFFFF", "important");
+            btn.style.setProperty("border", "none", "important");
+            btn.style.setProperty("border-radius", BTN_R, "important");
+
+            if (fullWidth) {
+                btn.style.setProperty("width", "100%", "important");
+                btn.style.setProperty("min-width", "100%", "important");
+                btn.style.setProperty("max-width", "100%", "important");
+            } else {
+                btn.style.setProperty("width", BTN_W, "important");
+                btn.style.setProperty("min-width", BTN_W, "important");
+                btn.style.setProperty("max-width", BTN_W, "important");
+            }
+
+            btn.style.setProperty("height", BTN_H, "important");
+            btn.style.setProperty("min-height", BTN_H, "important");
+            btn.style.setProperty("padding", BTN_PAD, "important");
+            btn.style.setProperty("font-family", "'Capriola', sans-serif", "important");
+            btn.style.setProperty("font-size", BTN_FS, "important");
+            btn.style.setProperty("font-weight", "700", "important");
+            btn.style.setProperty("line-height", "1", "important");
+            btn.style.setProperty("box-shadow", BTN_SH, "important");
+            btn.style.setProperty("display", "inline-flex", "important");
+            btn.style.setProperty("align-items", "center", "important");
+            btn.style.setProperty("justify-content", "center", "important");
+            btn.style.setProperty("gap", "8px", "important");
+            btn.style.setProperty("column-gap", "8px", "important");
+            btn.style.setProperty("white-space", "nowrap", "important");
+            btn.style.setProperty("opacity", "1", "important");
+        }
+
+        function forceUploaderButton(btn) {
+            forceBlueButton(btn, false);
+            btn.style.setProperty("color", "transparent", "important");
+            btn.style.setProperty("font-size", "0", "important");
+            btn.setAttribute("aria-label", "Upload");
+            Array.from(btn.children).forEach(el => {
+                el.style.setProperty("display", "none", "important");
+                el.style.setProperty("width", "0", "important");
+                el.style.setProperty("min-width", "0", "important");
+                el.style.setProperty("max-width", "0", "important");
+                el.style.setProperty("height", "0", "important");
+                el.style.setProperty("font-size", "0", "important");
+                el.style.setProperty("margin", "0", "important");
+                el.style.setProperty("padding", "0", "important");
+                el.style.setProperty("opacity", "0", "important");
+                el.style.setProperty("overflow", "hidden", "important");
+            });
+        }
+
+        function hideNativeUploaderIcon(btn) {
+            forceUploaderButton(btn);
+        }
+
+        function forceDisabledButton(btn) {
+            btn.style.setProperty("background", "#d0d0d0", "important");
+            btn.style.setProperty("background-color", "#d0d0d0", "important");
+            btn.style.setProperty("color", "#888", "important");
+            btn.style.setProperty("border", "1px solid #bbb", "important");
+            btn.style.setProperty("box-shadow", "none", "important");
+            btn.style.setProperty("cursor", "not-allowed", "important");
+            btn.style.setProperty("opacity", "1", "important");
+            btn.style.setProperty("transform", "none", "important");
+        }
+
+        function run() {
+            document.querySelectorAll(".top-home-btn button").forEach(btn => {
+                forceBlueButton(btn, false);
+            });
+
+            document.querySelectorAll('[data-testid="stFileUploader"] button').forEach(btn => {
+                forceUploaderButton(btn);
+            });
+
+            document.querySelectorAll(".run-analysis-row button").forEach(btn => {
+                const forceReady = btn.closest("[data-ready='true']") !== null;
+                const isDisabled = !forceReady && (
+                    btn.disabled ||
+                    btn.hasAttribute("disabled") ||
+                    btn.getAttribute("aria-disabled") === "true" ||
+                    btn.closest("[data-ready='false']") !== null
+                );
+
+                if (isDisabled) {
+                    forceDisabledButton(btn);
+                } else {
+                    forceBlueButton(btn, true);
+                }
+            });
+
+            document.querySelectorAll("button").forEach(btn => {
+                const label = (btn.innerText || btn.textContent || "").trim();
+
+                if (label === "Clear Image") {
+                    forceBlueButton(btn, true);
+                }
+            });
+        }
+
+        const obs = new MutationObserver(run);
+        obs.observe(document.body, { childList: true, subtree: true });
+
+        run();
+        setTimeout(run, 100);
+        setTimeout(run, 300);
+        setTimeout(run, 700);
+        setTimeout(run, 1500);
+    })();
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Final Upload page protection:
+# - title/subtitle font comes from ui_helpers.py
+# - this block only adds spacing so the dashed upload border cannot collide with the subtitle
+# - it also protects the custom Upload button icon/text alignment
+st.markdown(
+    """
+    <style>
+    .upload-heading-block {
+        width: 100% !important;
+        text-align: center !important;
+        position: relative !important;
+        z-index: 5 !important;
+        margin: 0 auto 42px auto !important;
+        padding: 0 !important;
+    }
+
+    .upload-heading-block .page-title {
+        margin: 0 0 8px 0 !important;
+        padding: 0 !important;
+        line-height: 1.10 !important;
+    }
+
+    .upload-heading-block .page-subtitle {
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.45 !important;
+    }
+
+    .upload-center-shell {
+        margin-top: 0 !important;
+    }
+
+    div[data-testid="stFileUploader"] button,
+    div[data-testid="stFileUploader"] section button,
+    div[data-testid="stFileUploader"] [role="button"] {
+        width: var(--upload-btn-width) !important;
+        min-width: var(--upload-btn-width) !important;
+        max-width: var(--upload-btn-width) !important;
+        height: var(--upload-btn-height) !important;
+        min-height: var(--upload-btn-height) !important;
+        padding: 12px 18px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        column-gap: 8px !important;
+        color: transparent !important;
+        font-size: 0 !important;
+        background: var(--wahhaj-blue, #0070FF) !important;
+        background-color: var(--wahhaj-blue, #0070FF) !important;
+    }
+
+    div[data-testid="stFileUploader"] button::before,
+    div[data-testid="stFileUploader"] section button::before,
+    div[data-testid="stFileUploader"] [role="button"]::before {
+        width: 18px !important;
+        height: 18px !important;
+        flex: 0 0 18px !important;
+        margin: 0 !important;
+    }
+
+    div[data-testid="stFileUploader"] button::after,
+    div[data-testid="stFileUploader"] section button::after,
+    div[data-testid="stFileUploader"] [role="button"]::after {
+        content: "Upload" !important;
+        color: #FFFFFF !important;
+        font-family: var(--wahhaj-font, 'Capriola', sans-serif) !important;
+        font-size: var(--upload-btn-font, 16px) !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        white-space: nowrap !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 render_top_home_button("pages/2_Home.py")
 
 st.markdown('<div class="upload-page">', unsafe_allow_html=True)
-st.markdown('<div class="page-title">Upload Image</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="page-subtitle">Upload a site image to start the analysis</div>',
-    unsafe_allow_html=True
+    '''
+    <div class="upload-heading-block">
+        <div class="page-title upload-page-title">Upload Image</div>
+        <div class="page-subtitle upload-page-subtitle">Upload a site image to start the analysis</div>
+    </div>
+    ''',
+    unsafe_allow_html=True,
 )
 
 left_sp, center, right_sp = st.columns([2.0, 3.8, 2.0])
@@ -733,6 +881,7 @@ with center:
 
         is_ready = st.session_state.get("upload_ui_ready", False)
         _gap1, _btn_col, _gap2 = st.columns([1.5, 1.5, 1.5])
+
         with _btn_col:
             st.markdown(
                 f'<div class="run-analysis-row" data-ready="{str(is_ready).lower()}">',
@@ -747,18 +896,15 @@ with center:
             st.markdown('</div>', unsafe_allow_html=True)
 
         if run_clicked:
-            # خزني نسخة مؤقتة للواجهة / أي استخدام لاحق
             suffix = os.path.splitext(uploaded_file.name)[1] or ".png"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp.write(file_bytes)
                 st.session_state["uploaded_image_temp_path"] = tmp.name
 
-            # صفري نتائج قديمة مرتبطة بأي Run سابق، لكن احتفظي بمسودة الموقع الحالية
             clear_analysis_state(clear_dataset=False)
             st.session_state["report_obj"] = None
             st.session_state["selected_site_analysis"] = None
 
-            # رفع فعلي للباك إند
             storage = StorageService()
             upload_service = UploadService(storage_service=storage)
             unique_storage_name = f"uploads/{uuid4().hex}_{uploaded_file.name}"
@@ -824,5 +970,4 @@ with center:
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
-apply_ui_consistency_patch()
 render_footer()
