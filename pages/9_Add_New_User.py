@@ -4,6 +4,7 @@ from html import escape
 from ui_helpers import (
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     render_footer,
 )
@@ -287,19 +288,7 @@ st.markdown(
     padding-bottom: 1.2rem;
 }
 
-/* Top nav */
-.nav-area {
-    margin-bottom: 14px;
-}
 
-div[class*="st-key-nav_home"] button,
-div[class*="st-key-nav_logout"] button {
-    min-height: 44px !important;
-    border-radius: 13px !important;
-    font-size: 13px !important;
-    font-weight: 800 !important;
-    box-shadow: 0 8px 18px rgba(0,112,255,0.16) !important;
-}
 
 /* Header */
 .page-title {
@@ -436,33 +425,7 @@ div[data-testid="stTextInput"] input {
     color: #1c1c1c !important;
 }
 
-/* Generic buttons */
-div.stButton > button {
-    background: #0070FF !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 12px !important;
-    min-height: 42px !important;
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 13px !important;
-    font-weight: 800 !important;
-    box-shadow: 0 8px 18px rgba(0,112,255,0.18) !important;
-    width: 100% !important;
-}
 
-div.stButton > button:hover {
-    background: #005fe0 !important;
-    color: white !important;
-    transform: translateY(-1px);
-}
-
-div[class*="st-key-btn_clear"] button {
-    background: #0070FF !important;
-}
-
-div[class*="st-key-btn_create"] button {
-    background: #0070FF !important;
-}
 
 /* Feedback */
 .feedback-banner {
@@ -712,7 +675,7 @@ div[class*="st-key-tbl_delete_"] button:hover {
 """,
     unsafe_allow_html=True,
 )
-
+apply_ui_consistency_patch()
 
 # ─────────────────────────────────────────────────────────────
 # UI

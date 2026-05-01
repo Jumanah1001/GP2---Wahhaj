@@ -17,6 +17,7 @@ import json
 from datetime import datetime
 from uuid import uuid4
 from html import escape
+from textwrap import dedent
 from types import SimpleNamespace
 
 import numpy as np
@@ -26,6 +27,7 @@ import streamlit.components.v1 as components
 from ui_helpers import (
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     require_login,
     render_top_home_button,
@@ -46,9 +48,6 @@ render_top_home_button("pages/2_Home.py")
 
 
 # ── navigation guard ────────────────────────────────────────────────────────
-# Streamlit reruns the whole page when a button is clicked.
-# These callbacks let navigation buttons leave the page before the loading card
-# or report/PDF preparation starts on the rerun.
 def _queue_final_report_navigation(target_page: str, reset_analysis: bool = False) -> None:
     st.session_state["_final_report_nav_target"] = target_page
     st.session_state["_final_report_nav_reset"] = reset_analysis
@@ -72,12 +71,13 @@ st.markdown(
     """
 <style>
 :root {
-    --wah-primary: #1F3864;
+   --wah-primary: #1F3864;
     --wah-border: #D9E3F1;
     --wah-surface: rgba(255,255,255,0.96);
     --wah-muted: #64748B;
     --wah-text: #162033;
     --wah-soft: #F6F9FD;
+
 }
 
 .stApp [data-testid="stAppViewContainer"] {
@@ -154,7 +154,6 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
     border-radius: 18px;
     box-shadow: 0 8px 22px rgba(16, 24, 40, 0.05);
     padding: 0.9rem 1rem;
-    height: 100%;
 }
 
 .fr-card-title {
@@ -497,10 +496,63 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
     line-height: 1.35;
 }
 
-.fr-ai-shell {
-    min-height: 548px;
+/* ── LEFT STACK: all 3 cards in one HTML block ── */
+/* The map iframe is ~492px tall (header 60px + map 432px).  */
+/* We set the left stack to exactly that height so all 3     */
+/* columns reach the same bottom edge.                       */
+--fr-row-height: 492px;
+
+.fr-left-stack {
     display: flex;
     flex-direction: column;
+    gap: 0.55rem;
+    height: var(--fr-row-height);
+}
+
+/* score card gets the most space */
+.fr-left-stack .fr-card-score {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* recommendation: compact, no flex grow */
+.fr-left-stack .fr-card-rec {
+    flex: 0 0 auto;
+}
+
+/* site info: grows to fill remaining space */
+.fr-left-stack .fr-card-info {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* map card — same total height as left stack */
+.fr-map-outer {
+    position: relative;
+    z-index: 2;
+    background: var(--wah-surface);
+    border: 1px solid var(--wah-border);
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(16, 24, 40, 0.05);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: var(--fr-row-height);
+}
+
+/* AI card — same total height */
+.fr-ai-shell {
+    display: flex;
+    flex-direction: column;
+    background: var(--wah-surface);
+    border: 1px solid var(--wah-border);
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(16, 24, 40, 0.05);
+    padding: 0.9rem 1rem;
+    height: var(--fr-row-height);
+    overflow-y: auto;
 }
 
 .fr-ai-shell .fr-ai-hero {
@@ -511,20 +563,29 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
     gap: 0.55rem;
 }
 
-.fr-btn-row {
-    margin-top: 0.7rem;
+/* column stretch */
+div[data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
 }
 
-.fr-action-stack {
-    display: grid;
-    gap: 0.55rem;
+div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+    min-width: 0 !important;
 }
+
+div[data-testid="stHorizontalBlock"] > div[data-testid="column"] > div {
+    height: 100%;
+}
+
+.fr-btn-row { margin-top: 0.7rem; }
+
+.fr-action-stack { display: grid; gap: 0.55rem; }
 
 .fr-donut-wrap {
-    display:flex;
-    align-items:center;
-    gap:0.9rem;
-    margin-top:0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin-top: 0.2rem;
 }
 
 .fr-donut {
@@ -535,7 +596,7 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
     border-radius: 50%;
     background: conic-gradient(var(--accent) calc(var(--pct) * 1%), #E9EEF5 0);
     position: relative;
-    flex-shrink:0;
+    flex-shrink: 0;
 }
 
 .fr-donut::before {
@@ -548,108 +609,29 @@ div[data-testid="stVerticalBlock"] > div:has(> .fr-header-shell) {
 }
 
 .fr-donut-center {
-    position:absolute;
-    inset:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    flex-direction:column;
-    z-index:1;
-    font-family:'Capriola', sans-serif;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 1;
+    font-family: 'Capriola', sans-serif;
     color: var(--wah-text);
 }
 
-.fr-donut-center strong {
-    font-size: 1rem;
-}
+.fr-donut-center strong { font-size: 1rem; }
+.fr-donut-center span   { font-size: 0.66rem; color: var(--wah-muted); }
 
-.fr-donut-center span {
-    font-size: 0.66rem;
-    color: var(--wah-muted);
-}
+.fr-score-side { flex: 1; }
 
-.fr-score-side {
-    flex:1;
-}
-
-div[data-testid="stDownloadButton"] > button,
-div.stButton > button {
-    min-height: 46px !important;
-    border-radius: 24px 18px 22px 20px / 16px 22px 18px 24px !important;
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 0.9rem !important;
-    box-shadow: 0 5px 12px rgba(0,0,0,0.08) !important;
-    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-}
-
-div[data-testid="stDownloadButton"] > button:hover,
-div.stButton > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 7px 14px rgba(0,0,0,0.10) !important;
-}
-
-div[data-testid="stDownloadButton"] > button {
-    background: #DDF3FF !important;
-    color: #2A5D79 !important;
-    border: 1px solid #B9E4F7 !important;
-}
-
-.fr-divider-space {
-    height: 0.2rem;
-}
-
-.fr-main-grid {
-    align-items: stretch;
-}
-
-.fr-main-grid > div[data-testid="column"] > div {
-    height: 100%;
-}
-
-
-
-
+.fr-divider-space { height: 0.2rem; }
 
 .fr-center-actions-shell {
     width: 100%;
     margin: 0.72rem 0 0 0;
     position: relative;
     z-index: 2;
-}
-
-.fr-center-actions-shell div[data-testid="stDownloadButton"] > button,
-.fr-center-actions-shell div[data-testid="stButton"] > button,
-.fr-center-actions-shell div.stButton > button {
-    min-height: 38px !important;
-    height: 38px !important;
-    padding: 7px 14px !important;
-    border-radius: 12px !important;
-    font-family: 'Capriola', sans-serif !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    line-height: 1.1 !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.08) !important;
-    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-}
-
-.fr-center-actions-shell div[data-testid="stDownloadButton"] > button:hover,
-.fr-center-actions-shell div[data-testid="stButton"] > button:hover,
-.fr-center-actions-shell div.stButton > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.10) !important;
-}
-
-.fr-center-actions-shell div[data-testid="stDownloadButton"] > button {
-    background: #DDF3FF !important;
-    color: #2A5D79 !important;
-    border: 1px solid #B9E4F7 !important;
-}
-
-.fr-center-actions-shell div[data-testid="stButton"] > button,
-.fr-center-actions-shell div.stButton > button {
-    background: #0070FF !important;
-    color: #FFFFFF !important;
-    border: none !important;
 }
 
 .fr-weight-shell {
@@ -688,17 +670,9 @@ div[data-testid="stDownloadButton"] > button {
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.55), 0 4px 10px rgba(47,109,178,0.16);
 }
 
-.fr-weight-legend-dot.base {
-    background: linear-gradient(135deg, #173F8A 0%, #1F3864 100%);
-}
-
-.fr-weight-legend-dot.current {
-    background: linear-gradient(135deg, #57A4FF 0%, #1E70FF 100%);
-}
-
-.fr-weight-legend-pill b {
-    color: #1F3864;
-}
+.fr-weight-legend-dot.base    { background: linear-gradient(135deg, #173F8A 0%, #1F3864 100%); }
+.fr-weight-legend-dot.current { background: linear-gradient(135deg, #57A4FF 0%, #1E70FF 100%); }
+.fr-weight-legend-pill b      { color: #1F3864; }
 
 .fr-weight-grid {
     display: grid;
@@ -768,10 +742,7 @@ div[data-testid="stDownloadButton"] > button {
     gap: 0.75rem;
 }
 
-.fr-weight-half {
-    min-width: 0;
-    padding: 0 0.10rem;
-}
+.fr-weight-half { min-width: 0; padding: 0 0.10rem; }
 
 .fr-weight-half.current {
     border-left: 1px solid #E8EEF7;
@@ -953,44 +924,28 @@ div[data-testid="stDownloadButton"] > button {
 }
 
 @media (max-width: 1280px) {
-    .fr-center-actions-shell {
-        width: min(600px, 92%);
-    }
-    .fr-weight-intro {
-        grid-template-columns: 1fr;
-    }
-    .fr-weight-grid {
-        grid-template-columns: 1fr;
-    }
-    .fr-weight-split {
-        grid-template-columns: 1fr;
-    }
+    .fr-center-actions-shell { width: min(600px, 92%); }
+    .fr-weight-intro          { grid-template-columns: 1fr; }
+    .fr-weight-grid           { grid-template-columns: 1fr; }
+    .fr-weight-split          { grid-template-columns: 1fr; }
     .fr-weight-half.current {
         border-left: none;
         border-top: 1px solid #E8EEF7;
         padding-left: 0.10rem;
         padding-top: 0.65rem;
     }
-    .fr-ai-shell {
-        min-height: auto;
-    }
-}
-
-
-
-
-@media (max-width: 1280px) {
-    .main .block-container {
-        max-width: 1380px !important;
-    }
-    .fr-mini-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
+    .fr-ai-shell   { height: auto; overflow-y: visible; }
+    .fr-map-outer  { height: auto; }
+    .fr-left-stack { height: auto; }
+    .main .block-container { max-width: 1380px !important; }
+    .fr-mini-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 </style>
 """,
     unsafe_allow_html=True,
 )
+
+apply_ui_consistency_patch()
 
 
 # ── SVG icon helpers ───────────────────────────────────────────────────────
@@ -1008,17 +963,10 @@ ICON_PIN = _icon(
     '<circle cx="12" cy="10" r="3"/>'
 )
 ICON_CLOCK = _icon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>')
-ICON_HASH = _icon('<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>')
+ICON_HASH  = _icon('<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>')
 
 
 def _selected_site_badge(score: float):
-    """Return the user-facing suitability label and its UI colors.
-
-    Color logic intentionally mirrors the heatmap reading:
-    - green   = suitable
-    - orange  = moderately suitable / mid-range
-    - red     = not suitable
-    """
     pct = float(score) * 100
     if pct >= 60:
         return "Suitable", "#16A34A", "#DCFCE7"
@@ -1125,35 +1073,24 @@ def _resolve_selected_site(run, location, aoi, selected_site):
         _display_location_name(location.get("location_name"), lat, lon),
     )
     selected_site.setdefault("location_name", location.get("location_name"))
-    selected_site["latitude"] = lat
-    selected_site["longitude"] = lon
-    selected_site["score"] = score
+    selected_site["latitude"]   = lat
+    selected_site["longitude"]  = lon
+    selected_site["score"]      = score
     selected_site["score_text"] = f"{score * 100:.1f}%"
-    selected_site["label"] = label
+    selected_site["label"]      = label
     return selected_site
 
 
-
 # ── Current-run score/factor recomputation ────────────────────────────────
-# These helpers prevent old saved session values from forcing the report to
-# show 0.0% and zero AHP contributions when the current run has valid raster
-# data. They do not change the UI layout; they only correct the numbers.
 FR_WEIGHTS = {
-    "ghi": 0.30,
-    "slope": 0.22,
-    "sunshine": 0.18,
-    "obstacle": 0.13,
-    "lst": 0.10,
-    "elevation": 0.07,
+    "ghi": 0.30, "slope": 0.22, "sunshine": 0.18,
+    "obstacle": 0.13, "lst": 0.10, "elevation": 0.07,
 }
 FR_INVERTED = {"slope", "lst", "obstacle"}
 FR_TITLES = {
-    "ghi": "Solar Radiation",
-    "sunshine": "Sunlight Hours",
-    "slope": "Terrain Slope",
-    "obstacle": "Obstacle Conditions",
-    "lst": "Surface Temperature",
-    "elevation": "Elevation",
+    "ghi": "Solar Radiation", "sunshine": "Sunlight Hours",
+    "slope": "Terrain Slope", "obstacle": "Obstacle Conditions",
+    "lst": "Surface Temperature", "elevation": "Elevation",
 }
 
 
@@ -1176,175 +1113,122 @@ def _fr_format_raw_value(layer_name, raw_value, unit):
     except Exception:
         return str(raw_value)
 
-    if layer_name == "obstacle":
-        return f"{raw_value * 100:.1f}%"
-    if layer_name == "slope":
-        return f"{raw_value:.1f}°"
-    if layer_name == "sunshine":
-        return f"{raw_value:.1f} {unit or 'hours/day'}"
-    if layer_name == "ghi":
-        return f"{raw_value:.1f} {unit or 'MJ/m²/day'}"
-    if layer_name == "lst":
-        return f"{raw_value:.1f} {unit or '°C'}"
-    if layer_name == "elevation":
-        return f"{raw_value:.1f} {unit or 'm'}"
+    if layer_name == "obstacle":  return f"{raw_value * 100:.1f}%"
+    if layer_name == "slope":     return f"{raw_value:.1f}°"
+    if layer_name == "sunshine":  return f"{raw_value:.1f} {unit or 'hours/day'}"
+    if layer_name == "ghi":       return f"{raw_value:.1f} {unit or 'MJ/m²/day'}"
+    if layer_name == "lst":       return f"{raw_value:.1f} {unit or '°C'}"
+    if layer_name == "elevation": return f"{raw_value:.1f} {unit or 'm'}"
     return f"{raw_value:.2f} {unit}".strip()
 
 
 def _fr_ai_valid_mask(feature_extractor, shape):
     base = np.ones(shape, dtype=bool)
-
     if not feature_extractor or not getattr(feature_extractor, "layers", None):
         return base
-
     obstacle = feature_extractor.layers.get("obstacle")
     if obstacle is None or getattr(obstacle, "data", None) is None:
         return base
-
     meta = obstacle.metadata or {}
     if str(meta.get("source", "")).lower() != "aimodel":
         return base
-
     obstacle_density = np.asarray(obstacle.data, dtype=np.float32)
     if obstacle_density.shape != shape:
         return base
-
     valid = obstacle_density != getattr(obstacle, "nodata", -9999.0)
     zeros = np.zeros_like(obstacle_density, dtype=np.float32)
-
-    building_density = np.asarray(meta.get("building_density", zeros), dtype=np.float32)
+    building_density   = np.asarray(meta.get("building_density",   zeros), dtype=np.float32)
     vegetation_density = np.asarray(meta.get("vegetation_density", zeros), dtype=np.float32)
-    water_density = np.asarray(meta.get("water_density", zeros), dtype=np.float32)
-
-    if building_density.shape != shape:
-        building_density = zeros
-    if vegetation_density.shape != shape:
-        vegetation_density = zeros
-    if water_density.shape != shape:
-        water_density = zeros
-
-    building_threshold = float(meta.get("building_threshold", 0.05))
-    water_threshold = float(meta.get("water_threshold", 0.20))
+    water_density      = np.asarray(meta.get("water_density",      zeros), dtype=np.float32)
+    if building_density.shape   != shape: building_density   = zeros
+    if vegetation_density.shape != shape: vegetation_density = zeros
+    if water_density.shape      != shape: water_density      = zeros
+    building_threshold   = float(meta.get("building_threshold",   0.05))
+    water_threshold      = float(meta.get("water_threshold",      0.20))
     vegetation_threshold = float(meta.get("vegetation_threshold", 0.25))
-
     hard_exclusion = (
-        (building_density > building_threshold)
-        | (water_density > water_threshold)
+        (building_density   > building_threshold)
+        | (water_density    > water_threshold)
         | (vegetation_density > vegetation_threshold)
     )
-
     return valid & ~hard_exclusion
 
 
 def _fr_build_factor_breakdown(feature_extractor, score_mask=None, ai_valid_mask=None):
     items = []
     order = ["ghi", "sunshine", "slope", "obstacle", "lst", "elevation"]
-
     if not feature_extractor or not getattr(feature_extractor, "layers", None):
         return items
-
-    score_mask = np.asarray(score_mask, dtype=bool) if score_mask is not None else None
+    score_mask    = np.asarray(score_mask,    dtype=bool) if score_mask    is not None else None
     ai_valid_mask = np.asarray(ai_valid_mask, dtype=bool) if ai_valid_mask is not None else None
-
     for name in order:
         raster = feature_extractor.layers.get(name)
         if raster is None or getattr(raster, "data", None) is None:
             continue
-
-        data = np.asarray(raster.data, dtype=np.float32)
-        meta = raster.metadata or {}
-        unit = meta.get("unit", "")
+        data       = np.asarray(raster.data, dtype=np.float32)
+        meta       = raster.metadata or {}
+        unit       = meta.get("unit", "")
         valid_mask = (data != getattr(raster, "nodata", -9999.0)) & np.isfinite(data)
-
         if score_mask is not None and score_mask.shape == data.shape:
             valid_mask = valid_mask & score_mask
-
         if not valid_mask.any():
             continue
-
-        norm_vals = np.clip(data[valid_mask], 0.0, 1.0)
+        norm_vals       = np.clip(data[valid_mask], 0.0, 1.0)
         suitability_vals = 1.0 - norm_vals if name in FR_INVERTED else norm_vals
-
-        # Same AI gate as the score raster: rejected cells remain in the AOI,
-        # but they contribute zero to the displayed result.
         if ai_valid_mask is not None and ai_valid_mask.shape == data.shape:
             effective_vals = suitability_vals * ai_valid_mask[valid_mask].astype(np.float32)
         else:
             effective_vals = suitability_vals
-
         suitability_component = float(np.clip(np.mean(effective_vals), 0.0, 1.0))
-        contribution_pct = suitability_component * FR_WEIGHTS[name] * 100.0
-
-        raw_norm_mean = float(np.mean(norm_vals))
-        raw_value = _fr_denormalize_value(raw_norm_mean, meta)
-        raw_label = _fr_format_raw_value(name, raw_value, unit)
-
+        contribution_pct      = suitability_component * FR_WEIGHTS[name] * 100.0
+        raw_norm_mean  = float(np.mean(norm_vals))
+        raw_value      = _fr_denormalize_value(raw_norm_mean, meta)
+        raw_label      = _fr_format_raw_value(name, raw_value, unit)
         items.append({
-            "name": name,
-            "title": FR_TITLES[name],
-            "raw_label": raw_label,
-            "contribution_pct": round(contribution_pct, 2),
+            "name": name, "title": FR_TITLES[name], "raw_label": raw_label,
+            "contribution_pct":         round(contribution_pct, 2),
             "current_contribution_pct": round(contribution_pct, 2),
-            "weight_pct": round(FR_WEIGHTS[name] * 100.0, 2),
+            "weight_pct":     round(FR_WEIGHTS[name] * 100.0, 2),
             "ahp_weight_pct": round(FR_WEIGHTS[name] * 100.0, 2),
             "suitability_component": round(suitability_component, 4),
         })
-
     return items
 
 
 def _fr_recompute_current_report_values(run, feature_extractor, selected_site):
-    """Recompute report score/factors from the current run when available."""
     selected_site = dict(selected_site or {})
     suitability = getattr(run, "suitability", None) if run is not None else None
-
     if suitability is None or getattr(suitability, "data", None) is None:
         return selected_site
-
     score_data = np.asarray(suitability.data, dtype=np.float32)
-    nodata = getattr(suitability, "nodata", -9999.0)
+    nodata     = getattr(suitability, "nodata", -9999.0)
     score_mask = (score_data != nodata) & np.isfinite(score_data)
-
     if not score_mask.any():
         return selected_site
-
-    # AHPModel already sets AI-rejected cells to 0.0. Averaging the full AOI
-    # gives the fair final site score without letting one marker cell decide.
     score = float(np.mean(score_data[score_mask]))
     label, _, _ = _selected_site_badge(score)
-
-    selected_site["score"] = score
+    selected_site["score"]      = score
     selected_site["score_text"] = f"{score * 100:.1f}%"
-    selected_site["label"] = label
-
+    selected_site["label"]      = label
     ai_valid_mask = _fr_ai_valid_mask(feature_extractor, score_data.shape)
-    factors = _fr_build_factor_breakdown(
-        feature_extractor,
-        score_mask=score_mask,
-        ai_valid_mask=ai_valid_mask,
-    )
+    factors = _fr_build_factor_breakdown(feature_extractor, score_mask=score_mask, ai_valid_mask=ai_valid_mask)
     if factors:
         selected_site["factors"] = factors
-
         sorted_reasons = sorted(factors, key=lambda x: x.get("contribution_pct", 0.0), reverse=True)
         selected_site["reasons"] = [
             {"name": item.get("name"), "title": item.get("title"), "reason": item.get("title")}
             for item in sorted_reasons[:3]
         ]
-
     return selected_site
 
 
-
 def _matrix_to_storage(matrix, shape=None, decimals=6):
-    """Convert a 2D numeric matrix into JSON-safe nested lists."""
     try:
         arr = np.asarray(matrix, dtype=float)
         if arr.ndim != 2:
             return None
         if shape is not None and arr.shape != shape:
             return None
-
         stored = []
         for row in arr:
             stored_row = []
@@ -1352,8 +1236,7 @@ def _matrix_to_storage(matrix, shape=None, decimals=6):
                 try:
                     cell = float(value)
                 except Exception:
-                    stored_row.append(None)
-                    continue
+                    stored_row.append(None); continue
                 if not np.isfinite(cell):
                     stored_row.append(None)
                 else:
@@ -1365,197 +1248,140 @@ def _matrix_to_storage(matrix, shape=None, decimals=6):
 
 
 def _ai_overlay_from_extractor(feature_extractor) -> dict | None:
-    """
-    Build the map overlay data from the AI obstacle layer, not from AHP.
-
-    The map cells are intended to show image-analysis screening:
-    - green = valid/open/bare land cell
-    - red   = AI rejected cell due to buildings, vegetation, or water
-
-    The overall score and AHP factor cards still use the final AHP suitability
-    result. This only changes the visual cells displayed on the map.
-    """
     if not feature_extractor or not getattr(feature_extractor, "layers", None):
         return None
-
     obstacle = feature_extractor.layers.get("obstacle")
     if obstacle is None or getattr(obstacle, "data", None) is None:
         return None
-
     meta = obstacle.metadata or {}
     if str(meta.get("source", "")).lower() != "aimodel":
         return None
-
     try:
         obstacle_density = np.asarray(obstacle.data, dtype=float)
         if obstacle_density.ndim != 2:
             return None
-
         shape = obstacle_density.shape
         zeros = np.zeros(shape, dtype=float)
-
-        building_density = np.asarray(meta.get("building_density", zeros), dtype=float)
+        building_density   = np.asarray(meta.get("building_density",   zeros), dtype=float)
         vegetation_density = np.asarray(meta.get("vegetation_density", zeros), dtype=float)
-        water_density = np.asarray(meta.get("water_density", zeros), dtype=float)
-        bare_land_density = np.asarray(meta.get("bare_land_density", zeros), dtype=float)
-
-        if building_density.shape != shape:
-            building_density = zeros.copy()
-        if vegetation_density.shape != shape:
-            vegetation_density = zeros.copy()
-        if water_density.shape != shape:
-            water_density = zeros.copy()
-        if bare_land_density.shape != shape:
-            bare_land_density = zeros.copy()
-
+        water_density      = np.asarray(meta.get("water_density",      zeros), dtype=float)
+        bare_land_density  = np.asarray(meta.get("bare_land_density",  zeros), dtype=float)
+        if building_density.shape   != shape: building_density   = zeros.copy()
+        if vegetation_density.shape != shape: vegetation_density = zeros.copy()
+        if water_density.shape      != shape: water_density      = zeros.copy()
+        if bare_land_density.shape  != shape: bare_land_density  = zeros.copy()
         return {
             "type": "ai_land_cover",
-            "rows": int(shape[0]),
-            "cols": int(shape[1]),
-            "building_density": _matrix_to_storage(building_density, shape=shape),
+            "rows": int(shape[0]), "cols": int(shape[1]),
+            "building_density":   _matrix_to_storage(building_density,   shape=shape),
             "vegetation_density": _matrix_to_storage(vegetation_density, shape=shape),
-            "water_density": _matrix_to_storage(water_density, shape=shape),
-            "bare_land_density": _matrix_to_storage(bare_land_density, shape=shape),
-            "combined_density": _matrix_to_storage(obstacle_density, shape=shape),
-            "building_threshold": float(meta.get("building_threshold", 0.05)),
-            "water_threshold": float(meta.get("water_threshold", 0.20)),
+            "water_density":      _matrix_to_storage(water_density,      shape=shape),
+            "bare_land_density":  _matrix_to_storage(bare_land_density,  shape=shape),
+            "combined_density":   _matrix_to_storage(obstacle_density,   shape=shape),
+            "building_threshold":   float(meta.get("building_threshold",   0.05)),
+            "water_threshold":      float(meta.get("water_threshold",      0.20)),
             "vegetation_threshold": float(meta.get("vegetation_threshold", 0.25)),
         }
     except Exception:
         return None
 
+
 def _build_map_html(aoi, site_info, suitability=None, height=430, ai_overlay=None):
     map_id = f"wahhaj_map_{uuid4().hex}"
-
     lon_min, lat_min, lon_max, lat_max = aoi
-    bounds = [[lat_min, lon_min], [lat_max, lon_max]]
+    bounds      = [[lat_min, lon_min], [lat_max, lon_max]]
     aoi_outline = _aoi_bounds_polygon(aoi)
-
-    selected_json = json.dumps(site_info, ensure_ascii=False)
-    bounds_json = json.dumps(bounds)
+    selected_json   = json.dumps(site_info,  ensure_ascii=False)
+    bounds_json     = json.dumps(bounds)
     aoi_outline_json = json.dumps(aoi_outline)
-
-    grid_cells = []
+    grid_cells   = []
     overlay_mode = "suitability"
 
-    # ── Preferred visual overlay: AI image-analysis result ───────────────
-    # The colored map cells should answer: what did the AI detect in the
-    # uploaded image? The final score and factor cards still show AHP.
     if isinstance(ai_overlay, dict) and ai_overlay.get("type") == "ai_land_cover":
         try:
-            building = np.asarray(ai_overlay.get("building_density") or [], dtype=float)
+            building   = np.asarray(ai_overlay.get("building_density")   or [], dtype=float)
             vegetation = np.asarray(ai_overlay.get("vegetation_density") or [], dtype=float)
-            water = np.asarray(ai_overlay.get("water_density") or [], dtype=float)
-            bare_land = np.asarray(ai_overlay.get("bare_land_density") or [], dtype=float)
-            combined = np.asarray(ai_overlay.get("combined_density") or [], dtype=float)
-
+            water      = np.asarray(ai_overlay.get("water_density")      or [], dtype=float)
+            bare_land  = np.asarray(ai_overlay.get("bare_land_density")  or [], dtype=float)
+            combined   = np.asarray(ai_overlay.get("combined_density")   or [], dtype=float)
             if combined.ndim == 2 and combined.size > 0:
                 rows, cols = combined.shape[:2]
-
                 def _same_shape(arr):
                     return arr if arr.shape == combined.shape else np.zeros_like(combined)
-
-                building = _same_shape(building)
+                building   = _same_shape(building)
                 vegetation = _same_shape(vegetation)
-                water = _same_shape(water)
-                bare_land = _same_shape(bare_land)
-
-                building_threshold = float(ai_overlay.get("building_threshold", 0.05))
-                water_threshold = float(ai_overlay.get("water_threshold", 0.20))
+                water      = _same_shape(water)
+                bare_land  = _same_shape(bare_land)
+                building_threshold   = float(ai_overlay.get("building_threshold",   0.05))
+                water_threshold      = float(ai_overlay.get("water_threshold",      0.20))
                 vegetation_threshold = float(ai_overlay.get("vegetation_threshold", 0.25))
-
                 lat_step = (lat_max - lat_min) / rows
                 lon_step = (lon_max - lon_min) / cols
-
                 for r in range(rows):
                     for c in range(cols):
-                        b = float(building[r, c]) if np.isfinite(building[r, c]) else 0.0
-                        v = float(vegetation[r, c]) if np.isfinite(vegetation[r, c]) else 0.0
-                        w = float(water[r, c]) if np.isfinite(water[r, c]) else 0.0
-                        bare = float(bare_land[r, c]) if np.isfinite(bare_land[r, c]) else 0.0
-                        obs = float(combined[r, c]) if np.isfinite(combined[r, c]) else 0.0
-
+                        b    = float(building[r,c])   if np.isfinite(building[r,c])   else 0.0
+                        v    = float(vegetation[r,c]) if np.isfinite(vegetation[r,c]) else 0.0
+                        w    = float(water[r,c])      if np.isfinite(water[r,c])      else 0.0
+                        bare = float(bare_land[r,c])  if np.isfinite(bare_land[r,c])  else 0.0
+                        obs  = float(combined[r,c])   if np.isfinite(combined[r,c])   else 0.0
                         rejected = []
-                        if b > building_threshold:
-                            rejected.append("buildings")
-                        if v > vegetation_threshold:
-                            rejected.append("vegetation")
-                        if w > water_threshold:
-                            rejected.append("water")
-
+                        if b > building_threshold:   rejected.append("buildings")
+                        if v > vegetation_threshold: rejected.append("vegetation")
+                        if w > water_threshold:      rejected.append("water")
                         cell_lat_max = lat_max - (r * lat_step)
                         cell_lat_min = lat_max - ((r + 1) * lat_step)
                         cell_lon_min = lon_min + (c * lon_step)
                         cell_lon_max = lon_min + ((c + 1) * lon_step)
-
                         if rejected:
-                            status = "AI Rejected"
-                            reason = ", ".join(rejected)
-                            fill_color = "#EF4444"
+                            reason      = ", ".join(rejected)
+                            fill_color  = "#EF4444"
                             stroke_color = "#B91C1C"
-                            tooltip = (
-                                f"AI Result: Rejected — {reason} | "
-                                f"Building {b * 100:.1f}%, Vegetation {v * 100:.1f}%, Water {w * 100:.1f}%"
-                            )
+                            tooltip = (f"AI Result: Rejected — {reason} | "
+                                       f"Building {b*100:.1f}%, Vegetation {v*100:.1f}%, Water {w*100:.1f}%")
+                            status = "AI Rejected"
                         else:
-                            status = "AI Valid"
-                            reason = "bare/open land" if bare > 0.25 else "no excluded obstacle"
-                            fill_color = "#22C55E"
+                            reason      = "bare/open land" if bare > 0.25 else "no excluded obstacle"
+                            fill_color  = "#22C55E"
                             stroke_color = "#15803D"
-                            tooltip = (
-                                f"AI Result: Valid — {reason} | "
-                                f"Bare land {bare * 100:.1f}%, Obstacle {obs * 100:.1f}%"
-                            )
-
+                            tooltip = (f"AI Result: Valid — {reason} | "
+                                       f"Bare land {bare*100:.1f}%, Obstacle {obs*100:.1f}%")
+                            status = "AI Valid"
                         grid_cells.append({
                             "bounds": [[cell_lat_min, cell_lon_min], [cell_lat_max, cell_lon_max]],
-                            "fillColor": fill_color,
-                            "strokeColor": stroke_color,
-                            "tooltip": tooltip,
-                            "mode": "ai",
-                            "status": status,
+                            "fillColor": fill_color, "strokeColor": stroke_color,
+                            "tooltip": tooltip, "mode": "ai", "status": status,
                         })
-
                 overlay_mode = "ai"
-
         except Exception:
-            grid_cells = []
+            grid_cells   = []
             overlay_mode = "suitability"
 
-    # ── Fallback overlay: AHP suitability raster ─────────────────────────
-    # Used only when AI overlay data is unavailable, such as older saved reports.
     if overlay_mode != "ai" and suitability is not None and getattr(suitability, "data", None) is not None:
-        data = np.asarray(suitability.data, dtype=float)
+        data   = np.asarray(suitability.data, dtype=float)
         nodata = getattr(suitability, "nodata", -9999.0)
-
         rows, cols = data.shape[:2]
         lat_step = (lat_max - lat_min) / rows
         lon_step = (lon_max - lon_min) / cols
-
         for r in range(rows):
             for c in range(cols):
                 score = float(data[r, c])
                 if not np.isfinite(score) or score == nodata:
                     continue
-
                 score = max(0.0, min(1.0, score))
                 color = _rgb_to_hex(_score_color_rgb(score))
-
                 cell_lat_max = lat_max - (r * lat_step)
                 cell_lat_min = lat_max - ((r + 1) * lat_step)
                 cell_lon_min = lon_min + (c * lon_step)
                 cell_lon_max = lon_min + ((c + 1) * lon_step)
-
                 grid_cells.append({
                     "bounds": [[cell_lat_min, cell_lon_min], [cell_lat_max, cell_lon_max]],
-                    "score_text": f"{score * 100:.1f}%",
-                    "fillColor": color,
+                    "score_text": f"{score*100:.1f}%", "fillColor": color,
                     "strokeColor": "#4a8f2a",
-                    "tooltip": f"AHP Suitability Score: {score * 100:.1f}%",
+                    "tooltip": f"AHP Suitability Score: {score*100:.1f}%",
                     "mode": "suitability",
                 })
 
-    grid_json = json.dumps(grid_cells, ensure_ascii=False)
+    grid_json        = json.dumps(grid_cells, ensure_ascii=False)
     overlay_mode_json = json.dumps(overlay_mode)
 
     return f"""
@@ -1567,96 +1393,40 @@ def _build_map_html(aoi, site_info, suitability=None, height=430, ai_overlay=Non
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         html, body {{ margin: 0; padding: 0; background: transparent; }}
-        #{map_id} {{
-            width: 100%;
-            height: {height}px;
-            border-radius: 0 0 18px 18px;
-            overflow: hidden;
-        }}
+        #{map_id} {{ width: 100%; height: {height}px; border-radius: 0 0 18px 18px; overflow: hidden; }}
         .leaflet-container {{ font-family: Arial, sans-serif; background: #eaeaea; }}
         .leaflet-control-attribution {{ font-size: 10px; }}
         .wahhaj-legend {{
-            background: rgba(255,255,255,0.95);
-            border-radius: 12px;
-            padding: 10px 12px;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.12);
-            line-height: 1.35;
-            min-width: 214px;
+            background: rgba(255,255,255,0.95); border-radius: 12px;
+            padding: 10px 12px; box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+            line-height: 1.35; min-width: 214px;
         }}
-        .wahhaj-legend-title {{
-            font-size: 12px;
-            font-weight: 700;
-            color: #1f3864;
-            margin-bottom: 7px;
-        }}
-        .wahhaj-legend-bar {{
-            height: 10px;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #e74c3c, #f4b040, #f1c40f, #7fcc50, #22c55e);
-            margin-bottom: 6px;
-        }}
-        .wahhaj-legend-scale {{
-            display: flex;
-            justify-content: space-between;
-            font-size: 10px;
-            color: #666;
-            margin-bottom: 6px;
-        }}
-        .wahhaj-legend-note {{
-            font-size: 10px;
-            color: #666;
-            margin-bottom: 3px;
-        }}
-        .wahhaj-legend-row {{
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            font-size: 10px;
-            color: #444;
-            margin-bottom: 5px;
-        }}
-        .wahhaj-legend-swatch {{
-            width: 13px;
-            height: 13px;
-            border-radius: 4px;
-            border: 1px solid rgba(0,0,0,0.12);
-            flex: 0 0 13px;
-        }}
+        .wahhaj-legend-title  {{ font-size:12px; font-weight:700; color:#1f3864; margin-bottom:7px; }}
+        .wahhaj-legend-bar    {{ height:10px; border-radius:999px; background:linear-gradient(90deg,#e74c3c,#f4b040,#f1c40f,#7fcc50,#22c55e); margin-bottom:6px; }}
+        .wahhaj-legend-scale  {{ display:flex; justify-content:space-between; font-size:10px; color:#666; margin-bottom:6px; }}
+        .wahhaj-legend-note   {{ font-size:10px; color:#666; margin-bottom:3px; }}
+        .wahhaj-legend-row    {{ display:flex; align-items:center; gap:7px; font-size:10px; color:#444; margin-bottom:5px; }}
+        .wahhaj-legend-swatch {{ width:13px; height:13px; border-radius:4px; border:1px solid rgba(0,0,0,0.12); flex:0 0 13px; }}
         .selected-label {{ background: transparent; border: none; }}
         .selected-label div {{
-            background: rgba(0,112,255,0.96);
-            color: #fff;
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
+            background: rgba(0,112,255,0.96); color: #fff;
+            padding: 6px 10px; border-radius: 999px;
+            font-size: 11px; font-weight: 700; white-space: nowrap;
             box-shadow: 0 4px 14px rgba(0,0,0,0.18);
         }}
-        .wahhaj-popup-title {{
-            font-size: 13px;
-            font-weight: 700;
-            color: #1f3864;
-            margin-bottom: 4px;
-        }}
-        .wahhaj-popup-line {{
-            font-size: 12px;
-            color: #444;
-            margin-bottom: 2px;
-        }}
+        .wahhaj-popup-title {{ font-size:13px; font-weight:700; color:#1f3864; margin-bottom:4px; }}
+        .wahhaj-popup-line  {{ font-size:12px; color:#444; margin-bottom:2px; }}
     </style>
 </head>
 <body>
     <div id="{map_id}"></div>
     <script>
-        const selected = {selected_json};
-        const bounds = {bounds_json};
-        const aoiOutline = {aoi_outline_json};
-        const gridCells = {grid_json};
-        const overlayMode = {overlay_mode_json};
-
+        const selected     = {selected_json};
+        const bounds       = {bounds_json};
+        const aoiOutline   = {aoi_outline_json};
+        const gridCells    = {grid_json};
+        const overlayMode  = {overlay_mode_json};
         const map = L.map("{map_id}", {{ zoomControl: true, scrollWheelZoom: true, preferCanvas: true }});
-
         const satellite = L.tileLayer(
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{{z}}/{{y}}/{{x}}",
             {{ attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics, and contributors", maxZoom: 19 }}
@@ -1665,52 +1435,32 @@ def _build_map_html(aoi, site_info, suitability=None, height=430, ai_overlay=Non
             "https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
             {{ attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }}
         );
-
         satellite.addTo(map);
         L.control.layers({{"Satellite": satellite, "Streets": streets}}, null, {{ collapsed: true, position: "topright" }}).addTo(map);
-
         gridCells.forEach(cell => {{
             L.rectangle(cell.bounds, {{
                 color: cell.strokeColor || "#4a8f2a",
                 weight: overlayMode === "ai" ? 0.75 : 0.55,
-                fill: true,
-                fillColor: cell.fillColor,
+                fill: true, fillColor: cell.fillColor,
                 fillOpacity: overlayMode === "ai" ? 0.46 : 0.42
-            }})
-            .bindTooltip(cell.tooltip || `Cell result`)
-            .addTo(map);
+            }}).bindTooltip(cell.tooltip || "Cell result").addTo(map);
         }});
-
-        L.polygon(aoiOutline, {{
-            color: "#0070FF",
-            weight: 2.8,
-            fill: false
-        }}).addTo(map);
-
+        L.polygon(aoiOutline, {{ color: "#0070FF", weight: 2.8, fill: false }}).addTo(map);
         const selectedIcon = L.divIcon({{
             className: "selected-label",
             html: `<div>${{selected.name}}</div>`,
-            iconSize: [130, 26],
-            iconAnchor: [65, -6]
+            iconSize: [130, 26], iconAnchor: [65, -6]
         }});
-
         L.circleMarker([selected.lat, selected.lon], {{
-            radius: 8,
-            color: "#0070FF",
-            weight: 3,
-            fillColor: "#ffffff",
-            fillOpacity: 0.95
-        }})
-        .bindPopup(`
+            radius: 8, color: "#0070FF", weight: 3,
+            fillColor: "#ffffff", fillOpacity: 0.95
+        }}).bindPopup(`
             <div class="wahhaj-popup-title">${{selected.name}}</div>
             <div class="wahhaj-popup-line">Overall score: ${{selected.score_text}}</div>
             <div class="wahhaj-popup-line">Suitability: ${{selected.suitability}}</div>
-        `)
-        .addTo(map);
-
+        `).addTo(map);
         L.marker([selected.lat, selected.lon], {{ icon: selectedIcon }}).addTo(map);
         map.fitBounds(bounds, {{ padding: [24, 24] }});
-
         const legend = L.control({{ position: "bottomleft" }});
         legend.onAdd = function() {{
             const div = L.DomUtil.create("div", "wahhaj-legend");
@@ -1721,8 +1471,7 @@ def _build_map_html(aoi, site_info, suitability=None, height=430, ai_overlay=Non
                     <div class="wahhaj-legend-row"><span class="wahhaj-legend-swatch" style="background:#EF4444;"></span><span>AI rejected: vegetation, building, or water</span></div>
                     <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
                     <div class="wahhaj-legend-note">Colored cells = AI image screening result</div>
-                    <div class="wahhaj-legend-note">AHP score is shown in the score and factor cards</div>
-                `;
+                    <div class="wahhaj-legend-note">AHP score is shown in the score and factor cards</div>`;
             }} else {{
                 div.innerHTML = `
                     <div class="wahhaj-legend-title">Selected Location Suitability Scale</div>
@@ -1730,8 +1479,7 @@ def _build_map_html(aoi, site_info, suitability=None, height=430, ai_overlay=Non
                     <div class="wahhaj-legend-scale"><span>Low</span><span>High</span></div>
                     <div class="wahhaj-legend-note">Blue outline = selected analysis boundary</div>
                     <div class="wahhaj-legend-note">Colored cells = AHP suitability scores</div>
-                    <div class="wahhaj-legend-note">Blue marker = selected site center</div>
-                `;
+                    <div class="wahhaj-legend-note">Blue marker = selected site center</div>`;
             }}
             return div;
         }};
@@ -1741,20 +1489,17 @@ def _build_map_html(aoi, site_info, suitability=None, height=430, ai_overlay=Non
 </html>
 """
 
+
 def _recommendation_text(label: str) -> str:
     label_l = (label or "").lower()
-    if "not" in label_l:
-        return "Not recommended at this stage based on the current suitability assessment."
-    if "moderate" in label_l:
-        return "Conditionally recommended and may benefit from additional field validation before final adoption."
-    if "suitable" in label_l:
-        return "Recommended for solar site consideration based on the current weighted environmental and geospatial assessment."
+    if "not"      in label_l: return "Not recommended at this stage based on the current suitability assessment."
+    if "moderate" in label_l: return "Conditionally recommended and may benefit from additional field validation before final adoption."
+    if "suitable" in label_l: return "Recommended for solar site consideration based on the current weighted environmental and geospatial assessment."
     return "Recommended for further review based on the current site analysis results."
 
 
 def _safe_text(value, default="—"):
-    if value is None:
-        return default
+    if value is None: return default
     text = str(value).strip()
     return text if text else default
 
@@ -1770,46 +1515,29 @@ def _factor_accent(index: int) -> str:
 
 def _factor_symbol(title: str) -> str:
     name = (title or "").strip().lower()
-
-    if "solar" in name or "irradiance" in name or "radiation" in name:
-        return "☼"
-    if "sunlight" in name or "sunshine" in name or "sun hour" in name:
-        return "◷"
-    if "slope" in name or "terrain" in name:
-        return "⛰"
-    if "obstacle" in name or "ai" in name or "excluded" in name:
-        return "▣"
-    if "surface" in name or "temperature" in name or "lst" in name:
-        return "♨"
-    if "elevation" in name or "altitude" in name:
-        return "△"
-
+    if "solar"     in name or "irradiance" in name or "radiation"    in name: return "☼"
+    if "sunlight"  in name or "sunshine"   in name or "sun hour"     in name: return "◷"
+    if "slope"     in name or "terrain"    in name:                           return "⛰"
+    if "obstacle"  in name or "ai"         in name or "excluded"     in name: return "▣"
+    if "surface"   in name or "temperature" in name or "lst"         in name: return "♨"
+    if "elevation" in name or "altitude"   in name:                           return "△"
     return "•"
 
 
 def _default_ahp_weight_for_factor(title: str) -> float | None:
     name = (title or "").strip().lower()
-
-    if "solar" in name or "irradiance" in name or "radiation" in name:
-        return 30.0
-    if "sunlight" in name or "sunshine" in name or "sun hour" in name:
-        return 18.0
-    if "slope" in name or "terrain" in name:
-        return 22.0
-    if "obstacle" in name or "ai" in name or "excluded" in name:
-        return 13.0
-    if "surface" in name or "temperature" in name or "lst" in name:
-        return 10.0
-    if "elevation" in name:
-        return 7.0
-
+    if "solar"     in name or "irradiance" in name or "radiation"  in name: return 30.0
+    if "sunlight"  in name or "sunshine"   in name or "sun hour"   in name: return 18.0
+    if "slope"     in name or "terrain"    in name:                          return 22.0
+    if "obstacle"  in name or "ai"         in name or "excluded"   in name: return 13.0
+    if "surface"   in name or "temperature" in name or "lst"       in name: return 10.0
+    if "elevation" in name:                                                   return 7.0
     return None
 
 
 def _factor_float(value, default=None):
     try:
-        if value is None:
-            return default
+        if value is None: return default
         return float(value)
     except Exception:
         return default
@@ -1817,71 +1545,46 @@ def _factor_float(value, default=None):
 
 def _factor_pct_text(value, default="—"):
     value = _factor_float(value)
-    if value is None:
-        return default
+    if value is None: return default
     return f"{value:.1f}%"
 
 
 def _prepare_factor_breakdown(factors: list[dict]) -> list[dict]:
     prepared = []
-
     for idx, item in enumerate(factors or []):
-        if not isinstance(item, dict):
-            continue
-
-        item = dict(item)
-        title = item.get("title") or item.get("name") or f"Factor {idx + 1}"
-
-        contribution = max(
-            0.0,
-            _factor_float(
-                item.get("current_contribution_pct", item.get("contribution_pct")),
-                0.0,
-            ) or 0.0,
-        )
-
-        weight = _factor_float(
-            item.get("ahp_weight_pct", item.get("weight_pct")),
-            None,
-        )
-
+        if not isinstance(item, dict): continue
+        item         = dict(item)
+        title        = item.get("title") or item.get("name") or f"Factor {idx + 1}"
+        contribution = max(0.0, _factor_float(item.get("current_contribution_pct", item.get("contribution_pct")), 0.0) or 0.0)
+        weight       = _factor_float(item.get("ahp_weight_pct", item.get("weight_pct")), None)
         if weight is None:
             weight = _default_ahp_weight_for_factor(str(title))
-
-        item["ahp_weight_pct"] = weight
-        item["weight_pct"] = weight
+        item["ahp_weight_pct"]         = weight
+        item["weight_pct"]             = weight
         item["current_contribution_pct"] = contribution
-        item["contribution_pct"] = contribution
-        item["base_bar_pct"] = max(0.0, min(100.0, weight if weight is not None else 0.0))
+        item["contribution_pct"]       = contribution
+        item["base_bar_pct"]   = max(0.0, min(100.0, weight if weight is not None else 0.0))
         item["current_bar_pct"] = max(0.0, min(100.0, contribution))
-        item["accent"] = item.get("accent") or _factor_accent(idx)
-
+        item["accent"]         = item.get("accent") or _factor_accent(idx)
         prepared.append(item)
-
     return prepared
 
 
 def _normalize_factor_bars(factors: list[dict]) -> list[dict]:
-    # Kept for compatibility with existing report/PDF paths.
     out = []
     for idx, item in enumerate(_prepare_factor_breakdown(factors)):
         value = max(0.0, float(item.get("current_contribution_pct", item.get("contribution_pct", 0.0)) or 0.0))
-        out.append(
-            {
-                **item,
-                "bar_pct": max(0.0, min(100.0, value)),
-                "accent": item.get("accent") or _factor_accent(idx),
-            }
-        )
+        out.append({**item, "bar_pct": max(0.0, min(100.0, value)), "accent": item.get("accent") or _factor_accent(idx)})
     return out
+
 
 def _factor_snapshot_html(factors: list[dict]) -> str:
     cards = []
     for idx, item in enumerate(factors[:5]):
-        title = _safe_html(item.get("title", item.get("name", "Factor")))
+        title     = _safe_html(item.get("title", item.get("name", "Factor")))
         raw_label = _safe_html(item.get("raw_label"))
-        score = float(item.get("contribution_pct", 0.0) or 0.0)
-        accent = _factor_accent(idx)
+        score     = float(item.get("contribution_pct", 0.0) or 0.0)
+        accent    = _factor_accent(idx)
         cards.append(
             '<div class="fr-mini-factor">'
             f'<h4>{title}</h4>'
@@ -1903,84 +1606,72 @@ def _reason_list_html(reasons: list[dict]) -> str:
 
 
 def _ai_details_panel_html(ai_details: dict | None) -> str:
-    """Render the detailed AI screening summary card without affecting scoring logic."""
     if not isinstance(ai_details, dict) or not ai_details:
         return ""
 
     def _num(value, default=0.0):
         try:
-            if value is None:
-                return default
+            if value is None: return default
             return float(value)
-        except Exception:
-            return default
+        except Exception: return default
 
     def _int(value, default=0):
         try:
-            if value is None:
-                return default
+            if value is None: return default
             return int(round(float(value)))
-        except Exception:
-            return default
+        except Exception: return default
 
     supporting_message = _safe_html(
         ai_details.get("supporting_message")
         or ai_details.get("summary")
         or "AI screening details are available for this selected area."
     )
-
     detected_classes = ai_details.get("detected_classes") or []
     if isinstance(detected_classes, (list, tuple)):
         detected_text = ", ".join(str(x) for x in detected_classes if str(x).strip())
     else:
         detected_text = str(detected_classes or "")
     detected_text = detected_text or "No detected classes available"
-
-    valid_pct = _num(ai_details.get("valid_pct"), 0.0)
+    valid_pct    = _num(ai_details.get("valid_pct"),    0.0)
     excluded_pct = _num(ai_details.get("excluded_pct"), 0.0)
-    valid_cells = _int(ai_details.get("valid_cells"), 0)
-    total_cells = _int(ai_details.get("total_cells"), 100)
+    valid_cells  = _int(ai_details.get("valid_cells"),  0)
+    total_cells  = _int(ai_details.get("total_cells"),  100)
     rejected_cells = _int(ai_details.get("total_excluded_cells"), max(total_cells - valid_cells, 0))
-
-    return f"""
-        <div class="fr-ai-details">
-            <div class="fr-ai-callout">{supporting_message}</div>
-            <div class="fr-ai-detail-box">
-                <div class="fr-ai-detail-label">Detected in image</div>
-                <div class="fr-ai-detail-value">{_safe_html(detected_text)}</div>
-            </div>
-            <div class="fr-ai-detail-box">
-                <div class="fr-ai-detail-label">Valid area</div>
-                <div class="fr-ai-detail-value">{valid_pct:.1f}% ({valid_cells} / {total_cells} cells)</div>
-                <div class="fr-ai-detail-note">Cells kept for suitability evaluation.</div>
-            </div>
-            <div class="fr-ai-detail-box">
-                <div class="fr-ai-detail-label">Rejected area</div>
-                <div class="fr-ai-detail-value">{excluded_pct:.1f}% ({rejected_cells} / {total_cells} cells)</div>
-                <div class="fr-ai-detail-note">Cells removed by AI before AHP scoring.</div>
-            </div>
-        </div>
-    """
+    return (
+        '<div class="fr-ai-details">'
+        f'<div class="fr-ai-callout">{supporting_message}</div>'
+        '<div class="fr-ai-detail-box">'
+        '<div class="fr-ai-detail-label">Detected in image</div>'
+        f'<div class="fr-ai-detail-value">{_safe_html(detected_text)}</div>'
+        '</div>'
+        '<div class="fr-ai-detail-box">'
+        '<div class="fr-ai-detail-label">Valid area</div>'
+        f'<div class="fr-ai-detail-value">{valid_pct:.1f}% ({valid_cells} / {total_cells} cells)</div>'
+        '<div class="fr-ai-detail-note">Cells kept for suitability evaluation.</div>'
+        '</div>'
+        '<div class="fr-ai-detail-box">'
+        '<div class="fr-ai-detail-label">Rejected area</div>'
+        f'<div class="fr-ai-detail-value">{excluded_pct:.1f}% ({rejected_cells} / {total_cells} cells)</div>'
+        '<div class="fr-ai-detail-note">Cells removed by AI before AHP scoring.</div>'
+        '</div>'
+        '</div>'
+    )
 
 
 def _weight_panel_html(factors: list[dict]) -> str:
     if not factors:
         return '<div class="fr-mini-note" style="margin-top:0;">No factor contribution data available.</div>'
-
     cards = []
-
     for idx, item in enumerate(_prepare_factor_breakdown(factors)):
-        title_raw = item.get("title") or item.get("name") or f"Factor {idx + 1}"
-        title = _safe_html(title_raw)
-        raw_label = _safe_html(item.get("raw_label"), "No value")
-
-        weight = item.get("ahp_weight_pct")
-        contribution = float(item.get("current_contribution_pct", item.get("contribution_pct", 0.0)) or 0.0)
-        base_bar_pct = float(item.get("base_bar_pct", 0.0) or 0.0)
+        title_raw     = item.get("title") or item.get("name") or f"Factor {idx + 1}"
+        title         = _safe_html(title_raw)
+        raw_label     = _safe_html(item.get("raw_label"), "No value")
+        weight        = item.get("ahp_weight_pct")
+        contribution  = float(item.get("current_contribution_pct", item.get("contribution_pct", 0.0)) or 0.0)
+        base_bar_pct  = float(item.get("base_bar_pct",    0.0) or 0.0)
         current_bar_pct = float(item.get("current_bar_pct", 0.0) or 0.0)
-        accent = item.get("accent", _factor_accent(idx))
-        symbol = _safe_html(_factor_symbol(title_raw), "•")
-
+        accent        = item.get("accent", _factor_accent(idx))
+        symbol        = _safe_html(_factor_symbol(title_raw), "•")
         cards.append(
             f'<div class="fr-weight-item" style="--factor-accent:{accent};">'
             '<div class="fr-weight-top">'
@@ -1996,7 +1687,7 @@ def _weight_panel_html(factors: list[dict]) -> str:
             '<div class="fr-weight-half-note">Fixed importance</div>'
             f'<div class="fr-weight-line"><span style="width:{base_bar_pct:.1f}%;background:#1F3864;"></span></div>'
             '</div>'
-            f'<div class="fr-weight-half current">'
+            '<div class="fr-weight-half current">'
             '<div class="fr-weight-half-label">Current Contribution</div>'
             f'<div class="fr-weight-half-value" style="color:{accent};">{contribution:.1f}%</div>'
             '<div class="fr-weight-half-note">This site result</div>'
@@ -2005,15 +1696,14 @@ def _weight_panel_html(factors: list[dict]) -> str:
             '</div>'
             '</div>'
         )
-
     intro = (
         '<div class="fr-weight-intro">'
         '<div class="fr-weight-legend-pill"><span class="fr-weight-legend-dot base"></span><span><b>AHP Weight</b> = fixed importance of the criterion</span></div>'
         '<div class="fr-weight-legend-pill"><span class="fr-weight-legend-dot current"></span><span><b>Current Contribution</b> = how much it influenced this site result</span></div>'
         '</div>'
     )
-
     return intro + '<div class="fr-weight-grid">' + ''.join(cards) + '</div>'
+
 
 def _summary_item(label: str, value: str) -> str:
     return (
@@ -2022,9 +1712,6 @@ def _summary_item(label: str, value: str) -> str:
         f'<div class="value">{escape(value)}</div>'
         '</div>'
     )
-
-
-
 
 
 def _render_final_report_loading(slot, progress_pct: int = 58, progress_msg: str = "Preparing final report...") -> None:
@@ -2047,13 +1734,12 @@ def _render_final_report_loading(slot, progress_pct: int = 58, progress_msg: str
         unsafe_allow_html=True,
     )
 
+
 def _safe_float(value, default=None):
     try:
-        if value is None:
-            return default
+        if value is None: return default
         return float(value)
-    except Exception:
-        return default
+    except Exception: return default
 
 
 def _safe_aoi(value):
@@ -2062,89 +1748,56 @@ def _safe_aoi(value):
             lon_min, lat_min, lon_max, lat_max = [float(v) for v in value]
             if lon_min < lon_max and lat_min < lat_max:
                 return (lon_min, lat_min, lon_max, lat_max)
-        except Exception:
-            return None
+        except Exception: return None
     return None
 
 
 def _suitability_to_storage(suitability) -> dict | None:
-    """Convert the suitability raster/grid into JSON-safe data for database storage."""
     if suitability is None or getattr(suitability, "data", None) is None:
         return None
-
     try:
-        data = np.asarray(suitability.data, dtype=float)
-        if data.ndim != 2:
-            return None
-
+        data   = np.asarray(suitability.data, dtype=float)
+        if data.ndim != 2: return None
         nodata = getattr(suitability, "nodata", -9999.0)
         stored_rows = []
-
         for row in data:
             stored_row = []
             for value in row:
-                try:
-                    cell_value = float(value)
-                except Exception:
-                    stored_row.append(None)
-                    continue
-
+                try:   cell_value = float(value)
+                except Exception: stored_row.append(None); continue
                 if not np.isfinite(cell_value) or cell_value == nodata:
                     stored_row.append(None)
                 else:
                     stored_row.append(round(max(0.0, min(1.0, cell_value)), 6))
-
             stored_rows.append(stored_row)
-
-        return {
-            "data": stored_rows,
-            "nodata": None,
-            "rows": int(data.shape[0]),
-            "cols": int(data.shape[1]),
-        }
-
-    except Exception:
-        return None
+        return {"data": stored_rows, "nodata": None, "rows": int(data.shape[0]), "cols": int(data.shape[1])}
+    except Exception: return None
 
 
 def _suitability_from_storage(value):
-    """Rebuild a lightweight raster-like object from saved JSON data."""
-    if not isinstance(value, dict):
-        return None
-
+    if not isinstance(value, dict): return None
     data = value.get("data")
-    if not isinstance(data, list) or not data:
-        return None
-
+    if not isinstance(data, list) or not data: return None
     try:
-        arr = np.asarray(data, dtype=float)
-        if arr.ndim != 2:
-            return None
-
+        arr        = np.asarray(data, dtype=float)
+        if arr.ndim != 2: return None
         nodata_raw = value.get("nodata", None)
-        nodata = float(nodata_raw) if nodata_raw is not None else -9999.0
-
+        nodata     = float(nodata_raw) if nodata_raw is not None else -9999.0
         return SimpleNamespace(data=arr, nodata=nodata)
-
-    except Exception:
-        return None
+    except Exception: return None
 
 
 def _clean_ranked_for_storage(items: list) -> list[dict]:
     clean = []
     for idx, item in enumerate(items or [], start=1):
-        if not isinstance(item, dict):
-            continue
+        if not isinstance(item, dict): continue
         score = _safe_float(item.get("score"), 0.0)
         clean.append({
             "rank": item.get("rank", idx),
-            "report_id": item.get("report_id"),
-            "run_id": item.get("run_id"),
+            "report_id": item.get("report_id"), "run_id": item.get("run_id"),
             "location_name": item.get("location_name") or "Unnamed Site",
-            "lat": item.get("lat"),
-            "lon": item.get("lon"),
-            "score": score,
-            "score_pct": item.get("score_pct") or f"{score * 100:.1f}%",
+            "lat": item.get("lat"), "lon": item.get("lon"),
+            "score": score, "score_pct": item.get("score_pct") or f"{score * 100:.1f}%",
             "label": item.get("label") or item.get("recommendation") or "Review Required",
             "analysed_at": item.get("analysed_at") or item.get("report_date") or "—",
         })
@@ -2157,95 +1810,143 @@ def _display_from_saved_report(report: dict) -> dict:
         display = criteria.get("display") or criteria.get("report_data") or criteria
     else:
         display = {}
-
     final_score = _safe_float(report.get("final_score"), _safe_float(display.get("selected_score"), 0.0))
     final_label = report.get("final_label") or display.get("selected_label") or "—"
-    score_text = display.get("selected_score_text") or f"{final_score * 100:.1f}%"
-
-    lat = _safe_float(report.get("lat"), _safe_float(display.get("selected_lat")))
-    lon = _safe_float(report.get("lon"), _safe_float(display.get("selected_lon")))
+    score_text  = display.get("selected_score_text") or f"{final_score * 100:.1f}%"
+    lat    = _safe_float(report.get("lat"), _safe_float(display.get("selected_lat")))
+    lon    = _safe_float(report.get("lon"), _safe_float(display.get("selected_lon")))
     coords = display.get("selected_coords") or (f"{lat:.4f}°N, {lon:.4f}°E" if lat is not None and lon is not None else "—")
-
     selected_color = display.get("selected_color") or "#1a1a1a"
-    selected_bg = display.get("selected_bg") or "#EEF4FB"
+    selected_bg    = display.get("selected_bg")    or "#EEF4FB"
     if final_score is not None:
         final_label, selected_color, selected_bg = _selected_site_badge(float(final_score))
-
     saved_suitability = _suitability_from_storage(
-        (
-            display.get("suitability_data")
-            or display.get("heatmap_data")
-            or criteria.get("suitability_data")
-            or criteria.get("heatmap_data")
-        )
-        if isinstance(criteria, dict)
-        else None
+        (display.get("suitability_data") or display.get("heatmap_data")
+         or criteria.get("suitability_data") or criteria.get("heatmap_data"))
+        if isinstance(criteria, dict) else None
     )
-
     return {
         "report_id": report.get("report_id") or "—",
-        "run_id": report.get("run_id") or "—",
-        "location_name": report.get("location_name") or display.get("location_name") or "Selected Site",
+        "run_id":    report.get("run_id")    or "—",
+        "location_name":        report.get("location_name") or display.get("location_name") or "Selected Site",
         "selected_display_name": display.get("selected_display_name") or report.get("location_name") or "Selected Site",
-        "selected_score": final_score,
+        "selected_score":      final_score,
         "selected_score_text": score_text,
-        "selected_label": final_label,
-        "selected_color": selected_color,
-        "selected_bg": selected_bg,
-        "selected_lat": lat,
-        "selected_lon": lon,
-        "selected_coords": coords,
-        "aoi": _safe_aoi(report.get("aoi") or display.get("aoi")),
+        "selected_label":      final_label,
+        "selected_color":      selected_color,
+        "selected_bg":         selected_bg,
+        "selected_lat":        lat,
+        "selected_lon":        lon,
+        "selected_coords":     coords,
+        "aoi":        _safe_aoi(report.get("aoi") or display.get("aoi")),
         "suitability": saved_suitability,
         "ai_overlay_data": (display.get("ai_overlay_data") or criteria.get("ai_overlay_data") if isinstance(criteria, dict) else None),
         "recommendation": report.get("recommendation") or display.get("recommendation") or _recommendation_text(final_label),
-        "report_date": report.get("report_date") or display.get("now") or "—",
-        "status_text": display.get("status_text") or "Completed",
+        "report_date":  report.get("report_date") or display.get("now") or "—",
+        "status_text":  display.get("status_text")  or "Completed",
         "duration_text": display.get("duration_text") or "—",
-        "image_name": display.get("image_name") or "Uploaded image",
+        "image_name":   display.get("image_name")   or "Uploaded image",
         "ai_assessment": display.get("ai_assessment") or "Pending AI model result",
-        "ai_details": display.get("ai_details") or (criteria.get("ai_details") if isinstance(criteria, dict) else {}) or {},
-        "reasons": display.get("reasons") or [],
-        "factors": report.get("factors_data") or display.get("factors") or [],
+        "ai_details":   display.get("ai_details") or (criteria.get("ai_details") if isinstance(criteria, dict) else {}) or {},
+        "reasons":      display.get("reasons")  or [],
+        "factors":      report.get("factors_data") or display.get("factors") or [],
         "ranked_sites": report.get("ranked_sites") or [],
         "global_rank_text": display.get("global_rank_text") or "Saved report",
-        "pdf_bytes": report.get("pdf_file"),
+        "pdf_bytes":    report.get("pdf_file"),
         "pdf_filename": report.get("pdf_filename") or f"wahhaj_report_{str(report.get('report_id') or 'saved')[:8]}.pdf",
     }
+
+
+# ── Helper: build the left-column 3-card HTML block in one call ─────────────
+# This is the KEY architectural fix. All 3 cards live inside ONE st.markdown()
+# call so the flex container (.fr-left-stack) directly wraps the card divs,
+# with no Streamlit wrapper elements in between breaking the flex layout.
+def _build_left_stack_html(
+    score_bar_width: float,
+    selected_bg: str,
+    selected_color: str,
+    selected_label: str,
+    selected_score_text: str,
+    score_note: str,
+    recommendation: str,
+    global_rank_text: str,
+    selected_display_name: str,
+    selected_coords: str,
+    image_name: str,
+    status_text: str,
+) -> str:
+    return f"""
+<div class="fr-left-stack">
+
+  <div class="fr-card fr-card-score">
+    <div class="fr-card-title">Overall Suitability Score</div>
+    <div class="fr-badge" style="background:{selected_bg};color:{selected_color};">{_safe_html(selected_label)}</div>
+    <div class="fr-donut-wrap">
+      <div class="fr-donut" style="--pct:{score_bar_width:.1f};--accent:{selected_color};">
+        <div class="fr-donut-center">
+          <strong>{_safe_html(selected_score_text)}</strong>
+          <span>Score</span>
+        </div>
+      </div>
+      <div class="fr-score-side">
+        <div class="fr-score-label">Selected site result</div>
+        <div class="fr-progress"><span style="width:{score_bar_width:.1f}%;background:{selected_color};"></span></div>
+        <div class="fr-mini-note">{escape(score_note)}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fr-card fr-card-rec">
+    <div class="fr-card-title compact">Recommendation</div>
+    <div class="fr-mini-note" style="margin-top:0;color:#162033;font-size:0.82rem;">{escape(recommendation)}</div>
+    <div class="fr-mini-note" style="margin-top:0.55rem;color:#475569;font-size:0.78rem;"><b>Global Rank:</b> {_safe_html(global_rank_text)}</div>
+  </div>
+
+  <div class="fr-card fr-card-info">
+    <div class="fr-card-title compact">Site Information</div>
+    <div class="fr-kv-grid">
+      <div class="fr-kv-item"><div class="fr-kv-label">Display Name</div><div class="fr-kv-value">{_safe_html(selected_display_name)}</div></div>
+      <div class="fr-kv-item"><div class="fr-kv-label">Coordinates</div><div class="fr-kv-value">{_safe_html(selected_coords)}</div></div>
+      <div class="fr-kv-item"><div class="fr-kv-label">Image Source</div><div class="fr-kv-value">{_safe_html(image_name)}</div></div>
+      <div class="fr-kv-item"><div class="fr-kv-label">Run Status</div><div class="fr-kv-value">{_safe_html(status_text)}</div></div>
+    </div>
+  </div>
+
+</div>
+"""
 
 
 def _render_saved_final_report(report: dict) -> None:
     data = _display_from_saved_report(report)
 
-    selected_score = data["selected_score"] or 0.0
-    selected_label = data["selected_label"]
-    selected_score_text = data["selected_score_text"]
-    selected_color = data["selected_color"]
-    selected_bg = data["selected_bg"]
+    selected_score        = data["selected_score"] or 0.0
+    selected_label        = data["selected_label"]
+    selected_score_text   = data["selected_score_text"]
+    selected_color        = data["selected_color"]
+    selected_bg           = data["selected_bg"]
     selected_display_name = data["selected_display_name"]
-    selected_lat = data["selected_lat"]
-    selected_lon = data["selected_lon"]
-    selected_coords = data["selected_coords"]
-    aoi = data["aoi"]
-    suitability = data.get("suitability")
-    ai_overlay_data = data.get("ai_overlay_data")
-    factors = list(data["factors"] or [])
-    reasons = list(data["reasons"] or [])
+    selected_lat          = data["selected_lat"]
+    selected_lon          = data["selected_lon"]
+    selected_coords       = data["selected_coords"]
+    aoi                   = data["aoi"]
+    suitability           = data.get("suitability")
+    ai_overlay_data       = data.get("ai_overlay_data")
+    factors               = list(data["factors"] or [])
+    reasons               = list(data["reasons"] or [])
 
     if not factors:
         factors = [
             {"title": "Solar Irradiance", "raw_label": "Saved report data", "contribution_pct": 0.0},
-            {"title": "Sunshine Hours", "raw_label": "Saved report data", "contribution_pct": 0.0},
-            {"title": "Terrain Slope", "raw_label": "Saved report data", "contribution_pct": 0.0},
-            {"title": "LST", "raw_label": "Saved report data", "contribution_pct": 0.0},
-            {"title": "Elevation", "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "Sunshine Hours",   "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "Terrain Slope",    "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "LST",              "raw_label": "Saved report data", "contribution_pct": 0.0},
+            {"title": "Elevation",        "raw_label": "Saved report data", "contribution_pct": 0.0},
         ]
 
-    factors = _prepare_factor_breakdown(factors)
-
+    factors         = _prepare_factor_breakdown(factors)
     report_id_short = f"{str(data['report_id'])[:8]}..." if data.get("report_id") else "—"
-    run_id_short = f"{str(data['run_id'])[:8]}..." if data.get("run_id") else "—"
-    now = str(data.get("report_date") or "—")
+    run_id_short    = f"{str(data['run_id'])[:8]}..."    if data.get("run_id")    else "—"
+    now             = str(data.get("report_date") or "—")
 
     st.markdown(
         f"""
@@ -2271,55 +1972,27 @@ def _render_saved_final_report(report: dict) -> None:
     with left_col:
         score_bar_width = float(selected_score or 0.0) * 100.0
         st.markdown(
-            f"""
-            <div class="fr-card">
-                <div class="fr-card-title">Overall Suitability Score</div>
-                <div class="fr-badge" style="background:{selected_bg};color:{selected_color};">{_safe_html(selected_label)}</div>
-                <div class="fr-donut-wrap">
-                    <div class="fr-donut" style="--pct:{score_bar_width:.1f};--accent:{selected_color};">
-                        <div class="fr-donut-center"><strong>{_safe_html(selected_score_text)}</strong><span>Score</span></div>
-                    </div>
-                    <div class="fr-score-side">
-                        <div class="fr-score-label">Selected site result</div>
-                        <div class="fr-progress"><span style="width:{score_bar_width:.1f}%;background:{selected_color};"></span></div>
-                        <div class="fr-mini-note">This saved score represents the stored final suitability result for this report.</div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-            <div class="fr-card">
-                <div class="fr-card-title compact">Recommendation</div>
-                <div class="fr-mini-note" style="margin-top:0;color:#162033;font-size:0.82rem;">{escape(data['recommendation'])}</div>
-                <div class="fr-mini-note" style="margin-top:0.55rem;color:#475569;font-size:0.78rem;"><b>Global Rank:</b> {_safe_html(data['global_rank_text'])}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-            <div class="fr-card">
-                <div class="fr-card-title compact">Site Information</div>
-                <div class="fr-kv-grid">
-                    <div class="fr-kv-item"><div class="fr-kv-label">Display Name</div><div class="fr-kv-value">{_safe_html(selected_display_name)}</div></div>
-                    <div class="fr-kv-item"><div class="fr-kv-label">Coordinates</div><div class="fr-kv-value">{_safe_html(selected_coords)}</div></div>
-                    <div class="fr-kv-item"><div class="fr-kv-label">Image Source</div><div class="fr-kv-value">{_safe_html(data['image_name'])}</div></div>
-                    <div class="fr-kv-item"><div class="fr-kv-label">Run Status</div><div class="fr-kv-value">{_safe_html(data['status_text'])}</div></div>
-                </div>
-            </div>
-            """,
+            _build_left_stack_html(
+                score_bar_width       = score_bar_width,
+                selected_bg           = selected_bg,
+                selected_color        = selected_color,
+                selected_label        = selected_label,
+                selected_score_text   = selected_score_text,
+                score_note            = "This saved score represents the stored final suitability result for this report.",
+                recommendation        = data["recommendation"],
+                global_rank_text      = data["global_rank_text"],
+                selected_display_name = selected_display_name,
+                selected_coords       = selected_coords,
+                image_name            = data["image_name"],
+                status_text           = data["status_text"],
+            ),
             unsafe_allow_html=True,
         )
 
     with center_col:
         st.markdown(
             """
-            <div class="fr-card" style="padding:0;overflow:hidden;">
+            <div class="fr-map-outer">
                 <div class="fr-map-title">
                     <div class="fr-card-title compact">Selected Site AI Analysis Map</div>
                     <div class="fr-map-caption">Saved AOI view reconstructed from the stored report record.</div>
@@ -2329,31 +2002,24 @@ def _render_saved_final_report(report: dict) -> None:
         )
         if aoi and selected_lat is not None and selected_lon is not None and selected_score is not None:
             fill_color = _rgb_to_hex(_score_color_rgb(float(selected_score)))
-            site_info = {
-                "name": selected_display_name,
-                "score_text": selected_score_text,
-                "suitability": selected_label,
-                "lat": selected_lat,
-                "lon": selected_lon,
-                "fillColor": fill_color,
+            site_info  = {
+                "name": selected_display_name, "score_text": selected_score_text,
+                "suitability": selected_label, "lat": selected_lat,
+                "lon": selected_lon, "fillColor": fill_color,
             }
             st.markdown('<div class="fr-map-shell">', unsafe_allow_html=True)
             components.html(
                 _build_map_html(
-                    aoi=aoi,
-                    site_info=site_info,
-                    suitability=suitability,
-                    ai_overlay=ai_overlay_data,
-                    height=430,
+                    aoi=aoi, site_info=site_info,
+                    suitability=suitability, ai_overlay=ai_overlay_data, height=430,
                 ),
-                height=432,
-                scrolling=False,
+                height=432, scrolling=False,
             )
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.markdown(
                 """
-                <div class="fr-card" style="min-height:432px;display:flex;align-items:center;justify-content:center;">
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:432px;">
                     <div class="fr-mini-note" style="margin-top:0;text-align:center;max-width:420px;">Saved map data is not available for this report.</div>
                 </div>
                 """,
@@ -2363,8 +2029,8 @@ def _render_saved_final_report(report: dict) -> None:
 
     with right_col:
         st.markdown(
-            f"""
-            <div class="fr-card fr-ai-shell">
+            dedent(f"""
+            <div class="fr-ai-shell">
                 <div class="fr-card-title">AI Assessment</div>
                 <div class="fr-ai-hero">
                     <div class="fr-ai-label">AI image assessment</div>
@@ -2372,10 +2038,9 @@ def _render_saved_final_report(report: dict) -> None:
                     <div class="fr-ai-note">This saved assessment is loaded from the stored report record.</div>
                 </div>
                 {_ai_details_panel_html(data.get("ai_details"))}
-                <div class="fr-card-title compact">Key Drivers Behind This Score</div>
-                {_reason_list_html(reasons)}
+                
             </div>
-            """,
+            """),
             unsafe_allow_html=True,
         )
 
@@ -2394,10 +2059,8 @@ def _render_saved_final_report(report: dict) -> None:
     with pdf_col:
         if data.get("pdf_bytes"):
             st.download_button(
-                "Export PDF",
-                data=data["pdf_bytes"],
-                file_name=data["pdf_filename"],
-                mime="application/pdf",
+                "Export PDF", data=data["pdf_bytes"],
+                file_name=data["pdf_filename"], mime="application/pdf",
                 use_container_width=True,
             )
         else:
@@ -2406,21 +2069,15 @@ def _render_saved_final_report(report: dict) -> None:
     st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
     btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
     with btn_left:
-        st.button(
-            "View Heatmap",
-            use_container_width=True,
-            key="saved_report_view_heatmap_btn",
-            on_click=_queue_final_report_navigation,
-            args=("pages/6_Suitability_Heatmap.py", False),
-        )
+        st.button("View Heatmap", use_container_width=True,
+                  key="saved_report_view_heatmap_btn",
+                  on_click=_queue_final_report_navigation,
+                  args=("pages/6_Suitability_Heatmap.py", False))
     with btn_right:
-        st.button(
-            "New Analysis",
-            use_container_width=True,
-            key="saved_report_new_analysis_btn",
-            on_click=_queue_final_report_navigation,
-            args=("pages/3_Choose_Location.py", True),
-        )
+        st.button("New Analysis", use_container_width=True,
+                  key="saved_report_new_analysis_btn",
+                  on_click=_queue_final_report_navigation,
+                  args=("pages/3_Choose_Location.py", True))
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -2433,18 +2090,13 @@ _loading_ref = (
     or st.session_state.get("current_report_id")
     or "current"
 )
-_loading_key = f"final_report_initial_loading_done_{_loading_ref}"
-
+_loading_key          = f"final_report_initial_loading_done_{_loading_ref}"
 _show_initial_loading = not st.session_state.get(_loading_key, False)
 
 if _show_initial_loading:
-    _render_final_report_loading(
-        _report_loading_slot,
-        46,
-        "Opening final report..."
-    )
+    _render_final_report_loading(_report_loading_slot, 46, "Opening final report...")
 
-# ── saved report mode: open real report records from the database ───────────
+# ── saved report mode ───────────────────────────────────────────────────────
 _saved_report_id = st.session_state.get("current_report_id")
 _saved_report_requested = bool(
     _saved_report_id
@@ -2467,12 +2119,8 @@ if _saved_report_requested:
     _report_loading_slot.empty()
     st.markdown('<div class="fr-card">', unsafe_allow_html=True)
     st.error("The saved report could not be loaded from the database.")
-    st.button(
-        "Back Home",
-        key="saved_report_error_back_home_btn",
-        on_click=_queue_final_report_navigation,
-        args=("pages/2_Home.py", False),
-    )
+    st.button("Back Home", key="saved_report_error_back_home_btn",
+              on_click=_queue_final_report_navigation, args=("pages/2_Home.py", False))
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
@@ -2483,12 +2131,8 @@ if run is None:
     _report_loading_slot.empty()
     st.markdown('<div class="fr-card">', unsafe_allow_html=True)
     st.warning("No analysis found. Complete the pipeline first.")
-    st.button(
-        "Back to Analysis",
-        key="final_report_missing_back_analysis_btn",
-        on_click=_queue_final_report_navigation,
-        args=("pages/5_Analysis.py", False),
-    )
+    st.button("Back to Analysis", key="final_report_missing_back_analysis_btn",
+              on_click=_queue_final_report_navigation, args=("pages/5_Analysis.py", False))
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
@@ -2496,40 +2140,29 @@ if run is None:
 from Wahhaj.SiteCandidate import SiteCandidate
 from Wahhaj.report import Report
 
-loc = st.session_state.get("selected_location", {})
-# Local candidate ranking is still used for the selected AOI/heatmap details.
-# The user-facing/global rank comes from analysis_history via get_ranked_history().
+loc    = st.session_state.get("selected_location", {})
 ranked = SiteCandidate.rank_all(list(run.candidates)) if getattr(run, "candidates", None) else []
 summary = run.summary()
-aoi = st.session_state.get("aoi", (0, 0, 0, 0))
+aoi     = st.session_state.get("aoi", (0, 0, 0, 0))
+
 selected_site = _resolve_selected_site(
-    run,
-    loc,
+    run, loc,
     aoi if isinstance(aoi, tuple) and len(aoi) == 4 else None,
     st.session_state.get("selected_site_analysis", {}),
 )
-selected_site = _fr_recompute_current_report_values(
-    run,
-    st.session_state.get("extractor"),
-    selected_site,
-)
+selected_site = _fr_recompute_current_report_values(run, st.session_state.get("extractor"), selected_site)
 st.session_state["selected_site_analysis"] = selected_site
 
-selected_score = selected_site.get("score")
-selected_label = selected_site.get("label") or "—"
-selected_score_text = selected_site.get("score_text") or (
-    f"{float(selected_score) * 100:.1f}%" if selected_score is not None else "—"
-)
+selected_score        = selected_site.get("score")
+selected_label        = selected_site.get("label") or "—"
+selected_score_text   = selected_site.get("score_text") or (f"{float(selected_score)*100:.1f}%" if selected_score is not None else "—")
 selected_display_name = selected_site.get("site_display_name") or loc.get("location_name") or "Selected Site"
-selected_lat = selected_site.get("latitude", loc.get("latitude"))
-selected_lon = selected_site.get("longitude", loc.get("longitude"))
-selected_coords = (
-    f"{selected_lat:.4f}°N, {selected_lon:.4f}°E"
-    if selected_lat is not None and selected_lon is not None
-    else "—"
-)
+selected_lat          = selected_site.get("latitude",  loc.get("latitude"))
+selected_lon          = selected_site.get("longitude", loc.get("longitude"))
+selected_coords       = (f"{selected_lat:.4f}°N, {selected_lon:.4f}°E"
+                         if selected_lat is not None and selected_lon is not None else "—")
 selected_color = "#1a1a1a"
-selected_bg = "#EEF4FB"
+selected_bg    = "#EEF4FB"
 if selected_score is not None:
     selected_label, selected_color, selected_bg = _selected_site_badge(float(selected_score))
     selected_site["label"] = selected_label
@@ -2554,38 +2187,36 @@ global_ranked_sites = get_ranked_history()
 current_global_rank, total_ranked_sites = get_global_rank_for_run(getattr(run, "runId", None))
 global_rank_text = (
     f"#{current_global_rank} out of {total_ranked_sites} saved site{'s' if total_ranked_sites != 1 else ''}"
-    if current_global_rank else
-    "Not ranked yet"
+    if current_global_rank else "Not ranked yet"
 )
 
-now = datetime.now().strftime("%d %b %Y • %H:%M")
+now             = datetime.now().strftime("%d %b %Y • %H:%M")
 report_id_short = f"{str(rpt.report_id)[:8]}..." if getattr(rpt, "report_id", None) else "—"
-run_id_short = f"{str(run.runId)[:8]}..." if getattr(run, "runId", None) else "—"
-duration_text = f"{summary.get('durationSec', '—')} sec"
-status_text = _safe_text(summary.get("status"), "Completed")
-image_name = _safe_text(selected_site.get("image_name"), "Uploaded image")
-ai_assessment = _safe_text(selected_site.get("ai_assessment"), "Pending AI model result")
-ai_details = selected_site.get("ai_details") or {}
-recommendation = _recommendation_text(selected_label)
-factors = list(selected_site.get("factors") or [])
-reasons = list(selected_site.get("reasons") or [])
+run_id_short    = f"{str(run.runId)[:8]}..."     if getattr(run, "runId", None)    else "—"
+duration_text   = f"{summary.get('durationSec', '—')} sec"
+status_text     = _safe_text(summary.get("status"), "Completed")
+image_name      = _safe_text(selected_site.get("image_name"),    "Uploaded image")
+ai_assessment   = _safe_text(selected_site.get("ai_assessment"), "Pending AI model result")
+ai_details      = selected_site.get("ai_details") or {}
+recommendation  = _recommendation_text(selected_label)
+factors         = list(selected_site.get("factors") or [])
+reasons         = list(selected_site.get("reasons") or [])
 
 if not factors:
     factors = [
-        {"title": "Solar Irradiance", "raw_label": "No factor data", "contribution_pct": 0.0},
-        {"title": "Sunshine Hours", "raw_label": "No factor data", "contribution_pct": 0.0},
-        {"title": "Terrain Slope", "raw_label": "No factor data", "contribution_pct": 0.0},
-        {"title": "Obstacle Density", "raw_label": "No factor data", "contribution_pct": 0.0},
-        {"title": "Elevation", "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Solar Irradiance",  "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Sunshine Hours",    "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Terrain Slope",     "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Obstacle Density",  "raw_label": "No factor data", "contribution_pct": 0.0},
+        {"title": "Elevation",         "raw_label": "No factor data", "contribution_pct": 0.0},
     ]
 
 factors = _prepare_factor_breakdown(factors)
-selected_site["factors"] = factors
-selected_site["factor_breakdown_note"] = (
-    "AHP Weight is the fixed criterion importance; Current Contribution is the actual impact on this site result."
-)
+selected_site["factors"]               = factors
+selected_site["factor_breakdown_note"] = "AHP Weight is the fixed criterion importance; Current Contribution is the actual impact on this site result."
 st.session_state["selected_site_analysis"] = selected_site
 
+# ── header ──────────────────────────────────────────────────────────────────
 st.markdown(
     f"""
 <div class="fr-header-shell">
@@ -2604,174 +2235,102 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-
 report_text = rpt._generate_report_content(run, ranked)
 
-pdf_cache_key = f"final_report_pdf_bytes_{getattr(run, 'runId', 'current')}"
-pdf_bytes = st.session_state.get(pdf_cache_key)
-
-# Save this Final Report as a real database record exactly once per run.
-# The PDF bytes stored here are reused later; old reports do not regenerate the PDF.
+pdf_cache_key     = f"final_report_pdf_bytes_{getattr(run, 'runId', 'current')}"
+pdf_bytes         = st.session_state.get(pdf_cache_key)
 _report_id_for_db = str(st.session_state.get("current_report_id") or f"report_{getattr(run, 'runId', uuid4().hex)}")
-_pdf_filename = f"wahhaj_report_{str(getattr(run, 'runId', _report_id_for_db))[:8]}.pdf"
-_saved_ranked_sites = _clean_ranked_for_storage(global_ranked_sites)
-_suitability_storage = _suitability_to_storage(run.suitability if run else None)
-_ai_overlay_storage = _ai_overlay_from_extractor(st.session_state.get("extractor"))
+_pdf_filename     = f"wahhaj_report_{str(getattr(run, 'runId', _report_id_for_db))[:8]}.pdf"
+_saved_ranked_sites   = _clean_ranked_for_storage(global_ranked_sites)
+_suitability_storage  = _suitability_to_storage(run.suitability if run else None)
+_ai_overlay_storage   = _ai_overlay_from_extractor(st.session_state.get("extractor"))
+
 _report_display_data = {
-    "report_id": _report_id_for_db,
-    "run_id": getattr(run, "runId", None),
+    "report_id": _report_id_for_db, "run_id": getattr(run, "runId", None),
     "user_email": st.session_state.get("user_email", ""),
     "location_name": loc.get("location_name") or selected_display_name,
-    "lat": selected_lat,
-    "lon": selected_lon,
+    "lat": selected_lat, "lon": selected_lon,
     "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
     "final_score": float(selected_score) if selected_score is not None else None,
-    "final_label": selected_label,
-    "recommendation": recommendation,
-    "factors": factors,
-    "factor_breakdown_note": selected_site.get("factor_breakdown_note"),
-    "reasons": reasons,
-    "ranked_sites": _saved_ranked_sites,
-    "report_text": report_text,
-    "suitability_data": _suitability_storage,
-    "ai_overlay_data": _ai_overlay_storage,
+    "final_label": selected_label, "recommendation": recommendation,
+    "factors": factors, "factor_breakdown_note": selected_site.get("factor_breakdown_note"),
+    "reasons": reasons, "ranked_sites": _saved_ranked_sites, "report_text": report_text,
+    "suitability_data": _suitability_storage, "ai_overlay_data": _ai_overlay_storage,
     "ai_details": ai_details,
     "display": {
         "location_name": loc.get("location_name") or selected_display_name,
         "selected_display_name": selected_display_name,
         "selected_score": float(selected_score) if selected_score is not None else None,
-        "selected_score_text": selected_score_text,
-        "selected_label": selected_label,
-        "selected_color": selected_color,
-        "selected_bg": selected_bg,
-        "selected_lat": selected_lat,
-        "selected_lon": selected_lon,
+        "selected_score_text": selected_score_text, "selected_label": selected_label,
+        "selected_color": selected_color, "selected_bg": selected_bg,
+        "selected_lat": selected_lat, "selected_lon": selected_lon,
         "selected_coords": selected_coords,
         "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
-        "suitability_data": _suitability_storage,
-        "ai_overlay_data": _ai_overlay_storage,
-        "recommendation": recommendation,
-        "global_rank_text": global_rank_text,
-        "now": now,
-        "duration_text": duration_text,
-        "status_text": status_text,
-        "image_name": image_name,
-        "ai_assessment": ai_assessment,
-        "ai_details": ai_details,
-        "factors": factors,
-        "factor_breakdown_note": selected_site.get("factor_breakdown_note"),
+        "suitability_data": _suitability_storage, "ai_overlay_data": _ai_overlay_storage,
+        "recommendation": recommendation, "global_rank_text": global_rank_text,
+        "now": now, "duration_text": duration_text, "status_text": status_text,
+        "image_name": image_name, "ai_assessment": ai_assessment, "ai_details": ai_details,
+        "factors": factors, "factor_breakdown_note": selected_site.get("factor_breakdown_note"),
         "reasons": reasons,
     },
 }
 
-
-_report_save_key = f"final_report_saved_{_report_id_for_db}"
+_report_save_key     = f"final_report_saved_{_report_id_for_db}"
 _report_pdf_save_key = f"final_report_pdf_saved_{_report_id_for_db}"
 
 if not st.session_state.get(_report_save_key, False):
     _saved_report_id = save_final_report_to_db(
         {
-            "report_id": _report_id_for_db,
-            "run_id": getattr(run, "runId", None),
+            "report_id": _report_id_for_db, "run_id": getattr(run, "runId", None),
             "user_email": st.session_state.get("user_email", ""),
             "location_name": loc.get("location_name") or selected_display_name,
-            "lat": selected_lat,
-            "lon": selected_lon,
+            "lat": selected_lat, "lon": selected_lon,
             "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
             "final_score": float(selected_score) if selected_score is not None else None,
-            "final_label": selected_label,
-            "recommendation": recommendation,
-            "criteria_data": _report_display_data,
-            "factors_data": factors,
-            "ranked_sites": _saved_ranked_sites,
-            "report_date": datetime.now().isoformat(),
+            "final_label": selected_label, "recommendation": recommendation,
+            "criteria_data": _report_display_data, "factors_data": factors,
+            "ranked_sites": _saved_ranked_sites, "report_date": datetime.now().isoformat(),
         },
-        None,
-        pdf_filename=_pdf_filename,
-        report_id=_report_id_for_db,
+        None, pdf_filename=_pdf_filename, report_id=_report_id_for_db,
     )
-
     if _saved_report_id:
         st.session_state["current_report_id"] = _saved_report_id
-
     st.session_state[_report_save_key] = True
 
-
 _report_loading_slot.empty()
-
 if _show_initial_loading:
     st.session_state[_loading_key] = True
 
 st.markdown('<div class="fr-divider-space"></div>', unsafe_allow_html=True)
 
+# ── TOP ROW: 3 columns ──────────────────────────────────────────────────────
 left_col, center_col, right_col = st.columns([1.00, 1.78, 1.20], gap="small")
 
 with left_col:
+    # ONE st.markdown() call = flex container directly wraps card divs ✓
     score_bar_width = float(selected_score or 0.0) * 100.0
     st.markdown(
-        f"""
-        <div class="fr-card">
-            <div class="fr-card-title">Overall Suitability Score</div>
-            <div class="fr-badge" style="background:{selected_bg};color:{selected_color};">{_safe_html(selected_label)}</div>
-            <div class="fr-donut-wrap">
-                <div class="fr-donut" style="--pct:{score_bar_width:.1f};--accent:{selected_color};">
-                    <div class="fr-donut-center"><strong>{_safe_html(selected_score_text)}</strong><span>Score</span></div>
-                </div>
-                <div class="fr-score-side">
-                    <div class="fr-score-label">Selected site result</div>
-                    <div class="fr-progress"><span style="width:{score_bar_width:.1f}%;background:{selected_color};"></span></div>
-                    <div class="fr-mini-note">This score represents the consolidated suitability estimate for the chosen site based on the currently processed layers.</div>
-                </div>
-            </div>
-        </div>
-        """,
+        _build_left_stack_html(
+            score_bar_width       = score_bar_width,
+            selected_bg           = selected_bg,
+            selected_color        = selected_color,
+            selected_label        = selected_label,
+            selected_score_text   = selected_score_text,
+            score_note            = "This score represents the consolidated suitability estimate for the chosen site based on the currently processed layers.",
+            recommendation        = recommendation,
+            global_rank_text      = global_rank_text,
+            selected_display_name = selected_display_name,
+            selected_coords       = selected_coords,
+            image_name            = image_name,
+            status_text           = status_text,
+        ),
         unsafe_allow_html=True,
     )
-
-    st.markdown(
-        f"""
-        <div class="fr-card">
-            <div class="fr-card-title compact">Recommendation</div>
-            <div class="fr-mini-note" style="margin-top:0;color:#162033;font-size:0.82rem;">{escape(recommendation)}</div>
-            <div class="fr-mini-note" style="margin-top:0.55rem;color:#475569;font-size:0.78rem;"><b>Global Rank:</b> {_safe_html(global_rank_text)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f"""
-        <div class="fr-card">
-            <div class="fr-card-title compact">Site Information</div>
-            <div class="fr-kv-grid">
-                <div class="fr-kv-item">
-                    <div class="fr-kv-label">Display Name</div>
-                    <div class="fr-kv-value">{_safe_html(selected_display_name)}</div>
-                </div>
-                <div class="fr-kv-item">
-                    <div class="fr-kv-label">Coordinates</div>
-                    <div class="fr-kv-value">{_safe_html(selected_coords)}</div>
-                </div>
-                <div class="fr-kv-item">
-                    <div class="fr-kv-label">Image Source</div>
-                    <div class="fr-kv-value">{_safe_html(image_name)}</div>
-                </div>
-                <div class="fr-kv-item">
-                    <div class="fr-kv-label">Run Status</div>
-                    <div class="fr-kv-value">{_safe_html(status_text)}</div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 
 with center_col:
     st.markdown(
         """
-        <div class="fr-card" style="padding:0;overflow:hidden;">
+        <div class="fr-map-outer">
             <div class="fr-map-title">
                 <div class="fr-card-title compact">Selected Site Suitability Map</div>
                 <div class="fr-map-caption">Satellite view of the selected AOI with the analysed site marker and suitability overlay.</div>
@@ -2779,33 +2338,27 @@ with center_col:
         """,
         unsafe_allow_html=True,
     )
-    if run.suitability is not None and aoi and len(aoi) == 4 and selected_lat is not None and selected_lon is not None and selected_score is not None:
+    if (run.suitability is not None and aoi and len(aoi) == 4
+            and selected_lat is not None and selected_lon is not None and selected_score is not None):
         fill_color = _rgb_to_hex(_score_color_rgb(float(selected_score)))
-        site_info = {
-            "name": selected_display_name,
-            "score_text": selected_score_text,
-            "suitability": selected_label,
-            "lat": selected_lat,
-            "lon": selected_lon,
-            "fillColor": fill_color,
+        site_info  = {
+            "name": selected_display_name, "score_text": selected_score_text,
+            "suitability": selected_label, "lat": selected_lat,
+            "lon": selected_lon, "fillColor": fill_color,
         }
         st.markdown('<div class="fr-map-shell">', unsafe_allow_html=True)
         components.html(
             _build_map_html(
-                aoi=aoi,
-                site_info=site_info,
-                suitability=run.suitability,
-                ai_overlay=_ai_overlay_storage,
-                height=430,
+                aoi=aoi, site_info=site_info,
+                suitability=run.suitability, ai_overlay=_ai_overlay_storage, height=430,
             ),
-            height=432,
-            scrolling=False,
+            height=432, scrolling=False,
         )
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.markdown(
             """
-            <div class="fr-card" style="min-height:432px;display:flex;align-items:center;justify-content:center;">
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:432px;">
                 <div class="fr-mini-note" style="margin-top:0;text-align:center;max-width:420px;">
                     The selected-site map will appear here once suitability, AOI bounds, and site coordinates are available.
                 </div>
@@ -2813,13 +2366,12 @@ with center_col:
             """,
             unsafe_allow_html=True,
         )
-
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right_col:
     st.markdown(
-        f"""
-        <div class="fr-card fr-ai-shell">
+        dedent(f"""
+        <div class="fr-ai-shell">
             <div class="fr-card-title">AI Assessment</div>
             <div class="fr-ai-hero">
                 <div class="fr-ai-label">AI image assessment</div>
@@ -2827,13 +2379,13 @@ with right_col:
                 <div class="fr-ai-note">This result is shown here deliberately as a primary decision cue, not as a secondary footer item.</div>
             </div>
             {_ai_details_panel_html(ai_details)}
-            <div class="fr-card-title compact">Key Drivers Behind This Score</div>
-            {_reason_list_html(reasons)}
+            
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
+# ── AHP breakdown ────────────────────────────────────────────────────────────
 st.markdown(
     f"""
     <div class="fr-card fr-weight-shell">
@@ -2844,51 +2396,35 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ── action buttons ───────────────────────────────────────────────────────────
 st.markdown('<div class="fr-center-actions-shell">', unsafe_allow_html=True)
 pdf_sp_left, pdf_col, pdf_sp_right = st.columns([1.75, 2.50, 1.75], gap="small")
 
 with pdf_col:
-    pdf_cache_key = f"final_report_pdf_bytes_{getattr(run, 'runId', 'current')}"
+    pdf_cache_key      = f"final_report_pdf_bytes_{getattr(run, 'runId', 'current')}"
     pdf_ready_notice_key = f"final_report_pdf_ready_notice_{getattr(run, 'runId', 'current')}"
 
     if st.session_state.get(pdf_cache_key):
         st.download_button(
-            "Export PDF",
-            data=st.session_state[pdf_cache_key],
-            file_name=_pdf_filename,
-            mime="application/pdf",
-            use_container_width=True,
-            key="download_current_report_pdf_btn",
+            "Export PDF", data=st.session_state[pdf_cache_key],
+            file_name=_pdf_filename, mime="application/pdf",
+            use_container_width=True, key="download_current_report_pdf_btn",
         )
-
         if st.session_state.get(pdf_ready_notice_key, False):
             st.markdown(
-                """
-                <div class="fr-pdf-status success">
-                    PDF is ready. Click <b>Export PDF</b> to download the report.
-                </div>
-                """,
+                '<div class="fr-pdf-status success">PDF is ready. Click <b>Export PDF</b> to download the report.</div>',
                 unsafe_allow_html=True,
             )
     else:
         pdf_generation_slot = st.empty()
-
         if st.button("Generate PDF", use_container_width=True, key="generate_current_report_pdf_btn"):
             pdf_generation_slot.markdown(
-                """
-                <div class="fr-pdf-status">
-                    Generating PDF report... please wait.
-                    <div class="fr-pdf-progress"><span></span></div>
-                </div>
-                """,
+                '<div class="fr-pdf-status">Generating PDF report... please wait.<div class="fr-pdf-progress"><span></span></div></div>',
                 unsafe_allow_html=True,
             )
-
             try:
                 generated_pdf = rpt.build_pdf_bytes(
-                    run,
-                    ranked,
-                    location=loc,
+                    run, ranked, location=loc,
                     suitability=run.suitability if run else None,
                     aoi=aoi if aoi and len(aoi) == 4 else None,
                     selected_site=selected_site,
@@ -2898,56 +2434,38 @@ with pdf_col:
                 pdf_generation_slot.empty()
                 st.error(f"Could not generate PDF: {e}")
             else:
-                st.session_state[pdf_cache_key] = generated_pdf
+                st.session_state[pdf_cache_key]       = generated_pdf
                 st.session_state[pdf_ready_notice_key] = True
-
                 if generated_pdf and not st.session_state.get(_report_pdf_save_key, False):
                     _saved_pdf_report_id = save_final_report_to_db(
                         {
-                            "report_id": _report_id_for_db,
-                            "run_id": getattr(run, "runId", None),
+                            "report_id": _report_id_for_db, "run_id": getattr(run, "runId", None),
                             "user_email": st.session_state.get("user_email", ""),
                             "location_name": loc.get("location_name") or selected_display_name,
-                            "lat": selected_lat,
-                            "lon": selected_lon,
+                            "lat": selected_lat, "lon": selected_lon,
                             "aoi": list(aoi) if isinstance(aoi, (list, tuple)) and len(aoi) == 4 else None,
                             "final_score": float(selected_score) if selected_score is not None else None,
-                            "final_label": selected_label,
-                            "recommendation": recommendation,
-                            "criteria_data": _report_display_data,
-                            "factors_data": factors,
-                            "ranked_sites": _saved_ranked_sites,
-                            "report_date": datetime.now().isoformat(),
+                            "final_label": selected_label, "recommendation": recommendation,
+                            "criteria_data": _report_display_data, "factors_data": factors,
+                            "ranked_sites": _saved_ranked_sites, "report_date": datetime.now().isoformat(),
                         },
-                        generated_pdf,
-                        pdf_filename=_pdf_filename,
-                        report_id=_report_id_for_db,
+                        generated_pdf, pdf_filename=_pdf_filename, report_id=_report_id_for_db,
                     )
-
                     if _saved_pdf_report_id:
                         st.session_state["current_report_id"] = _saved_pdf_report_id
-
                     st.session_state[_report_pdf_save_key] = True
-
                 st.rerun()
 
 st.markdown('<div style="height:0.42rem"></div>', unsafe_allow_html=True)
 btn_sp_left, btn_left, btn_gap, btn_right, btn_sp_right = st.columns([1.70, 1.20, 0.06, 1.20, 1.70], gap="small")
 with btn_left:
-    st.button(
-        "View Heatmap",
-        use_container_width=True,
-        key="final_report_back_to_map_btn",
-        on_click=_queue_final_report_navigation,
-        args=("pages/6_Suitability_Heatmap.py", False),
-    )
-
+    st.button("View Heatmap", use_container_width=True,
+              key="final_report_back_to_map_btn",
+              on_click=_queue_final_report_navigation,
+              args=("pages/6_Suitability_Heatmap.py", False))
 with btn_right:
-    st.button(
-        "New Analysis",
-        use_container_width=True,
-        key="final_report_new_analysis_btn",
-        on_click=_queue_final_report_navigation,
-        args=("pages/3_Choose_Location.py", True),
-    )
+    st.button("New Analysis", use_container_width=True,
+              key="final_report_new_analysis_btn",
+              on_click=_queue_final_report_navigation,
+              args=("pages/3_Choose_Location.py", True))
 st.markdown('</div>', unsafe_allow_html=True)

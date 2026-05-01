@@ -38,6 +38,7 @@ from ui_helpers import (
     get_uploaded_image_cache,
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     render_footer,
     render_top_home_button,
@@ -994,19 +995,7 @@ st.markdown(
 }
 .ac-warning-icon svg{ width:44px;height:44px; }
 .ac-center-col > div[data-testid="stVerticalBlock"]{ gap:0.65rem; }
-.ac-center-col div.stButton > button,
-.ac-center-col div.stButton > button:focus {
-    min-height:64px !important;
-    border-radius:18px !important;
-    padding:18px 24px !important;
-    font-family:'Capriola',sans-serif !important;
-    font-size:19px !important;
-    font-weight:700 !important;
-    box-shadow:0 8px 18px rgba(0,112,255,0.20) !important;
-}
-.ac-center-col div.stButton > button:hover{
-    transform:translateY(-1px) !important;
-}
+
 @media (max-width: 1100px){
     .ac-summary-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
@@ -1021,6 +1010,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+apply_ui_consistency_patch()
 
 
 def _summary_chip(icon_svg: str, icon_class: str, label: str, value: str, value_class: str = "") -> str:

@@ -19,6 +19,7 @@ import streamlit.components.v1 as components
 from ui_helpers import (
     init_state,
     apply_global_style,
+    apply_ui_consistency_patch,
     render_bg,
     render_footer,
     render_top_home_button,
@@ -585,27 +586,15 @@ st.markdown(
         font-weight:800;
         white-space:nowrap;
     }
-    div[class*="st-key-site_card_"] .stButton > button {
-        border-radius: 14px !important;
-        min-height: 38px !important;
-        font-size: 13px !important;
-        font-weight: 700 !important;
-    }
+
     .foot-nav-space { margin-top: 14px; }
-    div[class*="st-key-add_new_site_bottom"] button {
-        min-height: 48px !important;
-        height: 48px !important;
-        border-radius: 14px !important;
-        font-size: 14px !important;
-        font-weight: 800 !important;
-        padding: 10px 18px !important;
-    }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
+apply_ui_consistency_patch()
 render_top_home_button()
 
 st.markdown('<div class="ranked-wrap">', unsafe_allow_html=True)
