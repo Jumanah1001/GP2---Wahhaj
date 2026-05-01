@@ -252,12 +252,15 @@ def _choice_radio(widget_key: str, options: list[str], default: str, title: str)
     if current not in options:
         current = default
 
+    st.markdown(f'<div class="field-label">{escape(title)}</div>', unsafe_allow_html=True)
+
     return st.radio(
         label=title,
         options=options,
         index=options.index(current),
         key=widget_key,
         horizontal=True,
+        label_visibility="collapsed",
     )
 
 
@@ -498,7 +501,7 @@ div[data-testid="stTextInput"] input {
 /* Table-like user list without broken vertical blocks */
 .user-table-header {
     display: grid;
-    grid-template-columns: 1.1fr 2.15fr 0.95fr 0.95fr 1.05fr 2.9fr;
+    grid-template-columns: 1.15fr 2.25fr 0.95fr 0.95fr 1.45fr 2.65fr;
     gap: 10px;
     background: rgba(245,247,251,0.92);
     border: 1px solid rgba(215,225,239,0.95);
@@ -541,6 +544,18 @@ div[class*="st-key-user_row_"] {
 .user-cell.muted {
     color: #778198;
     font-size: 12px;
+}
+.user-id-cell {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+
+    font-size: 12px !important;
+    color: #778198 !important;
 }
 
 /* Badges */
@@ -676,6 +691,275 @@ div[class*="st-key-tbl_delete_"] button:hover {
     unsafe_allow_html=True,
 )
 apply_ui_consistency_patch()
+
+st.markdown(
+    """
+<style>
+/* ── Add New User final local fixes: keep table buttons compact ── */
+
+/* Slightly widen the management cards so the table has room */
+.admin-content,
+.feedback-banner,
+div[class*="st-key-new_user_card"],
+div[class*="st-key-existing_users_card"] {
+    width: min(1180px, 88vw) !important;
+}
+
+/* Keep each user row aligned and prevent action buttons from becoming huge */
+div[class*="st-key-user_row_"] {
+    padding: 8px 12px !important;
+}
+
+/* Make the Actions area fit inside the card */
+div[class*="st-key-user_row_"] div[data-testid="column"]:last-child {
+    min-width: 190px !important;
+    max-width: 190px !important;
+}
+
+/* Center each small action button inside its mini column */
+div[class*="st-key-tbl_edit_"],
+div[class*="st-key-tbl_toggle_"],
+div[class*="st-key-tbl_delete_"] {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+/* Base compact table buttons */
+div[class*="st-key-tbl_edit_"] button,
+div[class*="st-key-tbl_toggle_"] button,
+div[class*="st-key-tbl_delete_"] button {
+    min-height: 24px !important;
+    height: 24px !important;
+    max-height: 24px !important;
+
+    min-width: 0 !important;
+    padding: 0 2px !important;
+
+    border-radius: 8px !important;
+
+    font-family: 'Capriola', sans-serif !important;
+    font-size: 9.5px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+
+    box-shadow: none !important;
+    transform: none !important;
+
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Fixed widths per button */
+div[class*="st-key-tbl_edit_"] button {
+    width: 46px !important;
+    max-width: 46px !important;
+}
+
+div[class*="st-key-tbl_toggle_"] button {
+    width: 78px !important;
+    max-width: 78px !important;
+}
+
+div[class*="st-key-tbl_delete_"] button {
+    width: 54px !important;
+    max-width: 54px !important;
+}
+
+/* Text inside buttons */
+div[class*="st-key-tbl_edit_"] button p,
+div[class*="st-key-tbl_toggle_"] button p,
+div[class*="st-key-tbl_delete_"] button p {
+    font-size: 9.5px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    white-space: nowrap !important;
+}
+
+/* ── Existing Users card: restore table button colors + increase text by 2px ── */
+
+/* Existing Users card text +2px only */
+div[class*="st-key-existing_users_card"] .card-title {
+    font-family: 'Capriola', Inter, sans-serif !important;
+    font-size: 29px !important;
+    font-weight: 800 !important;
+    color: #172033 !important;
+    line-height: 1.05 !important;
+    margin: 0 0 14px 0 !important;
+    padding: 0 0 12px 0 !important;
+    border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+}
+
+div[class*="st-key-existing_users_card"] .stat-label {
+    font-size: 14px !important;
+}
+
+div[class*="st-key-existing_users_card"] .stat-value {
+    font-size: 21px !important;
+}
+
+div[class*="st-key-existing_users_card"] .user-table-header span {
+    font-size: 14px !important;
+}
+
+div[class*="st-key-existing_users_card"] .user-cell,
+div[class*="st-key-existing_users_card"] .user-cell.muted {
+    font-size: 14px !important;
+}
+
+div[class*="st-key-existing_users_card"] .role-badge,
+div[class*="st-key-existing_users_card"] .status-badge {
+    font-size: 13px !important;
+}
+
+div[class*="st-key-existing_users_card"] div[data-testid="stTextInput"] input {
+    font-size: 15px !important;
+}
+
+/* Table action buttons text +2px */
+div[class*="st-key-tbl_edit_"] button p,
+div[class*="st-key-tbl_toggle_"] button p,
+div[class*="st-key-tbl_delete_"] button p {
+    font-size: 11.5px !important;
+}
+
+/* Restore old table button colors */
+div[class*="st-key-tbl_edit_"] button,
+div[class*="st-key-tbl_edit_"] button:hover,
+div[class*="st-key-tbl_edit_"] button:focus,
+div[class*="st-key-tbl_edit_"] button:active {
+    background: #EAF3FF !important;
+    background-color: #EAF3FF !important;
+    color: #0070FF !important;
+    border: 1px solid rgba(0,112,255,0.28) !important;
+}
+
+div[class*="st-key-tbl_toggle_"] button,
+div[class*="st-key-tbl_toggle_"] button:hover,
+div[class*="st-key-tbl_toggle_"] button:focus,
+div[class*="st-key-tbl_toggle_"] button:active {
+    background: #F5F8FD !important;
+    background-color: #F5F8FD !important;
+    color: #303949 !important;
+    border: 1px solid #D4DFEE !important;
+}
+
+div[class*="st-key-tbl_delete_"] button,
+div[class*="st-key-tbl_delete_"] button:hover,
+div[class*="st-key-tbl_delete_"] button:focus,
+div[class*="st-key-tbl_delete_"] button:active {
+    background: #FFF1EC !important;
+    background-color: #FFF1EC !important;
+    color: #D94E18 !important;
+    border: 1px solid rgba(217,78,24,0.24) !important;
+}
+/* Final stable action buttons: normal + hover + focus + active + disabled */
+div[class*="st-key-tbl_edit_"] button,
+div[class*="st-key-tbl_edit_"] button:hover,
+div[class*="st-key-tbl_edit_"] button:focus,
+div[class*="st-key-tbl_edit_"] button:active,
+div[class*="st-key-tbl_edit_"] button:disabled,
+div[class*="st-key-tbl_edit_"] button[disabled],
+div[class*="st-key-tbl_edit_"] button[aria-disabled="true"] {
+    width: 46px !important;
+    min-width: 46px !important;
+    max-width: 46px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    max-height: 24px !important;
+    padding: 0 2px !important;
+    border-radius: 8px !important;
+    background: #EAF3FF !important;
+    background-color: #EAF3FF !important;
+    color: #0070FF !important;
+    border: 1px solid rgba(0,112,255,0.28) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+div[class*="st-key-tbl_toggle_"] button,
+div[class*="st-key-tbl_toggle_"] button:hover,
+div[class*="st-key-tbl_toggle_"] button:focus,
+div[class*="st-key-tbl_toggle_"] button:active,
+div[class*="st-key-tbl_toggle_"] button:disabled,
+div[class*="st-key-tbl_toggle_"] button[disabled],
+div[class*="st-key-tbl_toggle_"] button[aria-disabled="true"] {
+    width: 78px !important;
+    min-width: 78px !important;
+    max-width: 78px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    max-height: 24px !important;
+    padding: 0 2px !important;
+    border-radius: 8px !important;
+    background: #F5F8FD !important;
+    background-color: #F5F8FD !important;
+    color: #303949 !important;
+    border: 1px solid #D4DFEE !important;
+    box-shadow: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+div[class*="st-key-tbl_delete_"] button,
+div[class*="st-key-tbl_delete_"] button:hover,
+div[class*="st-key-tbl_delete_"] button:focus,
+div[class*="st-key-tbl_delete_"] button:active,
+div[class*="st-key-tbl_delete_"] button:disabled,
+div[class*="st-key-tbl_delete_"] button[disabled],
+div[class*="st-key-tbl_delete_"] button[aria-disabled="true"] {
+    width: 54px !important;
+    min-width: 54px !important;
+    max-width: 54px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    max-height: 24px !important;
+    padding: 0 2px !important;
+    border-radius: 8px !important;
+    background: #FFF1EC !important;
+    background-color: #FFF1EC !important;
+    color: #D94E18 !important;
+    border: 1px solid rgba(217,78,24,0.24) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+/* Keep action button text stable in every state */
+div[class*="st-key-tbl_edit_"] button p,
+div[class*="st-key-tbl_toggle_"] button p,
+div[class*="st-key-tbl_delete_"] button p,
+div[class*="st-key-tbl_edit_"] button:hover p,
+div[class*="st-key-tbl_toggle_"] button:hover p,
+div[class*="st-key-tbl_delete_"] button:hover p,
+div[class*="st-key-tbl_edit_"] button:focus p,
+div[class*="st-key-tbl_toggle_"] button:focus p,
+div[class*="st-key-tbl_delete_"] button:focus p,
+div[class*="st-key-tbl_edit_"] button:active p,
+div[class*="st-key-tbl_toggle_"] button:active p,
+div[class*="st-key-tbl_delete_"] button:active p,
+div[class*="st-key-tbl_edit_"] button:disabled p,
+div[class*="st-key-tbl_toggle_"] button:disabled p,
+div[class*="st-key-tbl_delete_"] button:disabled p {
+    font-size: 11.5px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    white-space: nowrap !important;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 # ─────────────────────────────────────────────────────────────
 # UI
@@ -1090,11 +1374,11 @@ with st.container(key="existing_users_card"):
 
     else:
         for user in visible_users:
-            short_id = f"{str(user.userId)[:8]}..."
+            full_id = str(user.userId)
 
             with st.container(key=f"user_row_{user.userId}"):
                 c1, c2, c3, c4, c5, c6 = st.columns(
-                    [1.15, 2.2, 1.0, 1.0, 1.2, 2.65],
+                    [1.15, 2.25, 0.95, 0.95, 1.45, 2.65],
                     gap="small",
                 )
 
@@ -1124,22 +1408,22 @@ with st.container(key="existing_users_card"):
 
                 with c5:
                     st.markdown(
-                        f'<div class="user-cell muted">{escape(short_id)}</div>',
+                        f'<div class="user-cell user-id-cell">{escape(full_id)}</div>',
                         unsafe_allow_html=True,
                     )
 
                 with c6:
-                    action_cols = st.columns([1.0, 1.3, 1.0], gap="small")
+                    action_cols = st.columns([0.75, 1.05, 0.8], gap="small")
 
                     with action_cols[0]:
-                        if st.button("Edit", key=f"tbl_edit_{user.userId}", use_container_width=True):
+                        if st.button("Edit", key=f"tbl_edit_{user.userId}", use_container_width=False):
                             _open_edit_panel(user)
                             st.rerun()
 
                     with action_cols[1]:
                         toggle_label = "Deactivate" if user.is_active else "Activate"
 
-                        if st.button(toggle_label, key=f"tbl_toggle_{user.userId}", use_container_width=True):
+                        if st.button(toggle_label, key=f"tbl_toggle_{user.userId}", use_container_width=False):
                             new_status = not user.is_active
 
                             try:
@@ -1153,7 +1437,7 @@ with st.container(key="existing_users_card"):
                             st.rerun()
 
                     with action_cols[2]:
-                        if st.button("Delete", key=f"tbl_delete_{user.userId}", use_container_width=True):
+                        if st.button("Delete", key=f"tbl_delete_{user.userId}", use_container_width=False):
                             admin_user = _current_admin()
 
                             try:
