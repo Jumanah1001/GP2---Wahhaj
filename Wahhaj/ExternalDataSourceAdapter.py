@@ -21,7 +21,7 @@
 #   are absent.  All other methods (GHI, Sunshine) use Open-Meteo and
 #   work without any credentials.
 # ─────────────────────────────────────────────────────────────
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
@@ -56,6 +56,7 @@ class ExternalDataSourceAdapter:
         self.grid_cols = grid_cols
         # GEE initialisation is deferred to the first call that needs it
         self._ee_ready = False
+        self._cache = {}        
 
     # ── GEE lazy init ────────────────────────────────────────────────────────
 
@@ -195,54 +196,43 @@ class ExternalDataSourceAdapter:
         """
         points = self._build_grid_points(aoi)
 
-        candidate_windows = [
-            7,
-            14,
-            30,
-            60,
-        ]
+        candidate_windows = [7, 30]
 
         # Open-Meteo archive may not have very recent data immediately.
         # So we shift the end date a few days back.
         base_end_date = time.date() - timedelta(days=5)
 
         last_error = None
+        cache_key = (variable, aoi, time.date())
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         for days in candidate_windows:
             end_date = base_end_date.strftime("%Y-%m-%d")
             start_date = (base_end_date - timedelta(days=days)).strftime("%Y-%m-%d")
 
-            values: List[float] = []
-
-            for lat, lon in points:
+            def _fetch_one(lat_lon):
+                lat, lon = lat_lon
                 try:
                     resp = requests.get(
                         self.OPEN_METEO_ARCHIVE_URL,
-                        params={
-                            "latitude": lat,
-                            "longitude": lon,
-                            "start_date": start_date,
-                            "end_date": end_date,
-                            "daily": variable,
-                            "timezone": "auto",
-                        },
+                        params={"latitude": lat, "longitude": lon,
+                                "start_date": start_date, "end_date": end_date,
+                                "daily": variable, "timezone": "auto"},
                         timeout=15,
                     )
                     resp.raise_for_status()
-
-                    data = resp.json()
-                    daily_vals = data.get("daily", {}).get(variable, [])
+                    daily_vals = resp.json().get("daily", {}).get(variable, [])
                     valid = [v for v in daily_vals if v is not None]
+                    return float(np.mean(valid)) if valid else np.nan
+                except Exception:
+                    return np.nan
 
-                    values.append(float(np.mean(valid)) if valid else np.nan)
+            with ThreadPoolExecutor(max_workers=10) as ex:
+                values = list(ex.map(_fetch_one, points))
 
-                except Exception as exc:
-                    last_error = str(exc)
-                    values.append(np.nan)
-
-            valid_count = sum(1 for v in values if not np.isnan(v))
-
-            if valid_count > 0:
+            if any(not np.isnan(v) for v in values):
+                self._cache[cache_key] = values
                 return values
 
         # Try same period last year as a real-data backup.
@@ -251,45 +241,35 @@ class ExternalDataSourceAdapter:
         end_date = previous_year_date.strftime("%Y-%m-%d")
         start_date = (previous_year_date - timedelta(days=30)).strftime("%Y-%m-%d")
 
-        values = []
-
-        for lat, lon in points:
+        def _fetch_one(lat_lon):
+            lat, lon = lat_lon
             try:
                 resp = requests.get(
                     self.OPEN_METEO_ARCHIVE_URL,
-                    params={
-                        "latitude": lat,
-                        "longitude": lon,
-                        "start_date": start_date,
-                        "end_date": end_date,
-                        "daily": variable,
-                        "timezone": "auto",
-                    },
+                    params={"latitude": lat, "longitude": lon,
+                            "start_date": start_date, "end_date": end_date,
+                            "daily": variable, "timezone": "auto"},
                     timeout=15,
                 )
                 resp.raise_for_status()
-
-                data = resp.json()
-                daily_vals = data.get("daily", {}).get(variable, [])
+                daily_vals = resp.json().get("daily", {}).get(variable, [])
                 valid = [v for v in daily_vals if v is not None]
+                return float(np.mean(valid)) if valid else np.nan
+            except Exception:
+                return np.nan
 
-                values.append(float(np.mean(valid)) if valid else np.nan)
-
-            except Exception as exc:
-                last_error = str(exc)
-                values.append(np.nan)
-
-        valid_count = sum(1 for v in values if not np.isnan(v))
-
-        if valid_count > 0:
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            values = list(ex.map(_fetch_one, points))
+        
+        if any(not np.isnan(v) for v in values):
+            self._cache[cache_key] = values
             return values
 
         raise RuntimeError(
             f"No real values returned from Open-Meteo for variable: {variable}. "
             f"Last error: {last_error}"
         )
-
-        return values
+        
 
     def _build_raster_from_grid(
         self,
@@ -343,6 +323,7 @@ class ExternalDataSourceAdapter:
         Uses fallback only if all real-data attempts fail.
         """
         last_error = None
+        
 
         if self._ensure_ee():
             for attempt in range(3):
