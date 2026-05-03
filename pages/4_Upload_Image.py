@@ -125,20 +125,30 @@ def _remove_uploaded_image() -> None:
     ) + 1
 
 
-def _render_clear_image_button() -> bool:
-    """Render Clear Image using the same action-button wrapper as Run Analysis."""
-    st.markdown(
-        '<div class="upload-action-btn-row" data-ready="true">',
-        unsafe_allow_html=True,
-    )
-    clear_clicked = st.button(
-        "Clear Image",
-        key="clear_image_action",
-        help="Remove this image",
-        use_container_width=True,
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-    return clear_clicked
+def _render_clear_image_button() -> None:
+    _gap1, _btn_col, _gap2 = st.columns([1.5, 1.5, 1.5])
+
+    with _btn_col:
+        # Use the SAME wrapper class as Run Analysis so both buttons receive
+        # exactly the same Upload-page button styling.
+        st.markdown(
+            '<div class="run-analysis-row clear-image-row" data-ready="true">',
+            unsafe_allow_html=True,
+        )
+
+        clear_clicked = st.button(
+            "Clear Image",
+            key="clear_image_action",
+            help="Remove this image",
+            use_container_width=True,
+            type="primary",
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    if clear_clicked:
+        _remove_uploaded_image()
+        st.rerun()
 
 
 # -----------------------------
@@ -466,82 +476,57 @@ st.markdown(
         text-align: center;
     }
 
-    .upload-action-btn-row {
-        width: 100% !important;
-        margin: 8px 0 0 0 !important;
+    .clear-image-row {
+        margin: 0 0 10px 0 !important;
     }
 
-    .upload-action-btn-row div.stButton,
-    .upload-action-btn-row [data-testid="stButton"],
-    .upload-action-btn-row [data-testid="stButton"] > div {
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
+    /*
+       Clear Image intentionally reuses .run-analysis-row.
+       Do not give it separate button values; this keeps it identical
+       to Run Analysis and prevents ui_helpers/global button styles from
+       making it dark or smaller.
+    */
+
+    .run-analysis-row {
+        width: 100%;
+        margin: 8px 0 0 0;
     }
 
-    .upload-action-btn-row div.stButton > button,
-    .upload-action-btn-row [data-testid="stButton"] button,
-    .upload-action-btn-row div.stButton > button:focus,
-    .upload-action-btn-row div.stButton > button:active {
-        background: var(--wahhaj-blue, #0070FF) !important;
-        background-color: var(--wahhaj-blue, #0070FF) !important;
-        color: #FFFFFF !important;
-        border: 1px solid var(--wahhaj-blue, #0070FF) !important;
+    .run-analysis-row div.stButton > button,
+    .run-analysis-row div.stButton > button:focus {
+        background: #0070FF !important;
+        color: white !important;
+        border: none !important;
         border-radius: var(--upload-btn-radius) !important;
-
-        width: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-
         min-height: var(--upload-btn-height) !important;
         height: var(--upload-btn-height) !important;
-        max-height: var(--upload-btn-height) !important;
-
-        padding: 13px 24px !important;
-        font-family: var(--wahhaj-font, 'Capriola', sans-serif) !important;
+        width: var(--upload-btn-width) !important;
+        min-width: var(--upload-btn-width) !important;
+        max-width: var(--upload-btn-width) !important;
+        padding: 12px 18px !important;
+        font-family: 'Capriola', sans-serif !important;
         font-size: var(--upload-btn-font) !important;
-        font-weight: 800 !important;
-        line-height: 1.25 !important;
-        letter-spacing: 0.02em !important;
-
-        box-shadow: 0 4px 16px rgba(0,112,255,0.30), 0 2px 6px rgba(0,0,0,0.08) !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+        box-shadow: var(--upload-btn-shadow) !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        text-align: center !important;
+        margin: 0 auto !important;
         white-space: nowrap !important;
-        box-sizing: border-box !important;
-        opacity: 1 !important;
-        margin: 0 !important;
     }
 
-    .upload-action-btn-row div.stButton > button p,
-    .upload-action-btn-row div.stButton > button > div {
-        font-family: var(--wahhaj-font, 'Capriola', sans-serif) !important;
-        font-size: var(--upload-btn-font) !important;
-        font-weight: 800 !important;
-        line-height: 1.25 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        color: inherit !important;
-        text-align: center !important;
-    }
-
-    .upload-action-btn-row div.stButton > button:hover {
-        background: var(--wahhaj-blue-hover, #005fe0) !important;
-        background-color: var(--wahhaj-blue-hover, #005fe0) !important;
-        border-color: var(--wahhaj-blue-hover, #005fe0) !important;
-        color: #FFFFFF !important;
+    .run-analysis-row div.stButton > button:hover {
+        background: #005fe0 !important;
+        color: white !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 6px 22px rgba(0,112,255,0.42), 0 2px 8px rgba(0,0,0,0.10) !important;
     }
 
-    .upload-action-btn-row div.stButton > button:disabled,
-    .upload-action-btn-row div.stButton > button[disabled] {
+    .run-analysis-row div.stButton > button:disabled,
+    .run-analysis-row div.stButton > button[disabled] {
         background: #d0d0d0 !important;
-        background-color: #d0d0d0 !important;
-        color: #888888 !important;
-        border: 1px solid #bbbbbb !important;
+        color: #888 !important;
+        border: 1px solid #bbb !important;
         box-shadow: none !important;
         cursor: not-allowed !important;
         opacity: 1 !important;
@@ -593,15 +578,15 @@ st.markdown(
         const BTN_W   = "184px";
         const BTN_R   = "14px";
         const BTN_FS  = "16px";
-        const BTN_SH  = "0 4px 16px rgba(0,112,255,0.30), 0 2px 6px rgba(0,0,0,0.08)";
-        const BTN_PAD = "13px 24px";
+        const BTN_SH  = "0 4px 14px rgba(0,112,255,0.30)";
+        const BTN_PAD = "12px 18px";
 
         function forceBlueButton(btn, fullWidth) {
             btn.style.setProperty("appearance", "none", "important");
             btn.style.setProperty("background", "#0070FF", "important");
             btn.style.setProperty("background-color", "#0070FF", "important");
             btn.style.setProperty("color", "#FFFFFF", "important");
-            btn.style.setProperty("border", "1px solid #0070FF", "important");
+            btn.style.setProperty("border", "none", "important");
             btn.style.setProperty("border-radius", BTN_R, "important");
 
             if (fullWidth) {
@@ -619,8 +604,8 @@ st.markdown(
             btn.style.setProperty("padding", BTN_PAD, "important");
             btn.style.setProperty("font-family", "'Capriola', sans-serif", "important");
             btn.style.setProperty("font-size", BTN_FS, "important");
-            btn.style.setProperty("font-weight", "800", "important");
-            btn.style.setProperty("line-height", "1.25", "important");
+            btn.style.setProperty("font-weight", "700", "important");
+            btn.style.setProperty("line-height", "1", "important");
             btn.style.setProperty("box-shadow", BTN_SH, "important");
             btn.style.setProperty("display", "inline-flex", "important");
             btn.style.setProperty("align-items", "center", "important");
@@ -674,7 +659,7 @@ st.markdown(
                 forceUploaderButton(btn);
             });
 
-            document.querySelectorAll(".upload-action-btn-row button").forEach(btn => {
+            document.querySelectorAll(".run-analysis-row button").forEach(btn => {
                 const forceReady = btn.closest("[data-ready='true']") !== null;
                 const isDisabled = !forceReady && (
                     btn.disabled ||
@@ -793,6 +778,83 @@ st.markdown(
 )
 
 
+# Final safety override for Upload page action buttons.
+# This is placed after apply_ui_consistency_patch() and after page CSS,
+# so Clear Image cannot fall back to Streamlit's dark/default button style.
+st.markdown(
+    """
+    <style>
+    .run-analysis-row div.stButton,
+    .run-analysis-row div.stButton > button {
+        width: 100% !important;
+    }
+
+    .run-analysis-row div.stButton > button,
+    .run-analysis-row div.stButton > button:focus,
+    .run-analysis-row div.stButton > button:active,
+    .st-key-clear-image-action button,
+    .st-key-clear_image_action button,
+    div[class*="clear-image-action"] button,
+    div[class*="clear_image_action"] button {
+        background: #0070FF !important;
+        background-color: #0070FF !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: var(--upload-btn-radius, 14px) !important;
+        height: var(--upload-btn-height, 58px) !important;
+        min-height: var(--upload-btn-height, 58px) !important;
+        max-height: var(--upload-btn-height, 58px) !important;
+        padding: 12px 18px !important;
+        font-family: var(--wahhaj-font, 'Capriola', sans-serif) !important;
+        font-size: var(--upload-btn-font, 16px) !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+        box-shadow: var(--upload-btn-shadow, 0 4px 14px rgba(0,112,255,0.30)) !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        white-space: nowrap !important;
+        opacity: 1 !important;
+    }
+
+    .run-analysis-row div.stButton > button:hover,
+    .st-key-clear-image-action button:hover,
+    .st-key-clear_image_action button:hover,
+    div[class*="clear-image-action"] button:hover,
+    div[class*="clear_image_action"] button:hover {
+        background: #005fe0 !important;
+        background-color: #005fe0 !important;
+        color: #FFFFFF !important;
+        transform: translateY(-1px) !important;
+    }
+
+    .run-analysis-row div.stButton > button:disabled,
+    .run-analysis-row div.stButton > button[disabled] {
+        background: #d0d0d0 !important;
+        background-color: #d0d0d0 !important;
+        color: #888888 !important;
+        border: 1px solid #bbbbbb !important;
+        box-shadow: none !important;
+        cursor: not-allowed !important;
+        opacity: 1 !important;
+        transform: none !important;
+    }
+
+    .clear-image-row div.stButton > button:disabled,
+    .clear-image-row div.stButton > button[disabled] {
+        background: #0070FF !important;
+        background-color: #0070FF !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        box-shadow: var(--upload-btn-shadow, 0 4px 14px rgba(0,112,255,0.30)) !important;
+        cursor: pointer !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 render_top_home_button("pages/2_Home.py")
 
 st.markdown('<div class="upload-page">', unsafe_allow_html=True)
@@ -870,18 +932,14 @@ with center:
                 unsafe_allow_html=True,
             )
 
+            _render_clear_image_button()
+
         is_ready = st.session_state.get("upload_ui_ready", False)
         _gap1, _btn_col, _gap2 = st.columns([1.5, 1.5, 1.5])
 
         with _btn_col:
-            if st.session_state.get("upload_ui_ready", False):
-                clear_clicked = _render_clear_image_button()
-                if clear_clicked:
-                    _remove_uploaded_image()
-                    st.rerun()
-
             st.markdown(
-                f'<div class="upload-action-btn-row" data-ready="{str(is_ready).lower()}">',
+                f'<div class="run-analysis-row" data-ready="{str(is_ready).lower()}">',
                 unsafe_allow_html=True,
             )
             run_clicked = st.button(
@@ -889,6 +947,7 @@ with center:
                 key="run_analysis_upload",
                 disabled=not is_ready,
                 use_container_width=True,
+                type="primary",
             )
             st.markdown('</div>', unsafe_allow_html=True)
 
