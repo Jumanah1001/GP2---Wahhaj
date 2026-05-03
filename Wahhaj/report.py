@@ -72,12 +72,89 @@ def _as_float(value):
 
 
 def _format_coords(lat, lon):
-    """Format coordinates for PDF without crashing on string values."""
+    """Format coordinates with the correct hemisphere labels.
+
+    Example:
+    - lat=40.8644, lon=-74.3560 -> 40.8644° N, 74.3560° W
+    This avoids the confusing old format: 40.8644°N, -74.3560°E.
+    """
     lat_f = _as_float(lat)
     lon_f = _as_float(lon)
     if lat_f is None or lon_f is None:
         return "—"
-    return f"{lat_f:.4f}°N, {lon_f:.4f}°E"
+    lat_dir = "N" if lat_f >= 0 else "S"
+    lon_dir = "E" if lon_f >= 0 else "W"
+    return f"{abs(lat_f):.4f}° {lat_dir}, {abs(lon_f):.4f}° {lon_dir}"
+
+
+def _format_pct(value, *, ratio=False, fallback="—"):
+    """Format a numeric value as a percentage for report display."""
+    try:
+        if value is None or value == "":
+            return fallback
+        number = float(value)
+        if ratio:
+            number *= 100.0
+        return f"{number:.1f}%"
+    except Exception:
+        return fallback
+
+
+def _factor_float(value, default=None):
+    """Convert a factor value to float without breaking PDF generation."""
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _normalise_current_factors(factors):
+    """Return factors prepared for the PDF contribution table.
+
+    The Final Report page already computes `contribution_pct` for the current
+    selected site. This helper only formats those current weighted impacts; it
+    does not recalculate or replace them with the fixed AHP model weights.
+    """
+    if not isinstance(factors, (list, tuple)):
+        return []
+
+    preferred_order = {
+        "ghi": 0, "solar": 0, "radiation": 0, "irradiance": 0,
+        "sunshine": 1, "sunlight": 1,
+        "slope": 2, "terrain": 2,
+        "obstacle": 3, "ai": 3,
+        "lst": 4, "temperature": 4, "surface": 4,
+        "elevation": 5,
+    }
+
+    prepared = []
+    for idx, item in enumerate(factors):
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or item.get("name") or f"Criterion {idx + 1}").strip()
+        key = str(item.get("name") or title).lower()
+        order = 99
+        for token, token_order in preferred_order.items():
+            if token in key or token in title.lower():
+                order = token_order
+                break
+        contribution = _factor_float(
+            item.get("current_contribution_pct", item.get("contribution_pct")),
+            0.0,
+        )
+        raw_label = str(item.get("raw_label") or item.get("value") or "—").strip() or "—"
+        component = _factor_float(item.get("suitability_component"), None)
+        prepared.append({
+            "order": order,
+            "title": title,
+            "raw_label": raw_label,
+            "contribution_pct": max(0.0, contribution or 0.0),
+            "suitability_component": component,
+        })
+
+    return sorted(prepared, key=lambda x: (x["order"], x["title"]))
 
 
 class Report:
@@ -117,6 +194,9 @@ class Report:
         location : dict with optional keys "location_name", "latitude", "longitude"
         selected_site : dict with the official selected-site result from page 5
         """
+        self._location = dict(location or {})
+        self._selected_site = dict(selected_site or {})
+
         loc_name = _pdf_safe_text((location or {}).get("location_name"), "Selected Site")
         selected_site = selected_site or {}
 
@@ -232,21 +312,24 @@ class Report:
         content.append(f"  Duration: {run.durationSec} seconds")
         content.append(f"\n{'-' * W}\n")
 
-        # AHP weights
-        content.append("AHP CRITERIA WEIGHTS")
+        # Current result criteria contribution
+        content.append("CURRENT RESULT CRITERIA CONTRIBUTION")
         content.append("-" * W)
-        weights = [
-            ("Solar Irradiance (GHI)",    0.30, False),
-            ("Terrain Slope",             0.22, True),
-            ("Sunshine Hours",            0.18, False),
-            ("Obstacle Density",          0.13, True),
-            ("Surface Temperature (LST)", 0.10, True),
-            ("Elevation",                 0.07, False),
-        ]
-        for name, w, inv in weights:
-            inv_note = " (lower is better)" if inv else ""
-            bar = "▓" * int(w * 40)
-            content.append(f"  {name:<30}{bar}  {w:.0%}{inv_note}")
+        current_factors = _normalise_current_factors(getattr(self, "_selected_site", {}).get("factors"))
+        if current_factors:
+            total_contribution = 0.0
+            for item in current_factors:
+                contribution = float(item.get("contribution_pct", 0.0) or 0.0)
+                total_contribution += contribution
+                bar = "▓" * max(1, int(round(contribution)))
+                content.append(
+                    f"  {item.get('title', 'Criterion'):<28} "
+                    f"{item.get('raw_label', '—'):<18} "
+                    f"{bar:<35} {contribution:>5.1f}%"
+                )
+            content.append(f"\n  Total current contribution: {total_contribution:.1f}%")
+        else:
+            content.append("  Current criterion contribution data is not available for this run.")
         content.append(f"\n{'-' * W}\n")
 
         # Ranked recommendations
@@ -395,6 +478,14 @@ class Report:
                                    backColor=colors.HexColor("#f0f7ff"),
                                    borderPad=8, borderWidth=1,
                                    borderColor=ORANGE_DARK, borderRadius=4)
+        metric_label = ParagraphStyle("metric_label", parent=styles["Normal"],
+                                      fontSize=8.5, textColor=GREY, leading=10,
+                                      fontName="Helvetica-Bold", alignment=TA_CENTER)
+        metric_value = ParagraphStyle("metric_value", parent=styles["Normal"],
+                                      fontSize=12, textColor=DARK, leading=14,
+                                      fontName="Helvetica-Bold", alignment=TA_CENTER)
+        metric_value_orange = ParagraphStyle("metric_value_orange", parent=metric_value,
+                                             textColor=ORANGE_DARK, fontSize=15)
 
         def _p(value, style=normal, fallback="-"):
             # Keep this helper defensive because some calls pass a fallback as
@@ -406,6 +497,18 @@ class Report:
                 style = normal
             return Paragraph(_pdf_safe_text(value, fallback), style)
 
+        def _metric(label, value, value_style=metric_value):
+            return [Paragraph(_pdf_safe_text(label, label), metric_label),
+                    Paragraph(_pdf_safe_text(value, "—"), value_style)]
+
+        def _ai_status_label(text):
+            low = str(text or "").lower()
+            if "excluded" in low or "rejected" in low or "not valid" in low:
+                return "Excluded by AI"
+            if "valid" in low or "accepted" in low or "suitable" in low:
+                return "Accepted by AI"
+            return "AI Reviewed" if str(text or "").strip() else "Pending"
+
         story = []
 
         # ── Title ──────────────────────────────────────────────────────
@@ -416,20 +519,46 @@ class Report:
         ))
         story.append(Spacer(1, 0.3*cm))
         story.append(HRFlowable(width="100%", thickness=2, color=ORANGE_DARK))
-        story.append(Spacer(1, 0.2*cm))
+        story.append(Spacer(1, 0.24*cm))
+
+        # ── Executive dashboard cards ───────────────────────────────────
+        score_text = _format_pct(site_score_float, ratio=True) if site_score_float is not None else "—"
+        rank_text = f"#{current_rank} of {total_ranked}" if current_rank and total_ranked else (str(total_ranked) if total_ranked else "—")
+        dashboard_data = [[
+            _metric("Final Score", score_text, metric_value_orange),
+            _metric("Recommendation", site_label),
+            _metric("Rank", rank_text),
+            _metric("AI Status", _ai_status_label(ai_assessment)),
+        ]]
+        dashboard_tbl = Table(dashboard_data, colWidths=[4.35*cm, 4.35*cm, 4.35*cm, 4.35*cm])
+        dashboard_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF8F0")),
+            ("BOX",        (0, 0), (-1, -1), 0.6, colors.HexColor("#F3D2AA")),
+            ("INNERGRID",  (0, 0), (-1, -1), 0.4, colors.HexColor("#F3D2AA")),
+            ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ]))
+        story.append(dashboard_tbl)
+        story.append(Spacer(1, 0.24*cm))
 
         # ── Meta table ──────────────────────────────────────────────────
         coord_str = _format_coords(lat, lon)
+        # User-facing report metadata only.
+        # Internal/debug fields such as Duration and Run ID are intentionally
+        # not shown in the PDF because they do not help the end user interpret
+        # the suitability decision.
         meta_data = [
-            [_p("Location", small),  _p(loc_name),              _p("Generated", small), _p(self.date.strftime("%Y-%m-%d %H:%M"))],
+            [_p("Location", small),  _p(loc_name),
+             _p("Generated", small), _p(self.date.strftime("%Y-%m-%d %H:%M"))],
             [_p("Status", small),    _p(summary_obj.get("status", "-")),
-             _p("Duration", small),  _p(f"{summary_obj.get('durationSec', '-')} seconds")],
-            [_p("Saved Sites", small), _p(str(total_ranked)),
-             _p("Coordinates", small), _p(coord_str)],
-            [_p("Report ID", small),  _p(str(self.report_id)[:16] + "..."),
-             _p("Run ID", small), _p(str(run.runId)[:16] + "...")],
+             _p("Saved Sites", small), _p(str(total_ranked))],
+            [_p("Coordinates", small), _p(coord_str),
+             _p("Report ID", small),  _p(str(self.report_id)[:16] + "...")],
         ]
-        meta_tbl = Table(meta_data, colWidths=[2.7*cm, 7.1*cm, 2.7*cm, 5.5*cm])
+        meta_tbl = Table(meta_data, colWidths=[2.9*cm, 6.9*cm, 3.0*cm, 5.2*cm])
         meta_tbl.setStyle(TableStyle([
             ("FONT",      (0, 0), (-1, -1), "Helvetica",      9),
             ("FONT",      (0, 0), (0, -1),  "Helvetica-Bold", 9),
@@ -461,60 +590,85 @@ class Report:
             story.append(heatmap_img)
             story.append(Spacer(1, 0.1*cm))
             story.append(Paragraph(
-                "This map highlights the selected analysis boundary and the current site marker. "
-                "The overlay summarizes the suitability level for the selected site area.",
+                "The blue boundary shows the selected analysis area, while the marker identifies the selected site center. "
+                "The transparent color layer summarizes the current suitability score without hiding the satellite context.",
                 small,
             ))
             story.append(Spacer(1, 0.3*cm))
 
-        # ── AI insight ───────────────────────────────────────────────────
-        story.append(Paragraph("AI-Based Insight", h2))
+        # ── AI assessment ─────────────────────────────────────────────────
+        story.append(Paragraph("AI-Based Assessment", h2))
         story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
         story.append(Spacer(1, 0.15*cm))
-        story.append(Paragraph(
-            "The AI-based assessment is presented as a decision cue that supports the final suitability result. "
-            "It should be interpreted together with the weighted GIS/AHP criteria, where solar availability, "
-            "environmental conditions, and terrain characteristics are evaluated as one connected decision framework.",
-            normal,
-        ))
-        story.append(Spacer(1, 0.12*cm))
-        story.append(Paragraph(f"<b>AI assessment:</b> {ai_assessment}", sum_style))
+        ai_status = _ai_status_label(ai_assessment)
+        ai_text = (
+            f"<b>Status:</b> {_pdf_safe_text(ai_status, 'AI Reviewed')}<br/>"
+            f"<b>Assessment:</b> {_pdf_safe_text(ai_assessment, 'Pending AI model result')}<br/>"
+            "<b>Interpretation:</b> The AI screening result is used as a decision cue together with the "
+            "GIS/AHP score. If exclusion factors are detected, they directly support a lower final recommendation."
+        )
+        story.append(Paragraph(ai_text, sum_style))
         story.append(Spacer(1, 0.3*cm))
 
-        # ── AHP weights ──────────────────────────────────────────────────
-        story.append(Paragraph("AHP Criteria Weights", h2))
+        # ── Current result criteria contribution ─────────────────────────
+        story.append(Paragraph("Current Result Criteria Contribution", h2))
         story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
         story.append(Spacer(1, 0.15*cm))
 
-        ahp_data = [["Criterion", "Weight", "Direction", "Description"]]
-        ahp_rows = [
-            ("Solar Irradiance (GHI)",    "30%", "Higher = Better", "Global Horizontal Irradiance"),
-            ("Terrain Slope",             "22%", "Lower = Better",  "Flat terrain preferred"),
-            ("Sunshine Hours",            "18%", "Higher = Better", "Annual sunshine duration"),
-            ("Obstacle Density",          "13%", "Lower = Better",  "Detected obstacles (YOLOv8)"),
-            ("Surface Temperature (LST)", "10%", "Lower = Better",  "Land Surface Temperature"),
-            ("Elevation",                 "7%",  "Moderate = Best", "Terrain elevation"),
-        ]
-        for row in ahp_rows:
-            ahp_data.append(list(row))
+        current_factors = _normalise_current_factors(selected_site.get("factors"))
+        if current_factors:
+            contribution_data = [[
+                _p("Criterion", small),
+                _p("Current Value", small),
+                _p("Contribution to Final Score", small),
+            ]]
+            max_contribution = max([float(item.get("contribution_pct", 0.0) or 0.0) for item in current_factors] + [1.0])
+            total_contribution = 0.0
+            for item in current_factors:
+                contribution = float(item.get("contribution_pct", 0.0) or 0.0)
+                total_contribution += contribution
+                bar_units = max(1, int(round((contribution / max_contribution) * 16))) if contribution > 0 else 0
+                bar = "█" * bar_units + "░" * max(0, 16 - bar_units)
+                contribution_data.append([
+                    _p(item.get("title", "Criterion")),
+                    _p(item.get("raw_label", "—")),
+                    _p(f"{contribution:.1f}%  {bar}"),
+                ])
 
-        ahp_tbl = Table(ahp_data, colWidths=[5*cm, 1.8*cm, 3.5*cm, 7.7*cm])
-        ahp_tbl.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, 0), ORANGE_DARK),
-            ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
-            ("FONT",          (0, 0), (-1, 0), "Helvetica-Bold", 9),
-            ("FONT",          (0, 1), (-1, -1), "Helvetica", 9),
-            ("TEXTCOLOR",     (0, 1), (-1, -1), DARK),
-            ("ALIGN",         (1, 0), (1, -1), "CENTER"),
-            ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#e0e0e0")),
-            ("TOPPADDING",    (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ORANGE_LIGHT]),
-        ]))
-        story.append(ahp_tbl)
+            contribution_tbl = Table(contribution_data, colWidths=[5.6*cm, 4.4*cm, 8.0*cm])
+            contribution_tbl.setStyle(TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, 0), ORANGE_DARK),
+                ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
+                ("FONT",          (0, 0), (-1, 0), "Helvetica-Bold", 9),
+                ("FONT",          (0, 1), (-1, -1), "Helvetica", 9),
+                ("TEXTCOLOR",     (0, 1), (-1, -1), DARK),
+                ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#e0e0e0")),
+                ("TOPPADDING",    (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ORANGE_LIGHT]),
+                ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ]))
+            story.append(contribution_tbl)
+            story.append(Spacer(1, 0.12*cm))
+
+            score_note = ""
+            if site_score_float is not None:
+                score_note = f" Final suitability score: <b>{site_score_float * 100:.1f}%</b>."
+            story.append(Paragraph(
+                f"The table shows the <b>actual weighted contribution of each criterion for this selected site</b>, "
+                f"not the fixed AHP model weights. Total displayed contribution: <b>{total_contribution:.1f}%</b>."
+                + score_note,
+                small,
+            ))
+        else:
+            story.append(Paragraph(
+                "Current criterion contribution data was not available for this run. "
+                "The PDF therefore avoids showing fixed AHP weights as if they were the selected site's result.",
+                normal,
+            ))
         story.append(Spacer(1, 0.1*cm))
         story.append(Paragraph(
-            "Consistency Ratio (CR) = 0.015 — Consistent (CR < 0.10).",
+            "AHP model consistency check: CR = 0.015 — Consistent (CR < 0.10).",
             small,
         ))
         story.append(Spacer(1, 0.3*cm))
@@ -592,6 +746,20 @@ class Report:
                 "No saved ranked-site comparison is available yet. Complete and save more analyses to enable global ranking.",
                 normal,
             ))
+        story.append(Spacer(1, 0.25*cm))
+
+        # ── Final recommendation ─────────────────────────────────────────
+        final_decision = site_label if site_label != "—" else "Pending"
+        final_score_sentence = f" with a final score of {site_score_float * 100:.1f}%" if site_score_float is not None else ""
+        story.append(Paragraph("Final Decision", h2))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d0d0d0")))
+        story.append(Spacer(1, 0.12*cm))
+        story.append(Paragraph(
+            f"The selected site is classified as <b>{_pdf_safe_text(final_decision, 'Pending')}</b>{final_score_sentence}. "
+            "This decision is based on the current GIS/AHP suitability contribution, the AI screening cue, "
+            "and the comparison against saved evaluated sites.",
+            sum_style,
+        ))
         story.append(Spacer(1, 0.3*cm))
 
         # ── Footer ────────────────────────────────────────────────────────
@@ -599,7 +767,7 @@ class Report:
         story.append(Spacer(1, 0.1*cm))
         story.append(Paragraph(
             "Danah Alhamdi · Walah Alshwaier · Ruba Aletri · Jumanah Alharbi  —  "
-            "CCIS, Princess Nora bint Abdul Rahman University (PNU)  —  "
+            "CCIS, Princess Nourah bint Abdulrahman University (PNU)  —  "
             "Aligned with Saudi Vision 2030",
             ParagraphStyle("footer", parent=small, alignment=TA_CENTER),
         ))
@@ -632,15 +800,15 @@ class Report:
             span_lon = max(lon_max - lon_min, 1e-6)
             span_lat = max(lat_max - lat_min, 1e-6)
 
-            # Add padding so the PDF map is readable and not over-zoomed.
-            pad_lon = max(span_lon * 0.16, 0.01)
-            pad_lat = max(span_lat * 0.16, 0.01)
+            # Add modest padding so the AOI stays readable without making the map too zoomed out.
+            pad_lon = max(span_lon * 0.28, 0.0025)
+            pad_lat = max(span_lat * 0.28, 0.0025)
             view_lon_min = lon_min - pad_lon
             view_lon_max = lon_max + pad_lon
             view_lat_min = lat_min - pad_lat
             view_lat_max = lat_max + pad_lat
 
-            IMG_W, IMG_H = 1400, 820
+            IMG_W, IMG_H = 1800, 1050
 
             def lon_to_px(lon):
                 return int((lon - view_lon_min) / (view_lon_max - view_lon_min) * IMG_W)
@@ -716,13 +884,19 @@ class Report:
 
             def _best_zoom():
                 max_span = max(view_lon_max - view_lon_min, view_lat_max - view_lat_min)
-                if max_span <= 0.10:
+                if max_span <= 0.012:
+                    return 16
+                if max_span <= 0.025:
+                    return 15
+                if max_span <= 0.060:
+                    return 14
+                if max_span <= 0.120:
+                    return 13
+                if max_span <= 0.220:
                     return 12
-                if max_span <= 0.22:
+                if max_span <= 0.400:
                     return 11
-                if max_span <= 0.40:
-                    return 10
-                return 9
+                return 10
 
             def _fetch_basemap(zoom=None):
                 if zoom is None:
@@ -817,18 +991,18 @@ class Report:
 
                     draw.rectangle(
                         [x0, y0, x1, y1],
-                        fill=cell_rgb + (105,),
-                        outline=(74, 143, 42, 130),
-                        width=2,
+                        fill=cell_rgb + (82,),
+                        outline=(255, 255, 255, 45),
+                        width=1,
                     )
 
-            draw.line(poly + [poly[0]], fill=(0, 112, 255, 255), width=6)
+            draw.line(poly + [poly[0]], fill=(0, 112, 255, 255), width=8)
 
             if site_lat is not None and site_lon is not None:
                 mx = lon_to_px(site_lon)
                 my = lat_to_px(site_lat)
-                draw.ellipse([mx - 13, my - 13, mx + 13, my + 13], fill=(255,255,255,245), outline=(0, 112, 255, 255), width=5)
-                draw.ellipse([mx - 8, my - 8, mx + 8, my + 8], fill=(0, 112, 255, 255))
+                draw.ellipse([mx - 18, my - 18, mx + 18, my + 18], fill=(255,255,255,248), outline=(0, 112, 255, 255), width=6)
+                draw.ellipse([mx - 10, my - 10, mx + 10, my + 10], fill=(0, 112, 255, 255))
                 try:
                     font_lbl = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
                 except Exception:
@@ -844,9 +1018,24 @@ class Report:
                 draw.rounded_rectangle([pill_x, pill_y, pill_x + pill_w, pill_y + pill_h], radius=16, fill=(31, 56, 100, 228))
                 draw.text((pill_x + pad_x, pill_y + pad_y - 1), site_name, font=font_lbl, fill=(255, 255, 255, 255))
 
-            LG_X, LG_Y = 30, IMG_H - 132
-            LEG_W, LEG_H = 250, 16
-            draw.rounded_rectangle([LG_X - 12, LG_Y - 42, LG_X + LEG_W + 12, LG_Y + LEG_H + 74], radius=12, fill=(255,255,255,224))
+            # Compact score badge: keeps the map self-explanatory without adding clutter.
+            try:
+                font_badge = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+                font_badge_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
+            except Exception:
+                font_badge = font_badge_sm = ImageFont.load_default()
+            badge_score = f"Score {float(site_score) * 100:.1f}%"
+            badge_label = _suitability_badge(site_score)
+            badge_text = f"{badge_score} | {badge_label}"
+            bbox = draw.textbbox((0, 0), badge_text, font=font_badge)
+            bw, bh = bbox[2] - bbox[0] + 36, bbox[3] - bbox[1] + 24
+            bx, by = IMG_W - bw - 34, 32
+            draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=18, fill=(255, 255, 255, 232))
+            draw.text((bx + 18, by + 12), badge_text, font=font_badge, fill=(31, 56, 100, 255))
+
+            LG_X, LG_Y = 34, IMG_H - 124
+            LEG_W, LEG_H = 240, 14
+            draw.rounded_rectangle([LG_X - 12, LG_Y - 40, LG_X + LEG_W + 12, LG_Y + LEG_H + 70], radius=12, fill=(255,255,255,224))
             try:
                 font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
                 font_xs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
@@ -865,7 +1054,7 @@ class Report:
             buf = _io.BytesIO()
             canvas.save(buf, format="PNG", dpi=(170, 170))
             buf.seek(0)
-            return RLImage(buf, width=17 * cm, height=9.9 * cm)
+            return RLImage(buf, width=16.6 * cm, height=9.7 * cm)
 
         except Exception as exc:
             logger.warning("Heatmap image generation failed: %s", exc, exc_info=True)
@@ -1085,4 +1274,4 @@ class Report:
             f"Report(report_id={self.report_id!r}, "
             f"date={self.date!r}, "
             f"file_path={self.file_path!r})"
-        )
+        ) 
